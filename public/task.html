@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Task — JobXP</title>
+  <link rel="stylesheet" href="/css/app.css"/>
+  <style>
+    body::before { content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.02)1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.02)1px,transparent 1px);background-size:72px 72px;pointer-events:none;z-index:0; }
+    .task-hero { background:var(--bg-card);border:1px solid var(--border);padding:28px 30px;margin-bottom:24px;position:relative;overflow:hidden; }
+    .task-hero::before { content:'';position:absolute;left:0;top:0;bottom:0;width:4px; }
+    .task-hero.status-todo::before { background:var(--text-3); }
+    .task-hero.status-inprogress::before { background:var(--cyan); box-shadow:0 0 12px rgba(0,229,255,0.5); }
+    .task-hero.status-review::before { background:var(--gold); box-shadow:0 0 12px rgba(255,215,0,0.5); }
+    .task-hero.status-done::before { background:var(--green); box-shadow:0 0 12px rgba(57,255,20,0.5); }
+    .th-header { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:14px; }
+    .th-title { font-family:var(--font-display);font-size:clamp(16px,2.5vw,26px);font-weight:900;letter-spacing:3px; }
+    .th-meta { display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px; }
+    .th-meta-item { font-family:var(--font-mono);font-size:11px;color:var(--text-2); }
+    .th-meta-item b { color:var(--text-1); }
+    .th-actions { display:flex;gap:10px;flex-wrap:wrap;margin-top:18px; }
+
+    .ai-instructions { background:var(--cyan-dim);border:1px solid var(--border-hi);padding:20px 22px;margin-bottom:20px; }
+    .ai-inst-label { font-family:var(--font-mono);font-size:10px;letter-spacing:3px;color:var(--cyan);margin-bottom:12px;display:flex;align-items:center;gap:8px; }
+    .ai-inst-body { font-size:14px;line-height:1.8;color:var(--text-1);white-space:pre-wrap; }
+
+    .ai-review-box { background:var(--purple-dim);border:1px solid rgba(155,109,255,0.3);padding:20px 22px;margin-top:20px; }
+    .air-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:14px; }
+    .air-label { font-family:var(--font-mono);font-size:10px;letter-spacing:3px;color:var(--purple); }
+    .air-score { display:flex;align-items:center;gap:14px; }
+    .air-feedback { font-size:14px;line-height:1.75;color:var(--text-1);margin-bottom:12px; }
+    .air-suggestions { }
+    .air-sug-item { display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-2); }
+    .air-sug-item::before { content:'→';color:var(--purple);flex-shrink:0; }
+
+    .submit-work-area { background:var(--bg-card);border:1px solid var(--border);padding:24px; }
+    .swh { font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:3px;margin-bottom:16px; }
+    .work-history { display:flex;flex-direction:column;gap:12px; }
+    .wh-entry { background:var(--bg-2);border:1px solid var(--border);padding:14px 16px; }
+    .whe-header { display:flex;justify-content:space-between;margin-bottom:6px; }
+    .whe-who { font-family:var(--font-mono);font-size:10px;color:var(--text-2); }
+    .whe-time { font-family:var(--font-mono);font-size:10px;color:var(--text-3); }
+    .whe-text { font-size:14px;line-height:1.6; }
+  </style>
+</head>
+<body class="grid-bg">
+<div class="app-layout">
+  <main class="app-main" id="main" style="opacity:0">
+    <div id="back-link" style="margin-bottom:20px;"></div>
+    <div id="task-content">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+  </main>
+</div>
+
+<!-- Submit Work Modal -->
+<div class="modal-overlay" id="submit-modal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-header">
+      <span class="modal-title">SUBMIT WORK</span>
+      <button class="modal-close" data-modal-close="submit-modal">✕</button>
+    </div>
+    <div class="alert alert-info mb-4">Describe what you built / completed. Be specific — the AI reviews your description.</div>
+    <form id="submit-form">
+      <div class="form-group">
+        <label class="form-label">Work Description</label>
+        <textarea id="work-text" class="form-textarea" placeholder="I implemented the login endpoint with JWT auth, validation middleware, and bcrypt password hashing. I tested with Postman and covered edge cases…" required style="min-height:160px;"></textarea>
+        <div class="form-hint">Aim for 100+ words for best AI scoring.</div>
+      </div>
+      <div id="submit-alert"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-modal-close="submit-modal">Cancel</button>
+        <button type="submit" class="btn btn-cyan" id="submit-work-btn">📤 SUBMIT FOR REVIEW</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+if (!Auth.require()) {}
+else {
+  injectNav('Projects');
+  const taskId = qp('id');
+  if (!taskId) window.location.href = '/projects.html';
+
+  const user = Auth.user();
+  let task = null;
+
+  async function load() {
+    try {
+      const data = await API.get('/tasks/task/' + taskId);
+      task = data.task || data;
+      render(task);
+      // Set back link
+      if (task.projectId) {
+        document.getElementById('back-link').innerHTML = `<a href="/project.html?id=${task.projectId}" class="btn btn-ghost btn-sm">← Back to Project</a>`;
+      }
+      document.getElementById('main').style.opacity = '1';
+      document.getElementById('main').style.animation = 'fade-up 0.4s ease';
+    } catch (err) {
+      document.getElementById('task-content').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      document.getElementById('main').style.opacity = '1';
+    }
+  }
+
+  function render(t) {
+    const sc   = statusClass(t.status);
+    const isAssigned = t.assignedTo && (t.assignedTo._id || t.assignedTo) === (user._id || user.id);
+    const canClaim   = t.status === 'Todo' && !t.assignedTo;
+    const canSubmit  = isAssigned && t.status === 'In-Progress';
+    const canReview  = user.isAdmin && t.status === 'Review';
+
+    document.getElementById('task-content').innerHTML = `
+      <!-- Task hero -->
+      <div class="task-hero ${sc}">
+        <div class="th-header">
+          <div class="th-title">${t.title || 'Task'}</div>
+          <span class="status ${sc}">${t.status || 'Todo'}</span>
+        </div>
+        <div class="th-meta">
+          <div class="th-meta-item">⚡ <b>${t.xpReward||0} XP</b></div>
+          <div class="th-meta-item">🎯 Priority: <b class="tc-priority ${priorityClass(t.priority)}">${t.priority||'—'}</b></div>
+          <div class="th-meta-item">🎭 Role: <b>${t.role||'Any'}</b></div>
+          <div class="th-meta-item">👤 Assigned: <b>${t.assignedTo ? (t.assignedTo.username || t.assignedTo.email || 'Someone') : 'Unassigned'}</b></div>
+          <div class="th-meta-item">📅 <b>${timeAgo(t.createdAt)}</b></div>
+        </div>
+        <div style="font-size:14px;color:var(--text-2);line-height:1.7;margin-bottom:16px;">${t.description||''}</div>
+        <div class="th-actions">
+          ${canClaim  ? '<button class="btn btn-cyan" id="claim-btn">⚔ CLAIM THIS TASK</button>' : ''}
+          ${canSubmit ? '<button class="btn btn-gold" id="submit-btn-hero">📤 SUBMIT WORK</button>' : ''}
+          ${canReview ? '<button class="btn btn-purple" id="review-btn">🤖 REQUEST AI REVIEW</button>' : ''}
+        </div>
+      </div>
+
+      <!-- AI Instructions -->
+      ${t.aiInstructions ? `
+        <div class="ai-instructions">
+          <div class="ai-inst-label">🤖 AI MANAGER INSTRUCTIONS</div>
+          <div class="ai-inst-body">${t.aiInstructions}</div>
+        </div>` : ''}
+
+      <!-- Grid: Work + Review -->
+      <div class="grid-2" style="gap:20px;">
+
+        <!-- Submitted Work -->
+        <div class="submit-work-area">
+          <div class="swh">SUBMITTED WORK</div>
+          ${t.submittedWork ? `
+            <div class="wh-entry">
+              <div class="whe-header">
+                <span class="whe-who">Submitted by ${t.assignedTo?.username || 'member'}</span>
+                <span class="whe-time">${timeAgo(t.updatedAt)}</span>
+              </div>
+              <div class="whe-text">${t.submittedWork}</div>
+            </div>` : `
+            <div class="empty">
+              <div class="empty-icon">📋</div>
+              <div class="empty-title">NO SUBMISSION YET</div>
+              ${canSubmit ? '<div class="empty-desc">Describe your work and submit it for AI review.</div>' : ''}
+            </div>`}
+        </div>
+
+        <!-- AI Review -->
+        <div>
+          ${t.aiReview ? `
+            <div class="ai-review-box">
+              <div class="air-header">
+                <div class="air-label">🤖 AI REVIEW RESULT</div>
+                <div class="air-score">
+                  <div class="score-ring" id="score-ring-el"><span class="score-ring-val">0</span></div>
+                  <div>
+                    <div class="font-display" style="font-size:24px;font-weight:900;color:${t.aiRating>=70?'var(--green)':t.aiRating>=40?'var(--gold)':'var(--red)'}">${t.aiRating||0}<span style="font-size:14px;color:var(--text-2)">/100</span></div>
+                    <div class="text-xs text-muted">QUALITY SCORE</div>
+                  </div>
+                </div>
+              </div>
+              <div class="air-feedback">${t.aiReview}</div>
+              ${t.feedback && t.feedback.length ? `
+                <div class="text-xs text-muted mb-2">SUGGESTIONS</div>
+                <div class="air-suggestions">
+                  ${(Array.isArray(t.feedback)?t.feedback:[t.feedback]).map(f=>`<div class="air-sug-item">${f}</div>`).join('')}
+                </div>` : ''}
+            </div>` : `
+            <div class="card" style="height:100%;display:flex;align-items:center;justify-content:center;">
+              <div class="empty">
+                <div class="empty-icon">🤖</div>
+                <div class="empty-title">PENDING REVIEW</div>
+                <div class="empty-desc">Submit your work, then request an AI review from the admin.</div>
+              </div>
+            </div>`}
+        </div>
+      </div>
+    `;
+
+    // Animate score ring
+    if (t.aiRating !== undefined) {
+      setTimeout(() => setScoreRing(document.getElementById('score-ring-el'), t.aiRating || 0), 200);
+    }
+
+    // Events
+    document.getElementById('claim-btn')?.addEventListener('click', claimTask);
+    document.getElementById('submit-btn-hero')?.addEventListener('click', () => openModal('submit-modal'));
+    document.getElementById('review-btn')?.addEventListener('click', requestReview);
+  }
+
+  async function claimTask() {
+    const btn = document.getElementById('claim-btn');
+    btn.disabled = true; btn.textContent = 'CLAIMING…';
+    try {
+      await API.post('/tasks/' + taskId + '/claim');
+      Toast.success('Task claimed! Go build something great.');
+      load();
+    } catch (err) {
+      Toast.error(err.message);
+      btn.disabled = false; btn.textContent = '⚔ CLAIM THIS TASK';
+    }
+  }
+
+  async function requestReview() {
+    const btn = document.getElementById('review-btn');
+    btn.disabled = true; btn.textContent = '🤖 Reviewing…';
+    try {
+      await API.post('/tasks/' + taskId + '/request-review');
+      Toast.success('AI review complete!');
+      load();
+    } catch (err) {
+      Toast.error(err.message);
+      btn.disabled = false; btn.textContent = '🤖 REQUEST AI REVIEW';
+    }
+  }
+
+  document.getElementById('submit-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submit-work-btn');
+    const alertEl = document.getElementById('submit-alert');
+    btn.disabled = true; btn.textContent = 'SUBMITTING…'; alertEl.innerHTML = '';
+    try {
+      await API.post('/tasks/' + taskId + '/submit', {
+        submittedWork: document.getElementById('work-text').value.trim()
+      });
+      Toast.success('Work submitted for review!');
+      closeModal('submit-modal');
+      document.getElementById('work-text').value = '';
+      load();
+    } catch (err) {
+      alertEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      btn.disabled = false; btn.textContent = '📤 SUBMIT FOR REVIEW';
+    }
+  });
+
+  load();
+}
+</script>
+</body>
+</html>

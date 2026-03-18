@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Leaderboard — JobXP</title>
+  <link rel="stylesheet" href="/css/app.css"/>
+  <style>
+    body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.02)1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.02)1px,transparent 1px);background-size:72px 72px;pointer-events:none;z-index:0;}
+    .lb-hero {
+      text-align:center;padding:48px 0 32px;
+      animation:fade-up 0.5s ease;
+    }
+    .lb-hero-title { font-family:var(--font-display);font-size:clamp(28px,5vw,52px);font-weight:900;letter-spacing:8px;background:linear-gradient(135deg,var(--gold),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-shadow:none; }
+    .lb-hero-sub { font-family:var(--font-mono);font-size:12px;color:var(--text-2);letter-spacing:4px;margin-top:8px; }
+
+    .lb-table { width:100%;border-collapse:collapse;animation:fade-up 0.5s ease; }
+    .lb-table th { font-family:var(--font-display);font-size:10px;letter-spacing:3px;color:var(--text-2);text-align:left;padding:10px 16px;border-bottom:1px solid var(--border); }
+    .lb-row { border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.2s; }
+    .lb-row:hover { background:var(--bg-card-hi); }
+    .lb-row.me { background:rgba(0,229,255,0.06);border-left:3px solid var(--cyan); }
+    .lb-row.rank-1 { background:rgba(255,215,0,0.06);border-left:3px solid var(--gold); }
+    .lb-row.rank-2 { background:rgba(192,192,192,0.05);border-left:3px solid #c0c0c0; }
+    .lb-row.rank-3 { background:rgba(205,127,50,0.05);border-left:3px solid #cd7f32; }
+    .lb-row td { padding:14px 16px;vertical-align:middle; }
+
+    .lb-rank-num { font-family:var(--font-display);font-size:20px;font-weight:900;width:56px; }
+    .rank-1 .lb-rank-num { color:var(--gold);text-shadow:0 0 12px var(--gold); }
+    .rank-2 .lb-rank-num { color:#c0c0c0;text-shadow:0 0 8px #c0c0c0; }
+    .rank-3 .lb-rank-num { color:#cd7f32; }
+
+    .lb-user { display:flex;align-items:center;gap:14px; }
+    .lb-av { width:40px;height:40px;font-size:22px;display:flex;align-items:center;justify-content:center;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:var(--cyan-dim); }
+    .lb-name { font-family:var(--font-display);font-size:14px;letter-spacing:2px;color:var(--text-1); }
+    .lb-email { font-family:var(--font-mono);font-size:10px;color:var(--text-3); }
+
+    .lb-stat { font-family:var(--font-display);font-size:14px;font-weight:700; }
+    .lb-lvl-badge { display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;border:2px solid var(--cyan);font-family:var(--font-display);font-size:12px;color:var(--cyan); }
+
+    .my-rank-bar {
+      display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+      background:var(--bg-card);border:1px solid var(--cyan);padding:16px 24px;
+      margin-bottom:28px;font-family:var(--font-display);font-size:13px;letter-spacing:2px;
+      animation:fade-up 0.4s ease;
+    }
+    .my-rank-bar .mrd { text-align:center; }
+    .my-rank-bar .mrd-val { font-size:22px;font-weight:900;color:var(--cyan); }
+    .my-rank-bar .mrd-lbl { font-size:9px;color:var(--text-3);letter-spacing:3px; }
+
+    .lb-empty { text-align:center;padding:60px;color:var(--text-3);font-family:var(--font-mono); }
+    .fa-spin { animation:spin 1s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg);} }
+
+    .lb-medals { display:flex;gap:6px; }
+  </style>
+</head>
+<body class="grid-bg">
+<div class="app-layout">
+  <main class="app-main">
+
+    <div class="lb-hero">
+      <div class="lb-hero-title">⚔️ LEADERBOARD ⚔️</div>
+      <div class="lb-hero-sub">Global Arena Rankings — Prove Your Worth</div>
+    </div>
+
+    <!-- My rank bar -->
+    <div class="my-rank-bar" id="my-rank-bar" style="display:none;">
+      <span style="color:var(--text-2);font-size:11px;letter-spacing:3px;flex:1;">YOUR STANDING</span>
+      <div class="mrd"><div class="mrd-val" id="mr-rank">—</div><div class="mrd-lbl">RANK</div></div>
+      <div class="mrd"><div class="mrd-val" id="mr-xp">—</div><div class="mrd-lbl">XP</div></div>
+      <div class="mrd"><div class="mrd-val" id="mr-level">—</div><div class="mrd-lbl">LEVEL</div></div>
+      <div class="mrd"><div class="mrd-val" id="mr-tasks">—</div><div class="mrd-lbl">TASKS</div></div>
+      <a href="/profile.html" class="btn btn-sm btn-cyan">My Profile →</a>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">HALL OF HEROES</span>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);" id="lb-meta"></div>
+      </div>
+      <div id="lb-loading" style="text-align:center;padding:40px;"><div class="spinner"></div></div>
+      <div id="lb-content" style="overflow-x:auto;display:none;">
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>RANK</th>
+              <th>HERO</th>
+              <th>LEVEL</th>
+              <th>TOTAL XP</th>
+              <th>TASKS DONE</th>
+              <th>RELIABILITY</th>
+            </tr>
+          </thead>
+          <tbody id="lb-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="lb-pagination" style="margin-top:16px;"></div>
+  </main>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+if (!Auth.require()) {}
+else {
+  injectNav('Leaderboard');
+  const me = Auth.user();
+  let currentPage = 1;
+  const limit = 20;
+
+  async function loadMyRank() {
+    try {
+      const r = await API.get('/profile/' + me._id + '/rank');
+      const bar = document.getElementById('my-rank-bar');
+      document.getElementById('mr-rank').textContent = '#' + (r.rank || '—');
+      document.getElementById('mr-xp').textContent = (me.totalXP || 0).toLocaleString();
+      document.getElementById('mr-level').textContent = me.level || 1;
+      document.getElementById('mr-tasks').textContent = me.completedTasks || 0;
+      bar.style.display = 'flex';
+    } catch {}
+  }
+
+  async function loadLeaderboard(page = 1) {
+    currentPage = page;
+    document.getElementById('lb-loading').style.display = 'block';
+    document.getElementById('lb-content').style.display = 'none';
+    document.getElementById('lb-pagination').innerHTML = '';
+
+    try {
+      const data = await API.get(`/profile/leaderboard?page=${page}&limit=${limit}`);
+      const users = data.users || data.leaderboard || data;
+      const total = data.total || users.length;
+      const offset = (page - 1) * limit;
+
+      document.getElementById('lb-meta').textContent = `${total.toLocaleString()} heroes ranked`;
+
+      const tbody = document.getElementById('lb-body');
+      if (!users.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="lb-empty">No heroes ranked yet. Complete tasks to join the arena!</td></tr>`;
+      } else {
+        tbody.innerHTML = users.map((u, i) => {
+          const rank = offset + i + 1;
+          const isMe = u._id === me?._id;
+          const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : '';
+          const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+          const reliabilityColor = u.reliabilityScore >= 80 ? 'var(--green)' : u.reliabilityScore >= 50 ? 'var(--gold)' : 'var(--red)';
+          const medals = (u.badges || []).slice(0, 3).map(b => `<span title="${b}">🏅</span>`).join('');
+          return `
+            <tr class="lb-row ${rankClass} ${isMe ? 'me' : ''}" onclick="window.location='/profile.html?id=${u._id}'">
+              <td><div class="lb-rank-num">${rankIcon}${isMe ? '' : ''}</div></td>
+              <td>
+                <div class="lb-user">
+                  <div class="lb-av">${u.avatar || '👤'}</div>
+                  <div>
+                    <div class="lb-name">${u.username || u.email?.split('@')[0] || 'UNKNOWN'}${isMe ? ' <span style="color:var(--cyan);font-size:9px;letter-spacing:2px;">[YOU]</span>' : ''}</div>
+                    ${medals ? `<div class="lb-medals">${medals}</div>` : ''}
+                  </div>
+                </div>
+              </td>
+              <td><div class="lb-lvl-badge">${u.level || 1}</div></td>
+              <td><div class="lb-stat" style="color:var(--gold);">${(u.totalXP || 0).toLocaleString()} <span style="font-size:10px;color:var(--text-2);">XP</span></div></td>
+              <td><div class="lb-stat" style="color:var(--cyan);">${u.completedTasks || 0}</div></td>
+              <td><div class="lb-stat" style="color:${reliabilityColor};">${u.reliabilityScore || 0}%</div></td>
+            </tr>`;
+        }).join('');
+      }
+
+      document.getElementById('lb-loading').style.display = 'none';
+      document.getElementById('lb-content').style.display = 'block';
+
+      // Pagination
+      renderPagination(total, page, limit);
+    } catch (err) {
+      document.getElementById('lb-loading').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  function renderPagination(total, page, limit) {
+    const pages = Math.ceil(total / limit);
+    if (pages <= 1) return;
+    const cont = document.getElementById('lb-pagination');
+    let html = '';
+    if (page > 1) html += `<button class="page-btn" onclick="loadLeaderboard(${page-1})">‹ Prev</button>`;
+    for (let p = Math.max(1,page-2); p <= Math.min(pages,page+2); p++) {
+      html += `<button class="page-btn${p===page?' active':''}" onclick="loadLeaderboard(${p})">${p}</button>`;
+    }
+    if (page < pages) html += `<button class="page-btn" onclick="loadLeaderboard(${page+1})">Next ›</button>`;
+    cont.innerHTML = html;
+  }
+
+  loadMyRank();
+  loadLeaderboard(1);
+}
+</script>
+</body>
+</html>

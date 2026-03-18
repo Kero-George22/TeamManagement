@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Profile — JobXP</title>
+  <link rel="stylesheet" href="/css/app.css"/>
+  <style>
+    body::before { content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.02)1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.02)1px,transparent 1px);background-size:72px 72px;pointer-events:none;z-index:0; }
+    .profile-banner {
+      background:var(--bg-card);border:1px solid var(--border);
+      padding:36px;margin-bottom:24px;position:relative;overflow:hidden;
+      animation:fade-up 0.4s ease;
+    }
+    .profile-banner::after { content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--gold),var(--purple)); }
+    .pb-inner { display:flex;align-items:center;gap:30px;flex-wrap:wrap; }
+    .pb-avatar-wrap { position:relative;flex-shrink:0; }
+    .pb-avatar {
+      width:100px;height:100px;
+      clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+      background:var(--cyan-dim);border:2px solid var(--border-hi);
+      display:flex;align-items:center;justify-content:center;font-size:48px;
+      cursor:pointer;transition:border-color 0.3s;
+    }
+    .pb-avatar:hover { border-color:var(--cyan); }
+    .pb-avatar-hint { font-family:var(--font-mono);font-size:9px;letter-spacing:2px;color:var(--text-3);text-align:center;margin-top:6px; }
+    .pb-info { flex:1; }
+    .pb-username { font-family:var(--font-display);font-size:clamp(20px,3vw,32px);font-weight:900;letter-spacing:4px;color:var(--text-1);margin-bottom:6px; }
+    .pb-email { font-family:var(--font-mono);font-size:11px;color:var(--text-2);margin-bottom:12px; }
+    .pb-bio { font-size:14px;color:var(--text-2);line-height:1.7;max-width:480px;margin-bottom:16px; }
+    .pb-badges { display:flex;gap:8px;flex-wrap:wrap; }
+    .pb-right { text-align:center; }
+    .pb-lvl { font-family:var(--font-display);font-size:56px;font-weight:900;line-height:1;color:var(--cyan);text-shadow:var(--cyan-glow); }
+    .pb-lvl-lbl { font-family:var(--font-mono);font-size:10px;letter-spacing:3px;color:var(--text-2); }
+    .pb-reliability { font-family:var(--font-mono);font-size:11px;color:var(--gold);margin-top:8px; }
+
+    .avatar-picker { display:flex;flex-wrap:wrap;gap:10px;padding:10px 0; }
+    .av-opt { font-size:28px;cursor:pointer;padding:8px;border:2px solid transparent;transition:border-color 0.2s,transform 0.2s; }
+    .av-opt:hover { border-color:var(--border-hi);transform:scale(1.15); }
+    .av-opt.selected { border-color:var(--cyan); }
+  </style>
+</head>
+<body class="grid-bg">
+<div class="app-layout">
+  <main class="app-main" id="main" style="opacity:0">
+
+    <!-- Profile banner -->
+    <div class="profile-banner" id="profile-banner">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid-4 mb-6" id="stats-row">
+      <div class="stat-card"><span class="sc-icon">⚔️</span><div class="sc-val" id="s-tasks">—</div><div class="sc-lbl">Tasks Done</div></div>
+      <div class="stat-card gld"><span class="sc-icon">⭐</span><div class="sc-val" id="s-xp">—</div><div class="sc-lbl">Total XP</div></div>
+      <div class="stat-card ppl"><span class="sc-icon">🏆</span><div class="sc-val" id="s-rank">—</div><div class="sc-lbl">Global Rank</div></div>
+      <div class="stat-card grn"><span class="sc-icon">🛡</span><div class="sc-val" id="s-rel">—</div><div class="sc-lbl">Reliability</div></div>
+    </div>
+
+    <!-- Edit form + Skills -->
+    <div class="grid-2 mb-6">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Edit Profile</span>
+          <button class="btn btn-sm btn-cyan" id="save-btn">💾 Save</button>
+        </div>
+        <form id="profile-form">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" id="p-username" class="form-input" placeholder="Your display name"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bio</label>
+            <textarea id="p-bio" class="form-textarea" placeholder="Tell the arena who you are…" style="min-height:100px;"></textarea>
+          </div>
+          <div id="profile-alert"></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Skill Levels</span>
+          <a href="/assessment.html" class="btn btn-sm btn-outline">Take Test</a>
+        </div>
+        <div id="skills-panel"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Change Password</span>
+      </div>
+      <form id="pw-form" style="max-width:420px;">
+        <div class="form-group">
+          <label class="form-label">Current Password</label>
+          <input type="password" id="pw-old" class="form-input" required/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">New Password</label>
+          <input type="password" id="pw-new" class="form-input" required minlength="8"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <input type="password" id="pw-confirm" class="form-input" required/>
+          <div class="form-error" id="pw-match-err">Passwords do not match</div>
+        </div>
+        <div id="pw-alert"></div>
+        <button type="submit" class="btn btn-outline">🔒 Update Password</button>
+      </form>
+    </div>
+
+  </main>
+</div>
+
+<!-- Avatar picker modal -->
+<div class="modal-overlay" id="avatar-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">CHOOSE AVATAR</span>
+      <button class="modal-close" data-modal-close="avatar-modal">✕</button>
+    </div>
+    <div class="avatar-picker" id="avatar-picker">
+      <div class="av-opt" data-em="👤">👤</div>
+      <div class="av-opt" data-em="⚡">⚡</div>
+      <div class="av-opt" data-em="🔥">🔥</div>
+      <div class="av-opt" data-em="💎">💎</div>
+      <div class="av-opt" data-em="🎯">🎯</div>
+      <div class="av-opt" data-em="🚀">🚀</div>
+      <div class="av-opt" data-em="🌐">🌐</div>
+      <div class="av-opt" data-em="🧠">🧠</div>
+      <div class="av-opt" data-em="🔧">🔧</div>
+      <div class="av-opt" data-em="🛡">🛡</div>
+      <div class="av-opt" data-em="👾">👾</div>
+      <div class="av-opt" data-em="🦾">🦾</div>
+      <div class="av-opt" data-em="🤖">🤖</div>
+      <div class="av-opt" data-em="👑">👑</div>
+      <div class="av-opt" data-em="🌟">🌟</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal-close="avatar-modal">Cancel</button>
+      <button class="btn btn-cyan" id="av-save">Save Avatar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+if (!Auth.require()) {}
+else {
+  injectNav('Profile');
+  let userData = null;
+  let selectedAvatar = null;
+
+  async function load() {
+    try {
+      const [profileData, rankData] = await Promise.all([
+        API.get('/profile/me'),
+        API.get('/profile/me/stats').catch(() => null),
+      ]);
+      userData = profileData.user || profileData;
+      renderBanner(userData);
+      renderStats(userData, rankData);
+      renderSkills(userData.skills || {});
+      document.getElementById('main').style.opacity = '1';
+      document.getElementById('main').style.animation = 'fade-up 0.4s ease';
+
+      // Rank
+      try {
+        const r = await API.get('/profile/' + userData._id + '/rank');
+        document.getElementById('s-rank').textContent = '#' + (r.rank || '—');
+      } catch {}
+    } catch (err) {
+      document.getElementById('profile-banner').innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      document.getElementById('main').style.opacity = '1';
+    }
+  }
+
+  function renderBanner(u) {
+    const b = document.getElementById('profile-banner');
+    b.innerHTML = `
+      <div class="pb-inner">
+        <div class="pb-avatar-wrap">
+          <div class="pb-avatar" id="avatar-click">${u.avatar || '👤'}</div>
+          <div class="pb-avatar-hint">CLICK TO CHANGE</div>
+        </div>
+        <div class="pb-info">
+          <div class="pb-username">${u.username || u.email?.split('@')[0] || 'HERO'}</div>
+          <div class="pb-email">${u.email || ''}</div>
+          <div class="pb-bio">${u.bio || 'No bio set yet. Tell the arena who you are.'}</div>
+          <div class="pb-badges">
+            ${(u.badges||[]).map(b2=>`<span class="badge-chip gold">🏅 ${b2}</span>`).join('')}
+          </div>
+        </div>
+        <div class="pb-right">
+          <div class="pb-lvl">${u.level || 1}</div>
+          <div class="pb-lvl-lbl">LEVEL</div>
+          <div class="pb-reliability">🛡 ${u.reliabilityScore || 0}% Reliable</div>
+        </div>
+      </div>
+    `;
+    // Fill form
+    document.getElementById('p-username').value = u.username || '';
+    document.getElementById('p-bio').value = u.bio || '';
+    document.getElementById('avatar-click').addEventListener('click', () => openModal('avatar-modal'));
+  }
+
+  function renderStats(u, stats) {
+    document.getElementById('s-tasks').textContent = u.completedTasks || 0;
+    document.getElementById('s-xp').textContent = (u.totalXP || 0).toLocaleString();
+    document.getElementById('s-rel').textContent = (u.reliabilityScore || 0) + '%';
+  }
+
+  function renderSkills(skills) {
+    const areas = ['Frontend','Backend','FullStack','DevOps','DataScience'];
+    const icons = { Frontend:'⚡', Backend:'🔧', FullStack:'🌐', DevOps:'🚀', DataScience:'🧠' };
+    const pcts  = { null:0,'Beginner':25,'Intermediate':50,'Advanced':75,'Expert':100 };
+    const cols  = { null:'var(--text-3)','Beginner':'var(--red)','Intermediate':'var(--gold)','Advanced':'var(--cyan)','Expert':'var(--green)' };
+    document.getElementById('skills-panel').innerHTML = areas.map(a => {
+      const s = skills[a] || {};
+      const lvl = s.level || null;
+      const pct = pcts[lvl] || 0;
+      const col = cols[lvl] || 'var(--text-3)';
+      return `<div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-family:var(--font-display);font-size:11px;font-weight:700;letter-spacing:2px;">${icons[a]} ${a}</span>
+          <span style="font-family:var(--font-mono);font-size:11px;color:${col};">${lvl || 'Not Assessed'}</span>
+        </div>
+        <div class="xp-track"><div class="xp-fill" style="--w:${pct}%;background:${col};animation:xp-in 1.2s ease both;"></div></div>
+        ${s.score ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);margin-top:4px;">Score: ${s.score}/100</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // Save profile
+  document.getElementById('save-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('save-btn');
+    const alertEl = document.getElementById('profile-alert');
+    btn.disabled = true; btn.textContent = 'SAVING…'; alertEl.innerHTML = '';
+    try {
+      const data = await API.put('/profile/me', {
+        username: document.getElementById('p-username').value.trim(),
+        bio: document.getElementById('p-bio').value.trim(),
+      });
+      const u = data.user || data;
+      localStorage.setItem('jxp_user', JSON.stringify({ ...Auth.user(), ...u }));
+      Toast.success('Profile updated!');
+      load();
+    } catch (err) {
+      alertEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    } finally { btn.disabled = false; btn.textContent = '💾 Save'; }
+  });
+
+  // Change password
+  document.getElementById('pw-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const matchErr = document.getElementById('pw-match-err');
+    matchErr.classList.remove('show');
+    const nw = document.getElementById('pw-new').value;
+    const cf = document.getElementById('pw-confirm').value;
+    if (nw !== cf) { matchErr.classList.add('show'); return; }
+    const alertEl = document.getElementById('pw-alert');
+    const btn = e.target.querySelector('[type=submit]');
+    btn.disabled = true; alertEl.innerHTML = '';
+    try {
+      await API.post('/auth/change-password', {
+        oldPassword: document.getElementById('pw-old').value,
+        newPassword: nw,
+      });
+      Toast.success('Password changed!');
+      e.target.reset();
+    } catch (err) {
+      alertEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    } finally { btn.disabled = false; }
+  });
+
+  // Avatar picker
+  document.getElementById('avatar-picker').addEventListener('click', e => {
+    const opt = e.target.closest('.av-opt');
+    if (!opt) return;
+    document.querySelectorAll('.av-opt').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedAvatar = opt.dataset.em;
+  });
+
+  document.getElementById('av-save').addEventListener('click', async () => {
+    if (!selectedAvatar) { Toast.error('Select an avatar first.'); return; }
+    try {
+      const data = await API.put('/profile/me', { avatar: selectedAvatar });
+      const u = data.user || data;
+      localStorage.setItem('jxp_user', JSON.stringify({ ...Auth.user(), ...u }));
+      Toast.success('Avatar updated!');
+      closeModal('avatar-modal');
+      load();
+    } catch (err) {
+      Toast.error(err.message);
+    }
+  });
+
+  load();
+}
+</script>
+</body>
+</html>

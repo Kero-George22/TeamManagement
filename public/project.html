@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Project — JobXP</title>
+  <link rel="stylesheet" href="/css/app.css"/>
+  <style>
+    body::before { content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.02)1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.02)1px,transparent 1px);background-size:72px 72px;pointer-events:none;z-index:0; }
+    .proj-hero {
+      background:var(--bg-card); border:1px solid var(--border);
+      padding:30px 32px; margin-bottom:28px; position:relative; overflow:hidden;
+      animation:fade-up 0.4s ease;
+    }
+    .proj-hero::after { content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple)); }
+    .ph-top { display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:18px; }
+    .ph-name { font-family:var(--font-display);font-size:clamp(18px,3vw,32px);font-weight:900;letter-spacing:4px;color:var(--text-1); }
+    .ph-actions { display:flex;gap:10px;align-items:center;flex-wrap:wrap; }
+    .ph-meta { display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:16px; }
+    .ph-meta-item { font-family:var(--font-mono);font-size:11px;color:var(--text-2); }
+    .ph-meta-item b { color:var(--cyan);font-weight:700; }
+    .tech-tag { display:inline-block;font-family:var(--font-mono);font-size:9px;letter-spacing:2px;padding:3px 10px;border:1px solid var(--border);color:var(--text-2);margin:3px 3px 3px 0; }
+    .roles-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:12px; }
+    .role-card { background:var(--bg-2);border:1px solid var(--border);padding:16px 18px; }
+    .rc-name { font-family:var(--font-display);font-size:11px;font-weight:700;letter-spacing:2px;color:var(--cyan);margin-bottom:6px; }
+    .rc-slots { font-family:var(--font-mono);font-size:11px;color:var(--text-2); }
+    .rc-slots b { color:var(--text-1); }
+    .members-list { display:flex;flex-direction:column;gap:8px; }
+    .member-row { display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-2);border:1px solid var(--border); }
+    .mem-av { width:32px;height:32px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:var(--cyan-dim);border:1px solid var(--border-hi);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0; }
+    .mem-info { flex:1; }
+    .mem-name { font-family:var(--font-display);font-size:11px;font-weight:700;letter-spacing:1px; }
+    .mem-role { font-family:var(--font-mono);font-size:10px;color:var(--text-2); }
+    .mem-xp { font-family:var(--font-mono);font-size:11px;color:var(--cyan); }
+    .ai-section { background:var(--purple-dim);border:1px solid rgba(155,109,255,0.3);padding:20px 22px;margin-bottom:20px; }
+    .ai-label { font-family:var(--font-mono);font-size:10px;letter-spacing:3px;color:var(--purple);margin-bottom:10px; }
+    .perf-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px; }
+    .perf-item { background:var(--bg-card);border:1px solid var(--border);padding:16px;text-align:center; }
+    .pi-val { font-family:var(--font-display);font-size:26px;font-weight:900;color:var(--cyan); }
+    .pi-lbl { font-family:var(--font-mono);font-size:10px;letter-spacing:2px;color:var(--text-2);margin-top:4px; }
+  </style>
+</head>
+<body class="grid-bg">
+<div class="app-layout">
+  <main class="app-main" id="main" style="opacity:0">
+
+    <a href="/projects.html" class="btn btn-ghost btn-sm mb-6" style="display:inline-flex;">← Back to Projects</a>
+
+    <div id="project-content">
+      <div class="loader"><div class="spinner"></div></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Join Project Modal -->
+<div class="modal-overlay" id="join-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">JOIN PROJECT</span>
+      <button class="modal-close" data-modal-close="join-modal">✕</button>
+    </div>
+    <form id="join-form">
+      <div class="form-group">
+        <label class="form-label">Select Your Role</label>
+        <select id="join-role" class="form-select" required></select>
+      </div>
+      <div id="join-alert"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-modal-close="join-modal">Cancel</button>
+        <button type="submit" class="btn btn-cyan" id="join-submit">⚔ JOIN QUEST</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- AI Tasks Modal -->
+<div class="modal-overlay" id="ai-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <span class="modal-title">🤖 AI TASK GENERATION</span>
+      <button class="modal-close" data-modal-close="ai-modal">✕</button>
+    </div>
+    <p style="color:var(--text-2);font-size:14px;line-height:1.7;margin-bottom:24px;">
+      The AI Manager will analyze your project and generate detailed, role-specific tasks for each team member. This may take 15–30 seconds.
+    </p>
+    <div class="ai-section">
+      <div class="ai-label">⚠ NOTE</div>
+      <div style="font-size:13px;color:var(--text-2);">Existing tasks will not be deleted. New tasks will be added alongside them.</div>
+    </div>
+    <div id="ai-alert"></div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" data-modal-close="ai-modal">Cancel</button>
+      <button class="btn btn-purple" id="ai-gen-btn">🤖 GENERATE TASKS</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+if (!Auth.require()) {}
+else {
+  injectNav('Projects');
+  const projectId = qp('id');
+  if (!projectId) window.location.href = '/projects.html';
+
+  let project = null;
+  const user = Auth.user();
+
+  async function load() {
+    try {
+      const [pData, membData] = await Promise.all([
+        API.get('/projects/' + projectId),
+        API.get('/projects/' + projectId + '/members'),
+      ]);
+      project = pData.project || pData;
+      const members = membData.members || membData || [];
+      render(project, members);
+      document.getElementById('main').style.opacity = '1';
+      document.getElementById('main').style.animation = 'fade-up 0.4s ease';
+    } catch (err) {
+      document.getElementById('project-content').innerHTML = `<div class="alert alert-error">Failed to load project: ${err.message}</div>`;
+      document.getElementById('main').style.opacity = '1';
+    }
+  }
+
+  function render(p, members) {
+    const isMember = members.some(m => (m.userId?._id || m.userId || m._id) === (user._id || user.id));
+    const isAdmin  = user.isAdmin;
+
+    // Populate join role modal
+    const roleSelect = document.getElementById('join-role');
+    roleSelect.innerHTML = (p.roles || []).map(r => {
+      const name = typeof r === 'object' ? r.name : r;
+      return `<option value="${name}">${name}</option>`;
+    }).join('');
+
+    document.getElementById('project-content').innerHTML = `
+      <!-- Hero -->
+      <div class="proj-hero">
+        <div class="ph-top">
+          <div>
+            <div class="ph-name">${p.name || 'Project'}</div>
+            <div style="margin-top:8px;font-size:14px;color:var(--text-2);">${p.description || ''}</div>
+          </div>
+          <div class="ph-actions">
+            <span class="status ${statusClass(p.status || 'active')}">${p.status || 'active'}</span>
+            ${!isMember && !isAdmin ? `<button class="btn btn-cyan" id="join-btn">⚔ JOIN PROJECT</button>` : ''}
+            ${isMember ? `<span class="badge-chip green">✓ MEMBER</span>` : ''}
+            ${isAdmin ? `<button class="btn btn-purple" id="ai-btn">🤖 Generate Tasks</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-outline btn-sm" id="del-btn">🗑 Delete</button>` : ''}
+          </div>
+        </div>
+        <div class="ph-meta">
+          <div class="ph-meta-item">👥 <b>${members.length}</b> Members</div>
+          <div class="ph-meta-item">📅 Created <b>${timeAgo(p.createdAt)}</b></div>
+          <div class="ph-meta-item">🏆 Max <b>${p.maxMembers || '∞'}</b></div>
+        </div>
+        <div>${(p.techStack||[]).map(t=>`<span class="tech-tag">${t}</span>`).join('')}</div>
+      </div>
+
+      <!-- Tabs content -->
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('tasks',this)">Tasks</button>
+        <button class="tab" onclick="showTab('members',this)">Members (${members.length})</button>
+        <button class="tab" onclick="showTab('roles',this)">Roles</button>
+        ${isAdmin ? '<button class="tab" onclick="showTab(\'performance\',this)">Performance</button>' : ''}
+      </div>
+
+      <!-- Tasks tab -->
+      <div id="tab-tasks">
+        <div class="flex justify-between items-center mb-4" style="flex-wrap:wrap;gap:12px;">
+          <div class="flex gap-3" style="flex-wrap:wrap;">
+            <button class="btn btn-sm btn-ghost task-filter-btn active" data-filter="">All</button>
+            <button class="btn btn-sm btn-ghost task-filter-btn" data-filter="Todo">Todo</button>
+            <button class="btn btn-sm btn-ghost task-filter-btn" data-filter="In-Progress">In Progress</button>
+            <button class="btn btn-sm btn-ghost task-filter-btn" data-filter="Review">In Review</button>
+            <button class="btn btn-sm btn-ghost task-filter-btn" data-filter="Done">Done</button>
+          </div>
+          <a href="/office.html?id=${p._id}" class="btn btn-sm btn-outline">💬 Office</a>
+        </div>
+        <div id="tasks-list" class="grid-auto">
+          <div class="loader"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Members tab -->
+      <div id="tab-members" class="hidden">
+        <div class="members-list">
+          ${members.length ? members.map(m => {
+            const u2 = m.userId || m;
+            const uname = (typeof u2 === 'object' ? u2.username || u2.email : u2) || 'Unknown';
+            return `<div class="member-row">
+              <div class="mem-av">${(typeof u2==='object'&&u2.avatar)||'👤'}</div>
+              <div class="mem-info">
+                <div class="mem-name">${uname.toUpperCase()}</div>
+                <div class="mem-role">${m.role || 'Member'}</div>
+              </div>
+              <div class="mem-xp">${(typeof u2==='object'&&u2.totalXP||0).toLocaleString()} XP</div>
+            </div>`;
+          }).join('') : '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">NO MEMBERS YET</div></div>'}
+        </div>
+      </div>
+
+      <!-- Roles tab -->
+      <div id="tab-roles" class="hidden">
+        <div class="roles-grid">
+          ${(p.roles||[]).map(r => {
+            const name = typeof r === 'object' ? r.name : r;
+            const slots = typeof r === 'object' ? r.slots : '?';
+            return `<div class="role-card"><div class="rc-name">${name}</div><div class="rc-slots">Slots: <b>${slots||'∞'}</b></div></div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Performance tab (admin) -->
+      <div id="tab-performance" class="hidden">
+        <div id="perf-content"><div class="loader"><div class="spinner"></div></div></div>
+      </div>
+    `;
+
+    // Events
+    document.getElementById('join-btn')?.addEventListener('click', () => openModal('join-modal'));
+    document.getElementById('ai-btn')?.addEventListener('click', () => openModal('ai-modal'));
+    document.getElementById('del-btn')?.addEventListener('click', deleteProject);
+
+    // Task filters
+    document.querySelectorAll('.task-filter-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.task-filter-btn').forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        loadTasks(this.dataset.filter);
+      });
+    });
+
+    loadTasks('');
+  }
+
+  async function loadTasks(filter) {
+    const el = document.getElementById('tasks-list');
+    el.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    try {
+      const data = await API.get('/tasks/' + projectId);
+      let tasks = data.tasks || data || [];
+      if (filter) tasks = tasks.filter(t => t.status === filter);
+      if (!tasks.length) {
+        el.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📋</div><div class="empty-title">NO TASKS</div><div class="empty-desc">Ask an admin to generate tasks.</div></div>`;
+        return;
+      }
+      el.innerHTML = tasks.map(t => `
+        <div class="task-card ${statusClass(t.status)}" onclick="location.href='/task.html?id=${t._id}'">
+          <div class="tc-header">
+            <div class="tc-title">${t.title||'Untitled'}</div>
+            <span class="tc-priority ${priorityClass(t.priority)}">${t.priority||'—'}</span>
+          </div>
+          <div class="tc-desc">${(t.description||'').substring(0,90)}…</div>
+          <div class="tc-footer">
+            <span class="tc-xp">+${t.xpReward||0} XP</span>
+            <div class="flex gap-2">
+              <span class="tc-role">${t.role||''}</span>
+              <span class="status ${statusClass(t.status)}">${t.status||'Todo'}</span>
+            </div>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      el.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  function showTab(name, btn) {
+    ['tasks','members','roles','performance'].forEach(t => {
+      document.getElementById('tab-'+t)?.classList.toggle('hidden', t !== name);
+    });
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b===btn));
+    if (name === 'performance') loadPerformance();
+  }
+
+  async function loadPerformance() {
+    const el = document.getElementById('perf-content');
+    if (!el) return;
+    try {
+      const data = await API.get('/tasks/' + projectId + '/performance');
+      const p2 = data.performance || data;
+      el.innerHTML = `
+        <div class="perf-grid mb-6">
+          <div class="perf-item"><div class="pi-val">${p2.totalTasks||0}</div><div class="pi-lbl">Total Tasks</div></div>
+          <div class="perf-item"><div class="pi-val" style="color:var(--green)">${p2.completedTasks||0}</div><div class="pi-lbl">Completed</div></div>
+          <div class="perf-item"><div class="pi-val" style="color:var(--gold)">${p2.avgQuality||0}</div><div class="pi-lbl">Avg Quality</div></div>
+          <div class="perf-item"><div class="pi-val" style="color:var(--purple)">${p2.inProgress||0}</div><div class="pi-lbl">In Progress</div></div>
+        </div>
+        ${p2.insights ? `<div class="ai-section"><div class="ai-label">🤖 AI INSIGHTS</div><div style="font-size:14px;line-height:1.7;">${p2.insights}</div></div>` : ''}
+      `;
+    } catch (err) {
+      el.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  // Join project
+  document.getElementById('join-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('join-submit');
+    const alertEl = document.getElementById('join-alert');
+    btn.disabled = true; btn.textContent = 'JOINING…'; alertEl.innerHTML = '';
+    try {
+      await API.post('/projects/' + projectId + '/join', { role: document.getElementById('join-role').value });
+      Toast.success('Joined project!');
+      closeModal('join-modal');
+      load();
+    } catch (err) {
+      alertEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      btn.disabled = false; btn.textContent = '⚔ JOIN QUEST';
+    }
+  });
+
+  // AI task generation
+  document.getElementById('ai-gen-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('ai-gen-btn');
+    const alertEl = document.getElementById('ai-alert');
+    btn.disabled = true; btn.textContent = '🤖 Generating…'; alertEl.innerHTML = '';
+    try {
+      const data = await API.post('/tasks/' + projectId + '/ai-generate');
+      alertEl.innerHTML = `<div class="alert alert-success">Generated ${data.tasks?.length || 0} tasks!</div>`;
+      setTimeout(() => { closeModal('ai-modal'); loadTasks(''); }, 1800);
+    } catch (err) {
+      alertEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      btn.disabled = false; btn.textContent = '🤖 GENERATE TASKS';
+    }
+  });
+
+  async function deleteProject() {
+    if (!confirm('Delete this project? This cannot be undone.')) return;
+    try {
+      await API.del('/projects/' + projectId);
+      Toast.success('Project deleted.');
+      setTimeout(() => window.location.href = '/projects.html', 1000);
+    } catch (err) {
+      Toast.error(err.message);
+    }
+  }
+
+  load();
+}
+</script>
+</body>
+</html>
