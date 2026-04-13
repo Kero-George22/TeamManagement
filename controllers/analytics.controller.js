@@ -1,170 +1,219 @@
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
 const Project = require('../models/project.model');
 const Task = require('../models/task.model');
 const Submission = require('../models/submission.model');
 const asyncWrapper = require('../utils/asyncWrapper');
-const { success, error } = require('../utils/apiResponse');
+const { success } = require('../utils/apiResponse');
+const AppError = require('../utils/AppError');
 
-/**
- * Get platform analytics (admin only)
- */
+// ─────────────────────────────────────────
+// GET PLATFORM ANALYTICS (admin only)
+// Admin check is handled by isAdmin middleware on the route
+// 3 parallel DB calls instead of 11
+// ─────────────────────────────────────────
+
 const getPlatformAnalytics = asyncWrapper(async (req, res) => {
-  // Check admin status
-  if (!req.user.isAdmin) {
-    return error(res, 'Unauthorized. Admin access required', 403);
-  }
+  const [userStats, submissionStats, [topUsers, recentSubmissions]] = await Promise.all([
+    // Single User aggregate — totals + averages + active count
+    User.aggregate([
+      {
+        $facet: {
+          stats: [
+            {
+              $group: {
+                _id: null,
+                total:    { $sum: 1 },
+                active:   { $sum: { $cond: [{ $gt: ['$totalXP', 0] }, 1, 0] } },
+                avgXP:    { $avg: '$totalXP' },
+                avgLevel: { $avg: '$level' },
+              },
+            },
+          ],
+          top: [
+            { $sort: { totalXP: -1 } },
+            { $limit: 5 },
+            { $project: { email: 1, username: 1, totalXP: 1, level: 1, completedTasks: 1 } },
+          ],
+        },
+      },
+    ]),
 
-  // Total counts
-  const totalUsers = await User.countDocuments();
-  const totalProjects = await Project.countDocuments({ status: 'active' });
-  const totalTasks = await Task.countDocuments();
-  const totalSubmissions = await Submission.countDocuments();
+    // Single Submission aggregate — counts by status
+    Submission.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]),
 
-  // Submission stats
-  const acceptedSubmissions = await Submission.countDocuments({ status: 'accepted' });
-  const rejectedSubmissions = await Submission.countDocuments({ status: 'rejected' });
-  const pendingSubmissions = await Submission.countDocuments({ status: 'pending' });
-
-  // User activity
-  const activeUsers = await User.countDocuments({ totalXP: { $gt: 0 } });
-  
-  // Average stats
-  const avgUserXP = await User.aggregate([
-    { $group: { _id: null, avgXP: { $avg: '$totalXP' } } }
+    // Parallel: project/task counts + recent submissions
+    Promise.all([
+      Promise.all([
+        Project.countDocuments({ status: 'active' }),
+        Task.countDocuments(),
+      ]),
+      Submission.find()
+        .populate('user', 'username email')
+        .populate('task', 'title')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]),
   ]);
 
-  const avgUserLevel = await User.aggregate([
-    { $group: { _id: null, avgLevel: { $avg: '$level' } } }
-  ]);
+  // Parse user stats
+  const uStats       = userStats[0]?.stats?.[0] || {};
+  const totalUsers   = uStats.total   || 0;
+  const activeUsers  = uStats.active  || 0;
+  const avgUserXP    = Math.round(uStats.avgXP    || 0);
+  const avgUserLevel = (uStats.avgLevel || 0).toFixed(2);
+  const topUsersList = userStats[0]?.top || [];
 
-  // Top users
-  const topUsers = await User.find()
-    .select('email username totalXP level completedTasks')
-    .sort({ totalXP: -1 })
-    .limit(5);
+  // Parse submission stats
+  const subMap = submissionStats.reduce((acc, s) => {
+    acc[s._id] = s.count;
+    return acc;
+  }, {});
+  const acceptedSubs = subMap['accepted'] || 0;
+  const rejectedSubs = subMap['rejected'] || 0;
+  const pendingSubs  = subMap['pending']  || 0;
+  const totalSubs    = acceptedSubs + rejectedSubs + pendingSubs;
 
-  // Recent submissions
-  const recentSubmissions = await Submission.find()
-    .populate('user', 'username email')
-    .populate('task', 'title')
-    .sort({ createdAt: -1 })
-    .limit(10);
+  // Parse project/task counts
+  const [totalProjects, totalTasks] = topUsers;
 
-  const analytics = {
+  return success(res, {
     platform: {
       totalUsers,
       activeUsers,
       totalProjects,
       totalTasks,
-      totalSubmissions
+      totalSubmissions: totalSubs,
     },
     submissions: {
-      accepted: acceptedSubmissions,
-      rejected: rejectedSubmissions,
-      pending: pendingSubmissions,
-      acceptanceRate: totalSubmissions > 0 
-        ? Math.round((acceptedSubmissions / totalSubmissions) * 100)
-        : 0
+      accepted:       acceptedSubs,
+      rejected:       rejectedSubs,
+      pending:        pendingSubs,
+      acceptanceRate: totalSubs > 0 ? Math.round((acceptedSubs / totalSubs) * 100) : 0,
     },
-    averages: {
-      avgUserXP: Math.round(avgUserXP[0]?.avgXP || 0),
-      avgUserLevel: (avgUserLevel[0]?.avgLevel || 0).toFixed(2)
-    },
-    topUsers,
-    recentSubmissions
-  };
-
-  return success(res, analytics, 'Platform analytics retrieved successfully');
+    averages: { avgUserXP, avgUserLevel },
+    topUsers:           topUsersList,
+    recentSubmissions,
+  }, 'Platform analytics retrieved successfully');
 });
 
-/**
- * Get project analytics (admin or project owner)
- */
+// ─────────────────────────────────────────
+// GET PROJECT ANALYTICS (admin or project owner)
+// 2 parallel DB calls instead of 4
+// ─────────────────────────────────────────
+
 const getProjectAnalytics = asyncWrapper(async (req, res) => {
   const { projectId } = req.params;
 
-  if (!projectId) {
-    return error(res, 'Project ID is required', 400);
-  }
+  if (!mongoose.Types.ObjectId.isValid(projectId))
+    throw new AppError('Invalid project ID', 400);
 
-  const project = await Project.findById(projectId);
-  if (!project) {
-    return error(res, 'Project not found', 404);
-  }
+  const project = await Project.findById(projectId).select('owner title status members');
+  if (!project) throw new AppError('Project not found', 404);
 
-  // Check authorization
   const isOwner = project.owner.toString() === req.user._id.toString();
-  const isAdmin = req.user.isAdmin;
-  if (!isOwner && !isAdmin) {
-    return error(res, 'Unauthorized', 403);
-  }
+  if (!isOwner && !req.user.isAdmin)
+    throw new AppError('Unauthorized', 403);
 
-  // Project stats
-  const totalMembers = project.members.length;
-  const totalTasks = await Task.countDocuments({ project: projectId });
-  const completedTasks = await Task.countDocuments({
-    project: projectId,
-    status: 'done'
-  });
+  const pid = new mongoose.Types.ObjectId(projectId);
 
-  // Submission stats
-  const totalSubmissions = await Submission.countDocuments({ project: projectId });
-  const acceptedSubmissions = await Submission.countDocuments({
-    project: projectId,
-    status: 'accepted'
-  });
+  const [taskStats, [submissionStats, memberPerformance]] = await Promise.all([
+    // Task counts in one aggregate
+    Task.aggregate([
+      { $match: { project: pid } },
+      {
+        $group: {
+          _id: null,
+          total:     { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } },
+        },
+      },
+    ]),
 
-  // Member performance
-  const memberPerformance = await Submission.aggregate([
-    { $match: { project: require('mongoose').Types.ObjectId(projectId) } },
-    {
-      $group: {
-        _id: '$user',
-        submissions: { $sum: 1 },
-        accepted: { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
-        avgScore: { $avg: '$score' }
-      }
-    },
-    { $sort: { accepted: -1 } }
+    Promise.all([
+      // Submission counts in one aggregate
+      Submission.aggregate([
+        { $match: { project: pid } },
+        {
+          $group: {
+            _id: null,
+            total:    { $sum: 1 },
+            accepted: { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
+          },
+        },
+      ]),
+
+      // Member performance
+      Submission.aggregate([
+        { $match: { project: pid } },
+        {
+          $group: {
+            _id:         '$user',
+            submissions: { $sum: 1 },
+            accepted:    { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
+            avgScore:    { $avg: '$score' },
+          },
+        },
+        { $sort: { accepted: -1 } },
+        {
+          $lookup: {
+            from:         'users',
+            localField:   '_id',
+            foreignField: '_id',
+            as:           'userDetails',
+            pipeline:     [{ $project: { username: 1, email: 1, level: 1, totalXP: 1 } }],
+          },
+        },
+        {
+          $project: {
+            user:        { $first: '$userDetails' },
+            submissions: 1,
+            accepted:    1,
+            avgScore:    { $round: [{ $ifNull: ['$avgScore', 0] }, 0] },
+          },
+        },
+      ]),
+    ]),
   ]);
 
-  // Populate user details
-  const populatedPerformance = await User.populate(memberPerformance, {
-    path: '_id',
-    select: 'username email level totalXP'
-  });
+  const tStats  = taskStats[0]  || {};
+  const sStats  = submissionStats[0] || {};
+  const total   = tStats.total     || 0;
+  const completed = tStats.completed || 0;
+  const totalSubs   = sStats.total    || 0;
+  const acceptedSubs = sStats.accepted || 0;
 
-  const analytics = {
+  return success(res, {
     project: {
-      id: project._id,
-      title: project.title,
-      status: project.status,
-      members: totalMembers
+      id:      project._id,
+      title:   project.title,
+      status:  project.status,
+      members: project.members.length,
     },
     tasks: {
-      total: totalTasks,
-      completed: completedTasks,
-      completionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+      total,
+      completed,
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
     },
     submissions: {
-      total: totalSubmissions,
-      accepted: acceptedSubmissions,
-      acceptanceRate: totalSubmissions > 0 
-        ? Math.round((acceptedSubmissions / totalSubmissions) * 100)
-        : 0
+      total:          totalSubs,
+      accepted:       acceptedSubs,
+      acceptanceRate: totalSubs > 0 ? Math.round((acceptedSubs / totalSubs) * 100) : 0,
     },
-    memberPerformance: populatedPerformance.map(perf => ({
-      user: perf._id,
-      submissions: perf.submissions,
-      accepted: perf.accepted,
-      avgScore: Math.round(perf.avgScore || 0)
-    }))
-  };
-
-  return success(res, analytics, 'Project analytics retrieved successfully');
+    memberPerformance,
+  }, 'Project analytics retrieved successfully');
 });
 
-module.exports = {
-  getPlatformAnalytics,
-  getProjectAnalytics
-};
+// ─────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────
+
+module.exports = { getPlatformAnalytics, getProjectAnalytics };

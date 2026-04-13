@@ -1,122 +1,204 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const AppError = require('../utils/AppError');
+
+// ─────────────────────────────────────────
+// Config — fail fast if key is missing
+// ─────────────────────────────────────────
+
+if (!process.env.GOOGLE_AI_KEY) throw new Error('GOOGLE_AI_KEY env variable is not set');
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
 
-// Initialize the AI model
-const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+// ─────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────
 
-// AI MANAGER: Assign tasks based on project needs
+function getModel(json = false) {
+  return genAI.getGenerativeModel({
+    model: 'gemini-3-flash-preview',
+    ...(json && { generationConfig: { responseMimeType: 'application/json' } }),
+  });
+}
+
+function safeString(value, maxLength) {
+  return String(value || '').slice(0, maxLength);
+}
+
+function parseJson(text, label) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AppError(`AI returned invalid JSON for: ${label}`, 502);
+  }
+}
+
+function validateFields(obj, fields, label) {
+  for (const field of fields) {
+    if (!obj[field]) throw new AppError(`AI response missing "${field}" in ${label}`, 502);
+  }
+}
+
+// ─────────────────────────────────────────
+// ASSIGN TASKS
+// Returns plain task objects — DB logic stays in task.service
+// ─────────────────────────────────────────
+
 async function assignTasksByAI(projectData) {
+  const model = getModel(true);
+
+  const title       = safeString(projectData.title, 200);
+  const description = safeString(projectData.description, 1000);
+  const roles       = (projectData.rolesRequired || [])
+    .map((r) => safeString(r.roleName, 50))
+    .join(', ');
+
   const prompt = `
 You are a project manager. Based on the project details below, generate specific tasks for the team.
-Return a JSON array of tasks with this structure: [{"title": "...", "description": "...", "assignedRole": "...", "priority": "...", "xpPoints": ...}]
+Return a JSON array of tasks with this exact structure:
+[{"title": "...", "description": "...", "assignedRole": "...", "priority": "Low|Medium|High", "xpPoints": 50}]
 
-Project: ${projectData.title}
-Description: ${projectData.description}
-Required Roles: ${projectData.rolesRequired.map(r => r.roleName).join(', ')}
+Project: ${title}
+Description: ${description}
+Required Roles: ${roles}
 Duration: ${projectData.duration} days
 Status: ${projectData.status}
 
 Generate 3-5 concrete, actionable tasks that cover different roles. Make them specific and measurable.
 Return ONLY valid JSON, no extra text.
-`;
+  `.trim();
 
-  try {
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+  const result = await model.generateContent(prompt);
+  const tasks = parseJson(result.response.text(), 'assignTasksByAI');
 
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      throw new Error('Could not parse AI response');
-    }
+  if (!Array.isArray(tasks) || tasks.length === 0)
+    throw new AppError('AI returned an empty task list', 502);
 
-    const tasks = JSON.parse(jsonMatch[0]);
-    return tasks;
-  } catch (err) {
-    console.error('AI Task Assignment Error:', err);
-    throw new Error('Failed to generate tasks via AI');
+  for (const task of tasks) {
+    validateFields(task, ['title', 'description', 'assignedRole', 'priority', 'xpPoints'], 'task');
   }
+
+  return tasks.map((task) => ({
+    title:        task.title,
+    description:  task.description,
+    assignedRole: task.assignedRole,
+    priority:     task.priority,
+    xpPoints:     task.xpPoints,
+  }));
 }
 
-// AI MANAGER: Review submitted work
-async function reviewWorkByAI(taskData) {
-  const prompt = `
-You are a Senior Tech Lead reviewing a developer's code submission.
-Task: ${taskData.title}
-Task Requirements: ${taskData.description}
-Submission Type: ${taskData.submissionType || 'text'}
-Link/Content: ${taskData.repoLink || taskData.submittedWork}
+// ─────────────────────────────────────────
+// REVIEW SUBMITTED WORK
+// ─────────────────────────────────────────
 
-If a repository link is provided, I cannot access it directly. However, strictly evaluate based on standard best practices for ${taskData.title} and the provided description.
-If code snippets are provided, review them for:
+async function reviewWorkByAI(taskData) {
+  const model = getModel(true);
+
+  const title       = safeString(taskData.title, 200);
+  const description = safeString(taskData.description, 1000);
+  const content     = safeString(taskData.repoLink || taskData.submittedWork, 2000);
+
+  const prompt = `
+You are a Senior Tech Lead reviewing a developer's submission.
+Task: ${title}
+Requirements: ${description}
+Submission Type: ${taskData.submissionType || 'text'}
+Content: ${content}
+
+Evaluate based on:
 1. Logic & Correctness
 2. Code Quality & Clean Code
 3. Security & Performance
 4. Best Practices
 
-Provide a JSON response:
-{"rating": number (0-100), "review": "Detailed feedback...", "feedback": "Actionable improvements...", "codeQualityScore": number (0-10)}
-Return ONLY valid JSON.
-`;
+Return ONLY this JSON structure:
+{"rating": 0-100, "review": "detailed feedback", "feedback": "actionable improvements", "codeQualityScore": 0-10}
+  `.trim();
 
-  try {
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+  const result = await model.generateContent(prompt);
+  const review = parseJson(result.response.text(), 'reviewWorkByAI');
 
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Could not parse AI review');
-    }
+  validateFields(review, ['rating', 'review', 'feedback', 'codeQualityScore'], 'review');
 
-    const review = JSON.parse(jsonMatch[0]);
-    return review;
-  } catch (err) {
-    console.error('AI Review Error:', err);
-    throw new Error('Failed to review work via AI');
-  }
+  if (typeof review.rating !== 'number' || review.rating < 0 || review.rating > 100)
+    throw new AppError('AI returned invalid rating value', 502);
+
+  return {
+    rating:           review.rating,
+    review:           review.review,
+    feedback:         review.feedback,
+    codeQualityScore: review.codeQualityScore,
+  };
 }
 
-// AI MANAGER: Generate detailed task instructions
+// ─────────────────────────────────────────
+// GENERATE TASK INSTRUCTIONS
+// ─────────────────────────────────────────
+
 async function generateTaskInstructions(taskData) {
+  const model = getModel(false);
+
+  const title       = safeString(taskData.title, 200);
+  const description = safeString(taskData.description, 1000);
+  const role        = safeString(taskData.assignedRole, 50);
+
   const prompt = `
 You are a project manager creating detailed instructions for a task.
-Task: ${taskData.title}
-Description: ${taskData.description}
-Role: ${taskData.assignedRole}
+Task: ${title}
+Description: ${description}
+Role: ${role}
 Priority: ${taskData.priority}
 
-Create clear, step-by-step instructions that a developer can follow.
+Create clear, step-by-step instructions a developer can follow.
 Include acceptance criteria and what the final deliverable should look like.
 Keep it practical and specific.
-`;
+  `.trim();
 
-  try {
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (err) {
-    console.error('AI Instructions Error:', err);
-    throw new Error('Failed to generate instructions via AI');
-  }
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }
 
-// AI MANAGER: Analyze team performance
+// ─────────────────────────────────────────
+// ANALYZE TEAM PERFORMANCE
+// Sends aggregate numbers instead of raw task list to save tokens
+// ─────────────────────────────────────────
+
 async function analyzeTeamPerformance(tasksData) {
   if (!tasksData || tasksData.length === 0) {
-    return { summary: 'No tasks to analyze', recommendation: 'Start assigning tasks' };
+    return { analysis: 'No tasks to analyze. Start assigning tasks to track performance.' };
   }
 
-  const taskSummary = tasksData.map(t => ({
-    title: t.title,
-    status: t.status,
-    rating: t.aiRating || 'Not reviewed',
-  }));
+  const model = getModel(false);
+
+  // Aggregate stats instead of sending every task
+  const total     = tasksData.length;
+  const done      = tasksData.filter((t) => t.status === 'Done').length;
+  const inProgress = tasksData.filter((t) => t.status === 'In-Progress').length;
+  const inReview  = tasksData.filter((t) => t.status === 'Review').length;
+  const todo      = tasksData.filter((t) => t.status === 'Todo').length;
+
+  const rated     = tasksData.filter((t) => t.aiRating);
+  const avgRating = rated.length > 0
+    ? Math.round(rated.reduce((s, t) => s + t.aiRating, 0) / rated.length)
+    : null;
+
+  // Group by role for richer insight
+  const byRole = tasksData.reduce((acc, t) => {
+    const role = t.assignedRole || 'Unassigned';
+    if (!acc[role]) acc[role] = { total: 0, done: 0 };
+    acc[role].total += 1;
+    if (t.status === 'Done') acc[role].done += 1;
+    return acc;
+  }, {});
 
   const prompt = `
 You are a project manager analyzing team performance.
-Tasks Overview:
-${JSON.stringify(taskSummary, null, 2)}
+
+TASK STATS:
+Total: ${total} | Done: ${done} | In Progress: ${inProgress} | In Review: ${inReview} | To Do: ${todo}
+Average AI Rating: ${avgRating !== null ? `${avgRating}/100` : 'No rated tasks yet'}
+
+BREAKDOWN BY ROLE:
+${Object.entries(byRole).map(([role, s]) => `- ${role}: ${s.done}/${s.total} done`).join('\n')}
 
 Provide:
 1. Overall team performance summary
@@ -125,16 +207,15 @@ Provide:
 4. Recommendations for the next sprint
 
 Keep it concise and actionable.
-`;
+  `.trim();
 
-  try {
-    const result = await model.generateContent(prompt);
-    return { analysis: result.response.text() };
-  } catch (err) {
-    console.error('AI Analysis Error:', err);
-    throw new Error('Failed to analyze team performance');
-  }
+  const result = await model.generateContent(prompt);
+  return { analysis: result.response.text() };
 }
+
+// ─────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────
 
 module.exports = {
   assignTasksByAI,

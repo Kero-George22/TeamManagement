@@ -1,0 +1,1086 @@
+# My Coding Style & Architecture — AI Instructions
+
+> This file describes how I write code. Read it fully before writing anything.
+
+> Follow these conventions exactly. Do not suggest alternatives unless I ask.
+
+
+
+---
+
+
+
+## Who I Am
+
+
+
+I am a backend developer working with **Node.js + Express + MongoDB**.
+
+I build REST APIs with a clean layered architecture.
+
+I value readable, simple, well-structured code over clever one-liners.
+
+
+
+---
+
+
+
+## My Tech Stack
+
+
+
+| Concern | Technology |
+
+|---|---|
+
+| Runtime | Node.js — CommonJS only (`require` / `module.exports`) — NO ES Modules |
+
+| Framework | Express (v4 or v5) |
+
+| Database | MongoDB via **Mongoose** |
+
+| Auth | **JWT** (`jsonwebtoken`) + optional Google OAuth (`google-auth-library`) |
+
+| Validation | `express-validator` on routes |
+
+| Password | `bcryptjs` |
+
+| Email | `nodemailer` |
+
+| Scheduling | `node-cron` |
+
+| Rate Limiting | `express-rate-limit` |
+
+| Security Headers | `helmet` |
+
+| CORS | `cors` package |
+
+| Environment | `dotenv` |
+
+| AI (when needed) | `@google/generative-ai` — Gemini models |
+
+
+
+> Do NOT suggest TypeScript, Prisma, Fastify, GraphQL, or any ORM other than Mongoose unless I explicitly ask.
+
+
+
+---
+
+
+
+## Architecture — Layered MVC with Service Layer
+
+
+
+```
+
+Request
+
+  │
+
+  ▼
+
+Router          ← defines URL, applies middleware (auth, validation, rate limit)
+
+  │
+
+  ▼
+
+Controller      ← reads req, calls service, sends response — NO business logic here
+
+  │
+
+  ▼
+
+Service         ← ALL business logic, DB queries, error throwing
+
+  │
+
+  ▼
+
+Model           ← Mongoose schema, indexes, hooks
+
+  │
+
+  ▼
+
+MongoDB
+
+```
+
+
+
+**The most important rule:** Business logic lives in **Services only**.
+
+Controllers are thin wrappers. They do three things: read input, call service, return response.
+
+
+
+---
+
+
+
+## Folder Structure
+
+
+
+Every project I build follows this structure:
+
+
+
+```
+
+/project-root
+
+├── server.js                  ← Entry point
+
+├── .env                       ← Never committed
+
+├── .env.example               ← Template with all required vars (no values)
+
+├── seed.js                    ← Dev-only seeder (blocked in production)
+
+│
+
+├── routers/
+
+│   └── feature.routes.js      ← One file per feature
+
+│
+
+├── controllers/
+
+│   └── feature.controller.js  ← One file per feature
+
+│
+
+├── services/
+
+│   └── feature.service.js     ← One file per feature
+
+│
+
+├── models/
+
+│   └── thing.model.js         ← One file per Mongoose model
+
+│
+
+├── middlewares/
+
+│   ├── auth.middleware.js      ← JWT verification, attaches req.user
+
+│   ├── isAdmin.middleware.js   ← checks req.user.isAdmin
+
+│   ├── validation.middleware.js ← runs express-validator results
+
+│   └── error.handler.js       ← global error handler, registered last in server.js
+
+│
+
+└── utils/
+
+    ├── AppError.js             ← Custom error class
+
+    ├── asyncWrapper.js         ← Wraps async handlers
+
+    ├── apiResponse.js          ← success() and error() response helpers
+
+    ├── validateObjectId.js     ← Shared MongoDB ObjectId validator
+
+    └── email.service.js        ← Nodemailer wrappers
+
+```
+
+
+
+---
+
+
+
+## Core Utility Files — Always Present
+
+
+
+These files exist in every project I build. Use them everywhere.
+
+
+
+### `utils/AppError.js`
+
+```js
+
+class AppError extends Error {
+
+  constructor(message, statusCode) {
+
+    super(message);
+
+    this.statusCode    = statusCode;
+
+    this.status        = statusCode;
+
+    this.isOperational = true;
+
+  }
+
+}
+
+module.exports = AppError;
+
+```
+
+
+
+### `utils/asyncWrapper.js`
+
+```js
+
+module.exports = fn => (req, res, next) =>
+
+  Promise.resolve(fn(req, res, next)).catch(err => {
+
+    if (process.env.NODE_ENV !== 'production') {
+
+      console.error('🔥', err.message, err.stack);
+
+    } else {
+
+      console.error(JSON.stringify({ msg: err.message, status: err.statusCode || 500, path: req.path }));
+
+    }
+
+    next(err);
+
+  });
+
+```
+
+
+
+### `utils/apiResponse.js`
+
+```js
+
+function success(res, data = {}, message = 'OK', status = 200) {
+
+  return res.status(status).json({ success: true, message, data });
+
+}
+
+function error(res, message = 'Error', status = 500) {
+
+  return res.status(status).json({ success: false, message });
+
+}
+
+module.exports = { success, error };
+
+```
+
+
+
+### `utils/validateObjectId.js`
+
+```js
+
+const mongoose = require('mongoose');
+
+const AppError  = require('./AppError');
+
+function validateObjectId(id, label = 'ID') {
+
+  if (!mongoose.Types.ObjectId.isValid(id))
+
+    throw new AppError(`Invalid ${label}`, 400);
+
+}
+
+module.exports = validateObjectId;
+
+```
+
+
+
+### `middlewares/error.handler.js`
+
+```js
+
+module.exports = (err, req, res, next) => {
+
+  const status  = err.statusCode || err.status || 500;
+
+  const message = err.isOperational ? err.message : 'Something went wrong.';
+
+  const body    = { success: false, message };
+
+  if (process.env.NODE_ENV === 'development') body.stack = err.stack;
+
+  if (res.headersSent) return next(err);
+
+  return res.status(status).json(body);
+
+};
+
+```
+
+
+
+### `middlewares/auth.middleware.js` (pattern)
+
+```js
+
+const jwt  = require('jsonwebtoken');
+
+const User = require('../models/user.model');
+
+const TokenBlacklist = require('../models/tokenBlacklist.model');
+
+
+
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) throw new Error('JWT_SECRET env variable is not set');
+
+
+
+async function requireAuth(req, res, next) {
+
+  const auth = req.headers.authorization;
+
+  if (!auth?.startsWith('Bearer '))
+
+    return res.status(401).json({ success: false, message: 'Missing token' });
+
+  const token = auth.slice(7);
+
+  try {
+
+    const payload = jwt.verify(token, JWT_SECRET);
+
+    const revoked = await TokenBlacklist.findOne({ token }).lean();
+
+    if (revoked) return res.status(401).json({ success: false, message: 'Token revoked' });
+
+    const user = await User.findById(payload.sub).select('-password').lean();
+
+    if (!user) return res.status(401).json({ success: false, message: 'Invalid token' });
+
+    req.user  = user;
+
+    req.token = token;
+
+    next();
+
+  } catch {
+
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+
+  }
+
+}
+
+module.exports = { requireAuth };
+
+```
+
+
+
+---
+
+
+
+## Coding Conventions — Follow Exactly
+
+
+
+### Variable Declarations
+
+```js
+
+const x = ...;  // prefer const
+
+let   y = ...;  // only if reassigned
+
+// NEVER use var
+
+```
+
+
+
+### Naming
+
+```js
+
+const myVariable   = ...;   // camelCase for variables and functions
+
+class MyClass      { }      // PascalCase for classes and Mongoose models
+
+const MY_CONSTANT  = ...;   // UPPER_SNAKE_CASE for module-level constants
+
+```
+
+
+
+### Error Throwing — always AppError
+
+```js
+
+// CORRECT
+
+throw new AppError('User not found', 404);
+
+throw new AppError('Not authorized', 403);
+
+throw new AppError('Bad input', 400);
+
+
+
+// WRONG — never do this
+
+throw new Error('User not found');
+
+res.status(404).json({ message: 'not found' });
+
+```
+
+
+
+### Async Handlers — always asyncWrapper
+
+```js
+
+// CORRECT
+
+const myHandler = asyncWrapper(async (req, res) => {
+
+  const result = await myService.doSomething(req.params.id);
+
+  return success(res, result, 'Done');
+
+});
+
+
+
+// WRONG
+
+app.get('/thing', async (req, res) => { ... });  // unhandled rejection risk
+
+```
+
+
+
+### Responses — always apiResponse helpers
+
+```js
+
+return success(res, data, 'Message');          // 200
+
+return success(res, data, 'Created', 201);     // 201
+
+throw new AppError('Not found', 404);          // errors go through AppError, not res.json
+
+```
+
+
+
+### ID Validation — always at start of service functions
+
+```js
+
+async function getItem(id, userId) {
+
+  validateObjectId(id, 'item ID');             // throws 400 if invalid
+
+  const item = await Item.findById(id).lean();
+
+  if (!item) throw new AppError('Item not found', 404);
+
+  ...
+
+}
+
+```
+
+
+
+### Mongoose Queries
+
+```js
+
+// Use .lean() for read-only queries (faster, plain JS objects)
+
+const user = await User.findById(id).select('-password').lean();
+
+
+
+// Skip .lean() when you need Mongoose methods (.save(), .populate() after modify)
+
+const item = await Item.findById(id);
+
+item.status = 'done';
+
+await item.save();
+
+
+
+// Use .select() to only return needed fields
+
+const users = await User.find({}).select('email username avatar').lean();
+
+```
+
+
+
+### require() — always at top of file
+
+```js
+
+// CORRECT — at the top
+
+const User = require('../models/user.model');
+
+const asyncWrapper = require('../utils/asyncWrapper');
+
+
+
+// WRONG — inside functions
+
+const handler = async (req, res) => {
+
+  const User = require('../models/user.model');  // never do this
+
+};
+
+```
+
+
+
+### User input in Regex — always escape
+
+```js
+
+function escapeRegex(str) {
+
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+}
+
+const safe = escapeRegex(req.query.search);
+
+Model.find({ name: { $regex: safe, $options: 'i' } });
+
+```
+
+
+
+---
+
+
+
+## Route File Pattern
+
+```js
+
+const express    = require('express');
+
+const router     = express.Router();
+
+const controller = require('../controllers/feature.controller');
+
+const { requireAuth } = require('../middlewares/auth.middleware');
+
+const { body } = require('express-validator');
+
+const validation = require('../middlewares/validation.middleware');
+
+
+
+// Public route
+
+router.get('/', controller.getAll);
+
+
+
+// Protected route
+
+router.post('/', requireAuth, [
+
+  body('title').notEmpty().withMessage('Title required'),
+
+], validation, controller.create);
+
+
+
+// Admin only
+
+const isAdmin = require('../middlewares/isAdmin.middleware');
+
+router.delete('/:id', requireAuth, isAdmin, controller.delete);
+
+
+
+module.exports = router;
+
+```
+
+
+
+---
+
+
+
+## Controller File Pattern
+
+```js
+
+const asyncWrapper = require('../utils/asyncWrapper');
+
+const { success }  = require('../utils/apiResponse');
+
+const AppError     = require('../utils/AppError');
+
+const myService    = require('../services/feature.service');
+
+
+
+exports.getAll = asyncWrapper(async (req, res) => {
+
+  const items = await myService.getAll(req.user._id);
+
+  return success(res, items, 'Retrieved');
+
+});
+
+
+
+exports.create = asyncWrapper(async (req, res) => {
+
+  const { title, description } = req.body;
+
+  if (!title) throw new AppError('Title is required', 400);
+
+  const item = await myService.create({ title, description }, req.user._id);
+
+  return success(res, item, 'Created', 201);
+
+});
+
+
+
+exports.delete = asyncWrapper(async (req, res) => {
+
+  await myService.delete(req.params.id, req.user._id, req.user.isAdmin);
+
+  return success(res, null, 'Deleted');
+
+});
+
+```
+
+
+
+---
+
+
+
+## Service File Pattern
+
+```js
+
+const Model            = require('../models/thing.model');
+
+const AppError         = require('../utils/AppError');
+
+const validateObjectId = require('../utils/validateObjectId');
+
+
+
+async function getAll(userId) {
+
+  return Model.find({ owner: userId }).lean();
+
+}
+
+
+
+async function create(data, userId) {
+
+  const item = await Model.create({ ...data, owner: userId });
+
+  return item;
+
+}
+
+
+
+async function delete(id, userId, isAdmin = false) {
+
+  validateObjectId(id, 'item ID');
+
+
+
+  const item = await Model.findById(id);
+
+  if (!item) throw new AppError('Item not found', 404);
+
+
+
+  if (!isAdmin && String(item.owner) !== String(userId))
+
+    throw new AppError('Not authorized to delete this item', 403);
+
+
+
+  await Model.findByIdAndDelete(id);
+
+  return { ok: true };
+
+}
+
+
+
+module.exports = { getAll, create, delete };
+
+```
+
+
+
+---
+
+
+
+## Model File Pattern
+
+```js
+
+const mongoose = require('mongoose');
+
+
+
+const thingSchema = new mongoose.Schema({
+
+  // Required fields
+
+  title:  { type: String, required: true, trim: true },
+
+  owner:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+
+
+
+  // Optional with defaults
+
+  status: { type: String, enum: ['active', 'archived'], default: 'active' },
+
+  count:  { type: Number, default: 0, min: 0 },
+
+
+
+  // Reference to another model
+
+  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+
+}, {
+
+  timestamps: true,  // adds createdAt and updatedAt automatically
+
+});
+
+
+
+// Indexes — add for any field used in queries
+
+thingSchema.index({ owner: 1 });
+
+thingSchema.index({ status: 1, createdAt: -1 });
+
+
+
+module.exports = mongoose.model('Thing', thingSchema);
+
+```
+
+
+
+---
+
+
+
+## `server.js` Pattern
+
+```js
+
+require('dotenv').config();
+
+const express      = require('express');
+
+const mongoose     = require('mongoose');
+
+const helmet       = require('helmet');
+
+const cors         = require('cors');
+
+const rateLimit    = require('express-rate-limit');
+
+const errorHandler = require('./middlewares/error.handler');
+
+
+
+const app = express();
+
+
+
+// 1. Security headers
+
+app.use(helmet());
+
+
+
+// 2. CORS — strict origin allowlist from env
+
+const allowedOrigins = (process.env.CLIENT_URL || '').split(',').map(o => o.trim()).filter(Boolean);
+
+app.use(cors({
+
+  origin: (origin, cb) => {
+
+    if (!origin && process.env.NODE_ENV !== 'production') return cb(null, true);
+
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+
+    cb(new Error(`CORS blocked: ${origin}`));
+
+  },
+
+  credentials: true,
+
+}));
+
+
+
+// 3. Rate limiting
+
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
+
+
+
+// 4. Body parsing
+
+app.use(express.json({ limit: '2mb' }));
+
+app.use(express.urlencoded({ extended: true }));
+
+
+
+// 5. Routes
+
+app.use('/auth',     require('./routers/auth.routes'));
+
+app.use('/feature',  require('./routers/feature.routes'));
+
+// ... add more here
+
+
+
+// 6. Health check
+
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+
+
+// 7. Error handler — MUST be last
+
+app.use(errorHandler);
+
+
+
+// 8. Process guards
+
+process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
+
+process.on('uncaughtException',  (err) => { console.error('Uncaught Exception:', err); process.exit(1); });
+
+
+
+// 9. Graceful shutdown
+
+async function gracefulShutdown(signal) {
+
+  console.log(`${signal} received. Shutting down...`);
+
+  await mongoose.connection.close();
+
+  process.exit(0);
+
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
+
+
+// 10. Connect & start
+
+const mongoUri = process.env.MONGODB_URI;
+
+if (!mongoUri) throw new Error('MONGODB_URI is not set');
+
+
+
+mongoose.connect(mongoUri)
+
+  .then(() => {
+
+    console.log('✓ MongoDB connected');
+
+    app.listen(process.env.PORT || 3000, () =>
+
+      console.log(`✓ Server on port ${process.env.PORT || 3000}`)
+
+    );
+
+  })
+
+  .catch(err => { console.error('DB connection failed:', err.message); process.exit(1); });
+
+
+
+module.exports = app;
+
+```
+
+
+
+---
+
+
+
+## Security Rules — Never Break These
+
+
+
+1. **No fallback secrets** — `const JWT_SECRET = process.env.JWT_SECRET; if (!JWT_SECRET) throw new Error(...)`
+
+2. **No wildcard CORS in production** — always use `CLIENT_URL` env var
+
+3. **Always escape user regex input** — `str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`
+
+4. **Rate limit sensitive routes** — auth, AI, file uploads
+
+5. **Health endpoint must not leak env info** — just `{ ok: true }`
+
+6. **Passwords stored only as bcrypt hashes** — never plain text
+
+7. **JWT revocation via TokenBlacklist** — logout invalidates the token
+
+8. **`isOperational` controls client messages** — internal errors say "Something went wrong"
+
+9. **Admin/owner checks in Service** — never trust client-sent role claims
+
+
+
+---
+
+
+
+## Performance Rules
+
+
+
+1. **Use `.lean()`** on all read-only Mongoose queries
+
+2. **Use `.select()`** to avoid fetching unnecessary fields
+
+3. **Add indexes** for any field used in `.find()` or `.sort()`
+
+4. **Use `Promise.all()`** for independent parallel DB calls
+
+5. **Use `bulkWrite()`** for batch DB operations in loops
+
+6. **Use MongoDB aggregation pipelines** instead of fetching data and processing in JS
+
+7. **Never load unbounded data** — always add `.limit()` on lists
+
+
+
+---
+
+
+
+## Code Style Rules
+
+
+
+- **Validate early, return early** — check bad input at the top of functions, not nested
+
+- **One function = one purpose** — keep functions short and focused
+
+- **Named constants** at top of file — no magic numbers inline
+
+- **Comments only when non-obvious** — code should be self-documenting
+
+- **Prefer `async/await`** over `.then()` chains
+
+- **No callback-style** unless working with legacy libs that require it
+
+- **`const` by default**, `let` only when mutation is needed, **never `var`**
+
+
+
+---
+
+
+
+## How to Add a New Feature
+
+
+
+1. **Model** → define schema in `/models/thing.model.js`
+
+2. **Service** → write logic in `/services/thing.service.js`
+
+3. **Controller** → thin wrapper in `/controllers/thing.controller.js`
+
+4. **Router** → define routes in `/routers/thing.routes.js`
+
+5. **Mount** → add `app.use('/things', require('./routers/thing.routes'))` in `server.js`
+
+6. **Validate** → add `express-validator` checks in the router for POST/PUT/PATCH routes
+
+
+
+---
+
+
+
+## What I Never Want
+
+
+
+- ❌ TypeScript
+
+- ❌ ES Modules (`import/export`)  
+
+- ❌ Mongoose virtual populate unless I ask
+
+- ❌ Any features I didn't ask for
+
+- ❌ Third-party auth libraries (Passport, Auth0) — I handle auth myself
+
+- ❌ ORMs other than Mongoose
+
+- ❌ Business logic in Controllers
+
+- ❌ `var`
+
+- ❌ `.then()` chains in new code
+
+- ❌ `require()` calls inside functions
+
+- ❌ Responding with raw `res.json()` — always use `success()` or `error()` helpers
+
+- ❌ Throwing plain `new Error()` — always use `new AppError()`
+

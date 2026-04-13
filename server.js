@@ -2,87 +2,97 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
-const app = express();
-
-// Serve static frontend files (legacy)
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Serve React app build (production)
-const reactBuildPath = path.join(__dirname, 'public', 'app');
-app.use('/app', express.static(reactBuildPath));
-app.get('/app/*path', (req, res) => {
-    const index = path.join(reactBuildPath, 'index.html');
-    const fs = require('fs');
-    if (fs.existsSync(index)) {
-        res.sendFile(index);
-    } else {
-        res.redirect('/');
-    }
-});
-const authRoutes = require('./routers/auth.routes');
-const projectRoutes = require('./routers/project.routes');
-const taskRoutes = require('./routers/task.routes');
-const setupRoutes = require('./routers/setup.routes');
-const profileRoutes = require('./routers/profile.routes');
-const submissionRoutes = require('./routers/submission.routes');
-const analyticsRoutes = require('./routers/analytics.routes');
-const assessmentRoutes = require('./routers/assessment.routes');
-const portfolioRoutes = require('./routers/portfolio.routes');
-const officeRoutes = require('./routers/office.routes');
 const errorHandler = require('./middlewares/error.handler');
 
-// CORS Configuration
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-});
+const app = express();
 
-// MongoDB Connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/jobxp';
-mongoose.connect(mongoUri, {
-    serverSelectionTimeoutMS: 30000,
-    socketTimeoutMS: 30000,
-    connectTimeoutMS: 30000,
-})
-    .then(async () => {
-        console.log('✓ Connected to MongoDB');
-
-        // Init Cron Jobs
-        const cronService = require('./services/cron.service');
-        cronService.initCronJobs();
-
-        // Init Default Skills
-        const skillService = require('./services/skill.service');
-        await skillService.initDefaultSkills();
-    })
-    .catch(err => console.error('✗ MongoDB error:', err.message));
+// ─────────────────────────────────────────
+// Middleware
+// ─────────────────────────────────────────
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.use('/auth', authRoutes);
-app.use('/projects', projectRoutes);
-app.use('/tasks', taskRoutes);
-app.use('/setup', setupRoutes);
-app.use('/profile', profileRoutes);
-app.use('/submissions', submissionRoutes);
-app.use('/analytics', analyticsRoutes);
-app.use('/assessments', assessmentRoutes);
-app.use('/portfolio', portfolioRoutes);
-app.use('/office', officeRoutes);
-app.use('/submissions', submissionRoutes);
-app.use('/analytics', analyticsRoutes);
+// CORS — في production استبدل * بـ domain بتاعك
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.CLIENT_URL || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
-// Health
-app.get('/health', (req, res) => res.json({ ok: true }));
+// ─────────────────────────────────────────
+// API Routes — MUST be before static pages!
+// ─────────────────────────────────────────
 
-// Global error handler
+app.use('/auth',     require('./routers/auth.routes'));
+app.use('/projects', require('./routers/project.routes'));
+app.use('/tasks',    require('./routers/task.routes'));
+app.use('/profile',  require('./routers/profile.routes'));
+app.use('/office',   require('./routers/office.routes'));
+app.use('/dms',      require('./routers/dm.routes'));
+app.use('/posts',    require('./routers/post.routes'));
+
+// ─────────────────────────────────────────
+// Static files & legacy HTML pages
+// ─────────────────────────────────────────
+
+const reactBuildPath = path.join(__dirname, 'public', 'app');
+const publicPath = path.join(__dirname, 'public');
+
+app.use(express.static(publicPath));
+app.use('/app', express.static(reactBuildPath));
+const sendPage = (page) => (req, res) => res.sendFile(path.join(publicPath, page));
+
+app.get('/',                   sendPage('index.html'));
+app.get('/dashboard',          sendPage('dashboard.html'));
+app.get('/pages/projects',     sendPage('projects.html'));
+app.get('/project',            sendPage('project.html'));
+app.get('/messages',           sendPage('messages.html'));
+app.get('/profile-page',       sendPage('profile.html'));
+app.get('/office',             sendPage('office.html'));
+app.get('/task',               sendPage('task.html'));
+app.get('/forgot-password',    sendPage('forgot-password.html'));
+
+app.get('/app/*path', (req, res) => {
+  const index = path.join(reactBuildPath, 'index.html');
+  require('fs').existsSync(index)
+    ? res.sendFile(index)
+    : res.status(404).send('React app not built yet. Run: cd client && npm run build');
+});
+
+// Health check
+app.get('/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));
+
+// ─────────────────────────────────────────
+// Error handler — لازم يكون آخر حاجة
+// ─────────────────────────────────────────
+
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
+// ─────────────────────────────────────────
+// Database + Server
+// ─────────────────────────────────────────
+
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) throw new Error('MONGODB_URI env variable is not set');
+
+mongoose
+  .connect(mongoUri, {
+    serverSelectionTimeoutMS: 30000,
+    socketTimeoutMS:          30000,
+    connectTimeoutMS:         30000,
+  })
+  .then(() => {
+    console.log('✓ Connected to MongoDB');
+
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`✓ Server listening on ${PORT}`));
+  })
+  .catch((err) => {
+    console.error('✗ MongoDB connection failed:', err.message);
+    process.exit(1);
+  });
 
 module.exports = app;

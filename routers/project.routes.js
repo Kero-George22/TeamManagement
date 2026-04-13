@@ -2,27 +2,40 @@ const express = require('express');
 const router = express.Router();
 const projectController = require('../controllers/project.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
-const isAdmin = require('../middlewares/isAdmin.middleware');
 
-// Create project (admin only)
-router.post('/', requireAuth, isAdmin, projectController.createProject);
-
-// Get all projects with search/filter (authenticated users)
+// ─────────────────────────────────────────
+// Discovery
+// ─────────────────────────────────────────
 router.get('/', requireAuth, projectController.getProjects);
 
-// Get single project by ID (authenticated users)
-router.get('/:id', requireAuth, projectController.getProjectById);
+// ─────────────────────────────────────────
+// Create
+// ─────────────────────────────────────────
+router.post('/', requireAuth, projectController.createProject);
 
-// Join project (authenticated users)
-router.post('/:projectId/join', requireAuth, projectController.joinProject);
+// ─────────────────────────────────────────
+// Private project — invite link
+// ─────────────────────────────────────────
+router.get( '/invite/:token',              requireAuth, projectController.getProjectByInviteToken);
+router.post('/invite/:token/join',         requireAuth, projectController.joinViaInvite);
 
-// Get project members
+// ─────────────────────────────────────────
+// Single project
+// ─────────────────────────────────────────
+router.get(   '/:id',         requireAuth, projectController.getProjectById);
+router.put(   '/:id',         requireAuth, projectController.updateProject);
+router.delete('/:id',         requireAuth, projectController.deleteProject);
+
+// ─────────────────────────────────────────
+// Members
+// ─────────────────────────────────────────
 router.get('/:id/members', requireAuth, projectController.getProjectMembers);
 
-// Update project (owner only)
-router.put('/:id', requireAuth, isAdmin, projectController.updateProject);
-
-// Delete project (owner only)
-router.delete('/:id', requireAuth, isAdmin, projectController.deleteProject);
+// ─────────────────────────────────────────
+// Join requests — public projects
+// ─────────────────────────────────────────
+router.post('/:projectId/join',                        requireAuth, projectController.requestToJoin);
+router.get( '/:projectId/join-requests',               requireAuth, projectController.getJoinRequests);
+router.patch('/:projectId/join-requests/:requestId',   requireAuth, projectController.handleJoinRequest);
 
 module.exports = router;

@@ -3,28 +3,33 @@ const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
 
-// Create tasks - AI manager assigns tasks based on project
-router.post('/:projectId/ai-generate', requireAuth, taskController.createTasksByAI);
+// ─────────────────────────────────────────
+// Project tasks
+// ─────────────────────────────────────────
 
-// Get current user's tasks
-router.get('/my', requireAuth, taskController.getMyTasks);
+// GET  /tasks/:projectId         — all tasks for a project
+// POST /tasks/:projectId/generate — AI generates tasks
+router.get( '/:projectId',          requireAuth, taskController.getProjectTasks);
+router.post('/:projectId/generate', requireAuth, taskController.createTasksByAI);
+router.post('/:projectId',          requireAuth, taskController.createTask);
 
-// Get all tasks for a project
-router.get('/:projectId', requireAuth, taskController.getProjectTasks);
+// ─────────────────────────────────────────
+// Single task
+// NOTE: /task/:taskId prefix avoids conflict with /:projectId above
+// ─────────────────────────────────────────
 
-// Get single task details
-router.get('/task/:taskId', requireAuth, taskController.getTaskById);
+// GET   /tasks/task/:taskId        — get task details
+// PATCH /tasks/task/:taskId/status — update status (member or owner)
+router.get(  '/task/:taskId',         requireAuth, taskController.getTaskById);
+router.patch('/task/:taskId/status',  requireAuth, taskController.updateTaskStatus);
+router.put(  '/task/:taskId',         requireAuth, taskController.updateTask);
+router.delete('/task/:taskId',        requireAuth, taskController.deleteTask);
 
-// Claim a task (assign to current user)
-router.post('/:taskId/claim', requireAuth, taskController.claimTask);
+// Comments
+router.get( '/task/:taskId/comments', requireAuth, taskController.getComments);
+router.post('/task/:taskId/comments', requireAuth, taskController.addComment);
 
-// Submit work for review
-router.post('/:taskId/submit', requireAuth, taskController.submitWork);
-
-// Request AI manager review
-router.post('/:taskId/request-review', requireAuth, taskController.requestAIReview);
-
-// Get team performance analysis
-router.get('/:projectId/performance', requireAuth, taskController.getTeamPerformance);
+// Subtasks
+router.get('/task/:taskId/subtasks',  requireAuth, taskController.getSubtasks);
 
 module.exports = router;

@@ -1,7 +1,6 @@
 const Message = require('../models/message.model');
 const Project = require('../models/project.model');
 const Task = require('../models/task.model');
-const Submission = require('../models/submission.model');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success, error } = require('../utils/apiResponse');
 const { generateProjectStatus } = require('../services/ai.service');
@@ -10,18 +9,19 @@ const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const REPORT_TTL_MS = 10 * 60 * 1000;
 
 async function ensureOfficeMember(projectId, userId) {
-  const project = await Project.findById(projectId).select('members').lean();
+  const project = await Project.findById(projectId).select('owner members').lean();
   if (!project) {
     const err = new Error('Project not found');
     err.status = 404;
     throw err;
   }
 
+  const isOwner = project.owner?.toString() === userId?.toString();
   const isMember = (project.members || []).some(
     (m) => m.userId?.toString() === userId?.toString()
   );
 
-  if (!isMember) {
+  if (!isOwner && !isMember) {
     const err = new Error('You can access office chat only for projects you joined');
     err.status = 403;
     throw err;
@@ -30,31 +30,26 @@ async function ensureOfficeMember(projectId, userId) {
   return project;
 }
 
-function buildFallbackStatus(project, taskStats, submissionStats) {
+function buildFallbackStatus(project, taskStats) {
   const completionRate = taskStats.total > 0
     ? Math.round((taskStats.done / taskStats.total) * 100)
     : 0;
-  const acceptanceRate = submissionStats.total > 0
-    ? Math.round((submissionStats.accepted / submissionStats.total) * 100)
-    : 0;
 
   let health = '🟡 At Risk';
-  if (completionRate >= 70 && submissionStats.pending <= submissionStats.accepted) health = '🟢 On Track';
-  if (completionRate < 35 || submissionStats.rejected > submissionStats.accepted) health = '🔴 Behind';
+  if (completionRate >= 70) health = '🟢 On Track';
+  if (completionRate < 35) health = '🔴 Behind';
 
   return [
     `${health}`,
     `- Progress: ${taskStats.done}/${taskStats.total} tasks done (${completionRate}%), ${taskStats.inProgress} in progress, ${taskStats.pending} pending.`,
-    `- Submissions: ${submissionStats.accepted}/${submissionStats.total} accepted (${acceptanceRate}%), ${submissionStats.pending} pending, ${submissionStats.rejected} rejected.`,
-    `- Recommendation: Prioritize pending tasks with blocked dependencies and review rejected submissions in the next stand-up.`
+    `- Recommendation: Prioritize pending tasks with blocked dependencies in the next stand-up.`
   ].join('\n');
 }
 
 async function buildSharedReport(projectId) {
-  const [project, tasks, submissions] = await Promise.all([
+  const [project, tasks] = await Promise.all([
     Project.findById(projectId),
-    Task.find({ project: projectId }).lean(),
-    Submission.find({ project: projectId }).lean(),
+    Task.find({ project: projectId }).lean()
   ]);
 
   if (!project) return null;
@@ -72,19 +67,12 @@ async function buildSharedReport(projectId) {
     pending: tasks.filter(t => !['done', 'In-Progress'].includes(t.status)).length,
   };
 
-  const submissionStats = {
-    total: submissions.length,
-    accepted: submissions.filter(s => s.stat   === 'accepted').length,
-    pending: submissions.filter(s => s.status === 'pending').length,
-    rejected: submissions.filter(s => s.status === 'rejected').length,
-  };
-
   if (!hasFreshReport) {
     let statusText;
     try {
-      statusText = await generateProjectStatus(project, taskStats, submissionStats);
+      statusText = await generateProjectStatus(project, taskStats);
     } catch (_err) {
-      statusText = buildFallbackStatus(project, taskStats, submissionStats);
+      statusText = buildFallbackStatus(project, taskStats);
     }
     project.officeReport = {
       content: statusText,
@@ -97,7 +85,6 @@ async function buildSharedReport(projectId) {
     report: project.officeReport?.content || '',
     generatedAt: project.officeReport?.generatedAt || new Date(),
     taskStats,
-    submissionStats,
   };
 }
 
@@ -149,7 +136,6 @@ const getAIStatus = asyncWrapper(async (req, res) => {
     status: reportData.report,
     generatedAt: reportData.generatedAt,
     taskStats: reportData.taskStats,
-    submissionStats: reportData.submissionStats,
   }, 'Status generated');
 });
 
@@ -191,7 +177,6 @@ const getOfficeOverview = asyncWrapper(async (req, res) => {
       status: reportData?.report || '',
       generatedAt: reportData?.generatedAt || null,
       taskStats: reportData?.taskStats || null,
-      submissionStats: reportData?.submissionStats || null,
     },
   }, 'Office overview retrieved');
 });

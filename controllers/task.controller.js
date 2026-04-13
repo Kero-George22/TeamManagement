@@ -1,116 +1,166 @@
 const taskService = require('../services/task.service');
 const asyncWrapper = require('../utils/asyncWrapper');
-const { success, error } = require('../utils/apiResponse');
+const { success } = require('../utils/apiResponse');
+const AppError = require('../utils/AppError');
 
-// CREATE TASKS - AI assigns based on project
+// ─────────────────────────────────────────
+// CREATE TASKS — AI generates per role
+// ─────────────────────────────────────────
+
 const createTasksByAI = asyncWrapper(async (req, res) => {
-  const { projectId } = req.params;
-
-  if (!projectId) {
-    return error(res, 'Project ID is required', 400);
-  }
-
-  const tasks = await taskService.createTasksByAI(projectId);
-  return success(res, tasks, 'Tasks created by AI manager', 201);
+  const tasks = await taskService.createTasksByAI(
+    req.params.projectId,
+    req.user._id
+  );
+  return success(res, tasks, 'Tasks created by AI', 201);
 });
 
-// GET ALL TASKS FOR PROJECT
+// ─────────────────────────────────────────
+// CREATE SINGLE TASK
+// ─────────────────────────────────────────
+
+const createTask = asyncWrapper(async (req, res) => {
+  const task = await taskService.createTask(
+    req.params.projectId,
+    req.user._id,
+    req.body,
+    req.user.isAdmin
+  );
+  return success(res, task, 'Task created', 201);
+});
+
+// ─────────────────────────────────────────
+// GET ALL TASKS FOR A PROJECT
+// ─────────────────────────────────────────
+
 const getProjectTasks = asyncWrapper(async (req, res) => {
-  const { projectId } = req.params;
-
-  if (!projectId) {
-    return error(res, 'Project ID is required', 400);
-  }
-
-  const tasks = await taskService.getProjectTasks(projectId, req.user._id, req.user.isAdmin);
+  const tasks = await taskService.getProjectTasks(
+    req.params.projectId,
+    req.user._id,
+    req.user.isAdmin
+  );
   return success(res, tasks, 'Tasks retrieved');
 });
 
-// GET TASKS FOR CURRENT USER
-const getMyTasks = asyncWrapper(async (req, res) => {
-  const tasks = await taskService.getMyTasks(req.user._id, req.user.isAdmin);
-  return success(res, tasks, 'Your tasks retrieved');
-});
-
+// ─────────────────────────────────────────
 // GET SINGLE TASK
+// ─────────────────────────────────────────
+
 const getTaskById = asyncWrapper(async (req, res) => {
-  const { taskId } = req.params;
-
-  if (!taskId) {
-    return error(res, 'Task ID is required', 400);
-  }
-
-  const task = await taskService.getTaskById(taskId, req.user._id, req.user.isAdmin);
+  const task = await taskService.getTaskById(
+    req.params.taskId,
+    req.user._id,
+    req.user.isAdmin
+  );
   return success(res, task, 'Task retrieved');
 });
 
-// ASSIGN TASK TO CURRENT USER
-const claimTask = asyncWrapper(async (req, res) => {
-  const { taskId } = req.params;
-  const userId = req.user._id;
+// ─────────────────────────────────────────
+// UPDATE TASK STATUS
+// Member: Todo → In-Progress → Done
+// Owner:  Done → Approved (triggers XP reward)
+// ─────────────────────────────────────────
 
-  if (!taskId) {
-    return error(res, 'Task ID is required', 400);
-  }
+const updateTaskStatus = asyncWrapper(async (req, res) => {
+  const { status } = req.body;
 
-  const task = await taskService.assignTaskToUser(taskId, userId, req.user.isAdmin);
-  return success(res, task, 'Task assigned to you');
+  const validStatuses = ['In-Progress', 'Done', 'Approved'];
+  if (!status || !validStatuses.includes(status))
+    throw new AppError(`Status must be one of: ${validStatuses.join(', ')}`, 400);
+
+  const task = await taskService.updateTaskStatus(
+    req.params.taskId,
+    status,
+    req.user._id,
+    req.user.isAdmin
+  );
+  return success(res, task, `Task status updated to "${status}"`);
 });
 
-// SUBMIT WORK FOR REVIEW
-const submitWork = asyncWrapper(async (req, res) => {
-  const { taskId } = req.params;
-  const { submittedWork, repoLink } = req.body;
+// ─────────────────────────────────────────
+// UPDATE TASK
+// ─────────────────────────────────────────
 
-  if (!taskId) {
-    return error(res, 'Task ID is required', 400);
-  }
-
-  if (!submittedWork && !repoLink) {
-    return error(res, 'Either submittedWork description or repoLink is required', 400);
-  }
-
-  // Pass object to service
-  const submissionPayload = {
-    description: submittedWork,
-    repoLink: repoLink
-  };
-
-  const task = await taskService.submitWork(taskId, submissionPayload, req.user._id, req.user.isAdmin);
-  return success(res, task, 'Work submitted for AI review');
+const updateTask = asyncWrapper(async (req, res) => {
+  const task = await taskService.updateTask(
+    req.params.taskId,
+    req.user._id,
+    req.body,
+    req.user.isAdmin
+  );
+  return success(res, task, 'Task updated');
 });
 
-// REQUEST AI REVIEW
-const requestAIReview = asyncWrapper(async (req, res) => {
-  const { taskId } = req.params;
+// ─────────────────────────────────────────
+// DELETE TASK
+// ─────────────────────────────────────────
 
-  if (!taskId) {
-    return error(res, 'Task ID is required', 400);
-  }
-
-  const task = await taskService.aiReviewTask(taskId, req.user._id, req.user.isAdmin);
-  return success(res, task, 'AI manager reviewed your work');
+const deleteTask = asyncWrapper(async (req, res) => {
+  await taskService.deleteTask(
+    req.params.taskId,
+    req.user._id,
+    req.user.isAdmin
+  );
+  return success(res, null, 'Task deleted');
 });
 
-// GET TEAM PERFORMANCE
-const getTeamPerformance = asyncWrapper(async (req, res) => {
-  const { projectId } = req.params;
+// ─────────────────────────────────────────
+// ADD COMMENT
+// ─────────────────────────────────────────
 
-  if (!projectId) {
-    return error(res, 'Project ID is required', 400);
-  }
+const addComment = asyncWrapper(async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) throw new AppError('Comment text is required', 400);
 
-  const performance = await taskService.getTeamPerformance(projectId, req.user._id, req.user.isAdmin);
-  return success(res, performance, 'Team performance analyzed');
+  const Task = require('../models/task.model');
+  const task = await Task.findById(req.params.taskId);
+  if (!task) throw new AppError('Task not found', 404);
+
+  task.comments.push({ user: req.user._id, text: text.trim() });
+  await task.save();
+  await task.populate('comments.user', 'email username avatar');
+
+  return success(res, task.comments, 'Comment added', 201);
 });
+
+// ─────────────────────────────────────────
+// GET COMMENTS
+// ─────────────────────────────────────────
+
+const getComments = asyncWrapper(async (req, res) => {
+  const Task = require('../models/task.model');
+  const task = await Task.findById(req.params.taskId)
+    .select('comments')
+    .populate('comments.user', 'email username avatar');
+  if (!task) throw new AppError('Task not found', 404);
+  return success(res, task.comments || [], 'Comments retrieved');
+});
+
+// ─────────────────────────────────────────
+// GET SUBTASKS
+// ─────────────────────────────────────────
+
+const getSubtasks = asyncWrapper(async (req, res) => {
+  const Task = require('../models/task.model');
+  const subtasks = await Task.find({ parentTask: req.params.taskId })
+    .populate('assignedTo', 'email username avatar')
+    .sort({ createdAt: 1 });
+  return success(res, subtasks, 'Subtasks retrieved');
+});
+
+// ─────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────
 
 module.exports = {
   createTasksByAI,
-  getMyTasks,
+  createTask,
   getProjectTasks,
   getTaskById,
-  claimTask,
-  submitWork,
-  requestAIReview,
-  getTeamPerformance,
+  updateTask,
+  updateTaskStatus,
+  deleteTask,
+  addComment,
+  getComments,
+  getSubtasks,
 };

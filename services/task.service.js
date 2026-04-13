@@ -5,6 +5,10 @@ const User = require('../models/user.model');
 const aiManager = require('./ai.manager');
 const AppError = require('../utils/AppError');
 
+// ─────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────
+
 function normalizeRole(role) {
   return String(role || '').trim().toLowerCase();
 }
@@ -20,14 +24,13 @@ function getMembership(project, userId) {
   );
 }
 
-/**
- * Ensures the user is a member of the project.
- * Returns the project (with members) so callers can reuse it.
- */
 async function ensureProjectAccess(projectId, userId, isAdmin = false) {
-  const project = await Project.findById(projectId).select('members');
+  const project = await Project.findById(projectId).select('owner members');
   if (!project) throw new AppError('Project not found', 404);
   if (isAdmin) return project;
+
+  const isOwner = String(project.owner || '') === String(userId);
+  if (isOwner) return project;
 
   const isMember = project.members.some(
     (m) => m.userId.toString() === String(userId)
@@ -38,10 +41,6 @@ async function ensureProjectAccess(projectId, userId, isAdmin = false) {
   return project;
 }
 
-/**
- * Checks whether a task belongs to the user — either directly assigned
- * or via role match.
- */
 function isTaskVisibleToMember(task, userId, memberRole) {
   const assignedToMe =
     String(task.assignedTo?._id || task.assignedTo || '') === String(userId);
@@ -55,29 +54,25 @@ function isTaskVisibleToMember(task, userId, memberRole) {
 // CREATE TASKS — AI generates & assigns per role
 // ─────────────────────────────────────────
 
-/**
- * 1. Asks AI to produce tasks based on project details.
- * 2. Generates per-task instructions in parallel (one AI call each).
- * 3. Assigns each task to a member whose role matches, using round-robin
- *    so work is spread evenly when multiple members share the same role.
- * 4. Batch-inserts all tasks in a single DB round-trip.
- */
-async function createTasksByAI(projectId) {
+async function createTasksByAI(projectId, userId) {
   validateObjectId(projectId, 'project ID');
+  validateObjectId(userId, 'user ID');
 
   const project = await Project.findById(projectId);
   if (!project) throw new AppError('Project not found', 404);
 
-  // Ask AI for a list of tasks suited to this project
+  const isOwner = String(project.owner || '') === String(userId);
+  if (!isOwner)
+    throw new AppError('Only the project owner can generate tasks by AI', 403);
+
   const aiTasks = await aiManager.assignTasksByAI({
-    title: project.title,
-    description: project.description,
+    title:         project.title,
+    description:   project.description,
     rolesRequired: project.rolesRequired,
-    duration: project.duration,
-    status: project.status,
+    duration:      project.duration,
+    status:        project.status,
   });
 
- 
   // Build role → [userId, ...] map for round-robin assignment
   const roleMembers = new Map();
   for (const m of project.members || []) {
@@ -85,82 +80,37 @@ async function createTasksByAI(projectId) {
     if (!roleMembers.has(key)) roleMembers.set(key, []);
     roleMembers.get(key).push(m.userId);
   }
-  const roleCursor = new Map(); // tracks which member to assign next per role
+  const roleCursor = new Map();
 
   const deadline = new Date(
     Date.now() + project.duration * 24 * 60 * 60 * 1000
   );
 
-  // Generate instructions for every task in parallel, then build docs
-  const taskDocs = await Promise.all(
-    aiTasks.map(async (taskData) => {
-      const instructions = await aiManager.generateTaskInstructions({
-        title: taskData.title,
-        description: taskData.description,
-        assignedRole: taskData.assignedRole,
-        priority: taskData.priority,
-      });
+  const taskDocs = aiTasks.map((taskData) => {
+    const roleKey    = normalizeRole(taskData.assignedRole);
+    const candidates = roleMembers.get(roleKey) || [];
+    let assignedTo   = null;
 
-      // Round-robin: pick the next member whose role matches this task
-      const roleKey = normalizeRole(taskData.assignedRole);
-      const candidates = roleMembers.get(roleKey) || [];
-      let assignedTo = null;
-      if (candidates.length > 0) {
-        const cursor = roleCursor.get(roleKey) || 0;
-        assignedTo = candidates[cursor % candidates.length];
-        roleCursor.set(roleKey, cursor + 1);
-      }
+    if (candidates.length > 0) {
+      const cursor = roleCursor.get(roleKey) || 0;
+      assignedTo   = candidates[cursor % candidates.length];
+      roleCursor.set(roleKey, cursor + 1);
+    }
 
-      return {
-        project: projectId,
-        title: taskData.title,
-        description: taskData.description,
-        assignedRole: taskData.assignedRole,
-        assignedTo,
-        priority: taskData.priority || 'Medium',
-        xpPoints: taskData.xpPoints || 50,
-        aiInstructions: instructions,
-        status: 'Todo',
-        deadline,
-      };
-    })
-  );
+    return {
+      project:      projectId,
+      title:        taskData.title,
+      description:  taskData.description,
+      assignedRole: taskData.assignedRole,
+      assignedTo,
+      priority:     taskData.priority  || 'Medium',
+      xpPoints:     taskData.xpPoints  || 50,
+      status:       'Todo',
+      deadline,
+    };
+  });
 
   return Task.insertMany(taskDocs);
-}
-
-// ─────────────────────────────────────────
-// GET MY TASKS
-// ─────────────────────────────────────────
-
-async function getMyTasks(userId, isAdmin = false) {
-  if (isAdmin) {
-    return Task.find({})
-      .populate('project', 'title')
-      .populate('assignedTo', 'email username avatar')
-      .sort({ createdAt: -1 });
-  }
-
-  const projects = await Project.find({ 'members.userId': userId })
-    .select('_id members title');
-
-  if (!projects.length) return [];
-
-  const membershipByProject = new Map(
-    projects.map((project) => [String(project._id), getMembership(project, userId)])
-  );
-
-  const tasks = await Task.find({
-    project: { $in: projects.map((project) => project._id) },
-  })
-    .populate('project', 'title')
-    .populate('assignedTo', 'email username avatar')
-    .sort({ createdAt: -1 });
-
-  return tasks.filter((task) => {
-    const membership = membershipByProject.get(String(task.project?._id || task.project));
-    return isTaskVisibleToMember(task, userId, membership?.roleName);
-  });
 }
 
 // ─────────────────────────────────────────
@@ -176,9 +126,9 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
     .populate('assignedTo', 'email username avatar')
     .sort({ createdAt: -1 });
 
-  if (isAdmin) return tasks;
+  const isOwner = String(project.owner || '') === String(userId);
+  if (isAdmin || isOwner) return tasks;
 
-  // Regular members see only their own tasks
   const member = getMembership(project, userId);
   return tasks.filter((task) =>
     isTaskVisibleToMember(task, userId, member?.roleName)
@@ -192,12 +142,15 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 async function getTaskById(taskId, userId, isAdmin = false) {
   validateObjectId(taskId, 'task ID');
 
-  const task = await Task.findById(taskId).populate('assignedTo', 'email');
+  const task = await Task.findById(taskId).populate('assignedTo', 'email username avatar');
   if (!task) throw new AppError('Task not found', 404);
 
   const project = await ensureProjectAccess(task.project, userId, isAdmin);
 
   if (!isAdmin) {
+    const isOwner = String(project.owner || '') === String(userId);
+    if (isOwner) return task;
+
     const member = getMembership(project, userId);
     if (!isTaskVisibleToMember(task, userId, member?.roleName))
       throw new AppError('This task is not assigned to your role', 403);
@@ -207,10 +160,18 @@ async function getTaskById(taskId, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
-// ASSIGN TASK TO USER
+// UPDATE TASK STATUS
+// Member بيحدث الـ status — owner بيعمل approve لما تبقى Done
 // ─────────────────────────────────────────
 
-async function assignTaskToUser(taskId, userId, isAdmin = false) {
+const VALID_TRANSITIONS = {
+  'Todo':        ['In-Progress'],
+  'In-Progress': ['Done'],
+  'Done':        [],
+  'Approved':    [],
+};
+
+async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId);
@@ -218,176 +179,173 @@ async function assignTaskToUser(taskId, userId, isAdmin = false) {
 
   const project = await ensureProjectAccess(task.project, userId, isAdmin);
 
-  if (task.assignedTo) throw new AppError('Task already assigned', 400);
-
-  if (!isAdmin) {
-    const member = getMembership(project, userId);
-    if (!member || normalizeRole(member.roleName) !== normalizeRole(task.assignedRole)) {
-      throw new AppError('You can claim only tasks assigned to your role', 403);
-    }
+  // Admin يقدر يعمل أي transition
+  if (isAdmin) {
+    task.status = newStatus;
+    await task.save();
+    return task;
   }
 
-  task.assignedTo = userId;
-  task.status = 'In-Progress';
-  await task.save();
-  await task.populate({ path: 'assignedTo', select: 'email username avatar' });
+  const isOwner    = String(project.owner || '') === String(userId);
+  const isAssigned = String(task.assignedTo || '') === String(userId);
 
+  // Owner بس هو اللي يقدر يعمل approve لما task تبقى Done
+  if (newStatus === 'Approved') {
+    if (!isOwner)
+      throw new AppError('Only the project owner can approve tasks', 403);
+    if (task.status !== 'Done')
+      throw new AppError('Can only approve tasks that are marked as Done', 400);
+
+    task.status = 'Approved';
+    await task.save();
+    await _rewardUser(task);
+    return task;
+  }
+
+  // Member بس هو اللي يقدر يحدث task بتاعته
+  if (!isAssigned)
+    throw new AppError('You can only update tasks assigned to you', 403);
+
+  const allowed = VALID_TRANSITIONS[task.status] || [];
+  if (!allowed.includes(newStatus))
+    throw new AppError(
+      `Cannot move task from "${task.status}" to "${newStatus}"`,
+      400
+    );
+
+  task.status = newStatus;
+  await task.save();
   return task;
 }
 
 // ─────────────────────────────────────────
-// SUBMIT WORK FOR REVIEW
+// Helper — reward user on task approval
 // ─────────────────────────────────────────
 
-async function submitWork(taskId, submissionData, userId, isAdmin = false) {
-  validateObjectId(taskId, 'task ID');
+async function _rewardUser(task) {
+  if (!task.assignedTo) return;
 
-  const task = await Task.findById(taskId);
-  if (!task) throw new AppError('Task not found', 404);
-
-  await ensureProjectAccess(task.project, userId, isAdmin);
-
-  if (!isAdmin && String(task.assignedTo || '') !== String(userId))
-    throw new AppError('You can submit only tasks assigned to you', 403);
-
-  if (typeof submissionData === 'object' && submissionData !== null) {
-    task.submittedWork = submissionData.description || '';
-    task.repoLink = submissionData.repoLink;
-    task.submissionType = submissionData.repoLink ? 'link' : 'text';
-  } else {
-    task.submittedWork = submissionData;
-    task.submissionType = 'text';
-  }
-
-  task.status = 'Review';
-  await task.save();
-
-  return task;
-}
-
-// ─────────────────────────────────────────
-// AI REVIEW
-// ─────────────────────────────────────────
-
-async function aiReviewTask(taskId, userId, isAdmin = false) {
-  validateObjectId(taskId, 'task ID');
-
-  const task = await Task.findById(taskId);
-  if (!task) throw new AppError('Task not found', 404);
-
-  await ensureProjectAccess(task.project, userId, isAdmin);
-
-  if (!isAdmin && String(task.assignedTo || '') !== String(userId))
-    throw new AppError('You can request review only for tasks assigned to you', 403);
-
-  if (!task.submittedWork)
-    throw new AppError('No work submitted for review', 400);
-
-  const aiReview = await aiManager.reviewWorkByAI({
-    title: task.title,
-    description: task.description,
-    submittedWork: task.submittedWork,
-    repoLink: task.repoLink,
-    submissionType: task.submissionType,
+  await User.findByIdAndUpdate(task.assignedTo, {
+    $inc: { totalXP: task.xpPoints || 50, completedTasks: 1 },
   });
 
-  task.aiReview = aiReview.review;
-  task.aiRating = aiReview.rating;
-  task.feedback = aiReview.feedback;
-
-  if (aiReview.rating >= 70) {
-    task.status = 'Done';
-
-    // Reward on-time delivery — atomic update, no extra User fetch
-    if (task.deadline && new Date() <= new Date(task.deadline) && task.assignedTo) {
-      await User.findByIdAndUpdate(task.assignedTo, [
-        {
-          $set: {
-            reliabilityScore: {
-              $min: [100, { $add: [{ $ifNull: ['$reliabilityScore', 0] }, 2] }],
-            },
+  // Reliability bonus لو خلص قبل الـ deadline
+  if (task.deadline && new Date() <= new Date(task.deadline)) {
+    await User.findByIdAndUpdate(task.assignedTo, [
+      {
+        $set: {
+          reliabilityScore: {
+            $min: [100, { $add: [{ $ifNull: ['$reliabilityScore', 0] }, 2] }],
           },
         },
-      ]);
-    }
-  } else {
-    task.status = 'In-Progress';
+      },
+    ]);
   }
+}
+
+// ─────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────
+
+// ─────────────────────────────────────────
+// CREATE SINGLE TASK
+// ─────────────────────────────────────────
+
+async function createTask(projectId, userId, taskData, isAdmin = false) {
+  validateObjectId(projectId, 'project ID');
+  
+  const project = await ensureProjectAccess(projectId, userId, isAdmin);
+
+  const task = new Task({
+    project: projectId,
+    title: taskData.title || taskData.name || 'Untitled Task',
+    description: taskData.description || '',
+    assignedRole: taskData.assignedRole || 'Developer',
+    assignedTo: taskData.assignedTo || null,
+    priority: taskData.priority || 'Medium',
+    status: taskData.status === 'Doing' ? 'In-Progress' : taskData.status === 'Done' ? 'Done' : 'Todo',
+    deadline: taskData.deadline || taskData.endDate || null,
+    xpPoints: taskData.xpPoints || 50,
+  });
 
   await task.save();
+  await task.populate('assignedTo', 'email username avatar');
   return task;
 }
 
 // ─────────────────────────────────────────
-// TEAM PERFORMANCE
+// UPDATE TASK (fields only, not status)
 // ─────────────────────────────────────────
 
-/**
- * Uses a single $facet aggregation to get both numeric stats and the
- * lightweight task list the AI needs — one DB round-trip total.
- */
-async function getTeamPerformance(projectId, userId, isAdmin = false) {
-  validateObjectId(projectId, 'project ID');
+async function updateTask(taskId, userId, updates, isAdmin = false) {
+  validateObjectId(taskId, 'task ID');
 
-  await ensureProjectAccess(projectId, userId, isAdmin);
+  const task = await Task.findById(taskId);
+  if (!task) throw new AppError('Task not found', 404);
 
-  const [result] = await Task.aggregate([
-    { $match: { project: new mongoose.Types.ObjectId(projectId) } },
-    {
-      $facet: {
-        stats: [
-          {
-            $group: {
-              _id: null,
-              totalTasks: { $sum: 1 },
-              completed:  { $sum: { $cond: [{ $eq: ['$status', 'Done'] },        1, 0] } },
-              inProgress: { $sum: { $cond: [{ $eq: ['$status', 'In-Progress'] }, 1, 0] } },
-              inReview:   { $sum: { $cond: [{ $eq: ['$status', 'Review'] },      1, 0] } },
-              todo:       { $sum: { $cond: [{ $eq: ['$status', 'Todo'] },        1, 0] } },
-              avgRating:  { $avg: { $ifNull: ['$aiRating', 0] } },
-            },
-          },
-        ],
-        // Only the fields the AI analyser actually needs
-        tasks: [
-          {
-            $project: {
-              title: 1,
-              description: 1,
-              status: 1,
-              aiRating: 1,
-              assignedRole: 1,
-            },
-          },
-        ],
-      },
-    },
-  ]);
+  const project = await ensureProjectAccess(task.project, userId, isAdmin);
 
-  const stats = result?.stats?.[0] || {};
-  const tasks = result?.tasks || [];
+  // Non-admins can only edit if assigned to them
+  if (!isAdmin) {
+    const isOwner = String(project.owner || '') === String(userId);
+    const isAssigned = String(task.assignedTo || '') === String(userId);
+    if (!isOwner && !isAssigned)
+      throw new AppError('You can only edit tasks assigned to you or owned projects', 403);
+  }
 
-  const analysis = await aiManager.analyzeTeamPerformance(tasks);
+  // Map frontend fields to backend fields
+  if (updates.name) task.title = updates.name;
+  if (updates.description !== undefined) task.description = updates.description;
+  if (updates.assigneeId !== undefined) task.assignedTo = updates.assigneeId || null;
+  if (updates.priority !== undefined) task.priority = updates.priority;
+  if (updates.xpPoints !== undefined) task.xpPoints = updates.xpPoints;
+  if (updates.deadline !== undefined) task.deadline = updates.deadline;
+  if (updates.endDate !== undefined) task.deadline = updates.endDate;
+  if (updates.assignedRole !== undefined) task.assignedRole = updates.assignedRole;
 
-  return {
-    totalTasks: stats.totalTasks || 0,
-    completed:  stats.completed  || 0,
-    inProgress: stats.inProgress || 0,
-    inReview:   stats.inReview   || 0,
-    todo:       stats.todo       || 0,
-    avgRating:  stats.avgRating  || 0,
-    analysis:   analysis.analysis,
-  };
+  // Handle section → status mapping
+  if (updates.section) {
+    const statusMap = { 'To do': 'Todo', 'Doing': 'In-Progress', 'Done': 'Done' };
+    task.status = statusMap[updates.section] || task.status;
+  }
+  if (updates.status !== undefined) {
+    task.status = updates.status;
+  }
+
+  await task.save();
+  await task.populate('assignedTo', 'email username avatar');
+  return task;
 }
 
+// ─────────────────────────────────────────
+// DELETE TASK
+// ─────────────────────────────────────────
+
+async function deleteTask(taskId, userId, isAdmin = false) {
+  validateObjectId(taskId, 'task ID');
+
+  const task = await Task.findById(taskId);
+  if (!task) throw new AppError('Task not found', 404);
+
+  const project = await ensureProjectAccess(task.project, userId, isAdmin);
+
+  // Only project owner or admin can delete
+  if (!isAdmin) {
+    const isOwner = String(project.owner || '') === String(userId);
+    if (!isOwner)
+      throw new AppError('Only project owner can delete tasks', 403);
+  }
+
+  await Task.findByIdAndDelete(taskId);
+  return { success: true, message: 'Task deleted' };
+}
 
 module.exports = {
   createTasksByAI,
-  getMyTasks,
+  createTask,
   getProjectTasks,
   getTaskById,
-  assignTaskToUser,
-  submitWork,
-  aiReviewTask,
-  getTeamPerformance,
+  updateTask,
+  updateTaskStatus,
+  deleteTask,
 };

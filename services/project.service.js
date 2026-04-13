@@ -1,384 +1,464 @@
+const mongoose = require('mongoose');
+const crypto = require('crypto');
 const Project = require('../models/project.model');
-const skillService = require('./skill.service');
+const AppError = require('../utils/AppError');
 
+// ─────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────
+
+function validateObjectId(id, label = 'ID') {
+  if (!mongoose.Types.ObjectId.isValid(id))
+    throw new AppError(`Invalid ${label}`, 400);
+}
+
+function checkDuplicateRoles(roles) {
+  const seen = new Set();
+  for (const role of roles) {
+    const name = role.roleName.toLowerCase();
+    if (seen.has(name))
+      throw new AppError('Duplicate role names are not allowed', 400);
+    seen.add(name);
+  }
+}
+
+function prepareRoles(roles) {
+  return roles.map((role) => ({
+    roleName:       role.roleName,
+    totalSlots:     role.totalSlots,
+    filledSlots:    0,
+    requiredSkills: role.requiredSkills || [],
+  }));
+}
+
+async function _checkAndActivate(project) {
+  const allFilled = project.rolesRequired.every((r) => r.filledSlots >= r.totalSlots);
+  if (allFilled && project.status === 'Recruiting') {
+    project.status = 'In-Progress';
+    await project.save();
+  }
+}
+
+// ─────────────────────────────────────────
+// CREATE PROJECT
+// ─────────────────────────────────────────
 
 async function createProject(data, ownerId) {
-  const { title, description, startDate, duration, status, rolesRequired } = data;
+  const { title, description, startDate, duration, status, rolesRequired, isPrivate } = data;
 
-  // Check for duplicate roles
-  const roleNames = {};
-  for (const role of rolesRequired) {
-    const name = role.roleName.toLowerCase();
-    if (roleNames[name]) {
-      const err = new Error('Duplicate role names are not allowed');
-      err.status = 400;
-      throw err;
-    }
-    roleNames[name] = true;
-  }
+  checkDuplicateRoles(rolesRequired);
 
- 
-  let totalSlots = 0;
-  for (const role of rolesRequired) {
-    totalSlots += role.totalSlots;
-  }
-  if (totalSlots > 100) {
-    const err = new Error('Total slots cannot exceed 100');
-    err.status = 400;
-    throw err;
-  }
+  const totalSlots = rolesRequired.reduce((sum, r) => sum + r.totalSlots, 0);
+  if (totalSlots > 100)
+    throw new AppError('Total slots cannot exceed 100', 400);
 
-
-  const preparedRoles = [];
-  for (const role of rolesRequired) {
-    preparedRoles.push({
-      roleName: role.roleName,
-      totalSlots: role.totalSlots,
-      filledSlots: 0,
-      requiredSkills: role.requiredSkills || []
-    });
-  }
+  const inviteToken = crypto.randomBytes(16).toString('hex');
 
   const project = new Project({
     title,
     description,
-    owner: ownerId,
+    owner:         ownerId,
     startDate,
     duration,
-    status: status || 'Recruiting',
-    rolesRequired: preparedRoles,
-    members: [],
+    status:        status || 'Recruiting',
+    rolesRequired: prepareRoles(rolesRequired),
+    isPrivate:     !!isPrivate,
+    inviteToken,
+    members:       [],
+    joinRequests:  [],
   });
 
   await project.save();
-  await project.populate({ path: 'owner', select: 'email' });
+  await project.populate({ path: 'owner', select: 'email username avatar' });
   return project;
 }
 
-// GET ALL PROJECTS WITH FILTERS
-async function getAllProjects(filters = {}, page = 1, limit = 10) {
-  const query = {};
+// ─────────────────────────────────────────
+// GET ALL PROJECTS — public discovery
+// ─────────────────────────────────────────
 
-  // Add status filter
+async function getAllProjects(filters = {}, page = 1, limit = 10, userId = null) {
+  // Base condition: public projects OR user's own/joined projects
+  const orConditions = [{ isPrivate: false }];
+  if (userId) {
+    const uid = new mongoose.Types.ObjectId(String(userId));
+    orConditions.push({ owner: uid });
+    orConditions.push({ 'members.userId': uid });
+  }
+  const query = { $or: orConditions };
+
   if (filters.status) {
-    const validStatuses = ['active', 'paused', 'completed'];
-    if (!validStatuses.includes(filters.status)) {
-      const err = new Error(`Invalid status. Use: ${validStatuses.join(', ')}`);
-      err.status = 400;
-      throw err;
-    }
+    const valid = ['Recruiting', 'In-Progress', 'Completed'];
+    if (!valid.includes(filters.status))
+      throw new AppError(`Invalid status. Use: ${valid.join(', ')}`, 400);
     query.status = filters.status;
   }
 
-  // Add role name search (case-insensitive)
-  if (filters.roleName) {
+  if (filters.roleName)
     query['rolesRequired.roleName'] = { $regex: filters.roleName, $options: 'i' };
-  }
 
-  // Calculate skip for pagination
   const skip = (page - 1) * limit;
 
-  // Get projects and total count
-  const projects = await Project.find(query)
-    .populate('owner', 'email')
-    .populate('members.userId', 'email')
-    .skip(skip)
-    .limit(limit)
-    .sort({ createdAt: -1 });
+  const [result] = await Project.aggregate([
+    { $match: query },
+    {
+      $facet: {
+        data:  [{ $sort: { createdAt: -1 } }, { $skip: skip }, { $limit: limit }],
+        total: [{ $count: 'count' }],
+      },
+    },
+  ]);
 
-  const total = await Project.countDocuments(query);
+  const projects = await Project.populate(result.data, [
+    { path: 'owner', select: 'email username avatar' },
+  ]);
 
   return {
     projects,
-    total,
+    total:      result.total[0]?.count || 0,
     page,
     limit,
-    totalPages: Math.ceil(total / limit),
+    totalPages: Math.ceil((result.total[0]?.count || 0) / limit),
   };
 }
 
+// ─────────────────────────────────────────
 // GET SINGLE PROJECT
-async function getProjectById(projectId) {
-  // Basic ObjectId validation
-  if (!projectId || projectId.length !== 24) {
-    const err = new Error('Invalid project ID');
-    err.status = 400;
-    throw err;
-  }
+// ─────────────────────────────────────────
+
+async function getProjectById(projectId, userId = null) {
+  validateObjectId(projectId, 'project ID');
 
   const project = await Project.findById(projectId)
-    .populate('owner', 'email username avatar')
+    .populate('owner',          'email username avatar')
     .populate('members.userId', 'email username avatar');
 
-  if (!project) {
-    const err = new Error('Project not found');
-    err.status = 404;
-    throw err;
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (project.isPrivate && userId) {
+    const isOwner  = String(project.owner._id) === String(userId);
+    const isMember = project.members.some(
+      (m) => String(m.userId._id || m.userId) === String(userId)
+    );
+    if (!isOwner && !isMember)
+      throw new AppError('This project is private', 403);
+  }
+
+  // Ensure ALL projects eventually get an inviteToken to allow sharing
+  if (!project.inviteToken || project.inviteToken === null) {
+    project.inviteToken = crypto.randomBytes(16).toString('hex');
+    await project.save();
   }
 
   return project;
 }
 
-// JOIN PROJECT
-async function joinProject(projectId, userId, roleName) {
-  // Validate project ID
-  if (!projectId || projectId.length !== 24) {
-    const err = new Error('Invalid project ID');
-    err.status = 400;
-    throw err;
-  }
+// ─────────────────────────────────────────
+// GET PROJECT BY INVITE TOKEN
+// ─────────────────────────────────────────
+
+async function getProjectByInviteToken(token) {
+  if (!token) throw new AppError('Invite token is required', 400);
+
+  const project = await Project.findOne({ inviteToken: token })
+    .populate('owner', 'email username avatar');
+
+  if (!project) throw new AppError('Invalid or expired invite link', 404);
+  return project;
+}
+
+// ─────────────────────────────────────────
+// REQUEST TO JOIN — public projects
+// ─────────────────────────────────────────
+
+async function requestToJoin(projectId, userId, roleName) {
+  validateObjectId(projectId, 'project ID');
 
   const project = await Project.findById(projectId);
-  if (!project) {
-    const err = new Error('Project not found');
-    err.status = 404;
-    throw err;
-  }
+  if (!project) throw new AppError('Project not found', 404);
 
-  // Check project status - only recruiting projects accept joins
-  if (project.status !== 'Recruiting') {
-    const err = new Error(`Cannot join project with status: ${project.status}`);
-    err.status = 400;
-    throw err;
-  }
+  if (project.isPrivate)
+    throw new AppError('Use the invite link to join a private project', 400);
 
-  // Find the role in project
-  let roleFound = null;
-  let roleIndex = -1;
-  for (let i = 0; i < project.rolesRequired.length; i++) {
-    if (project.rolesRequired[i].roleName.toLowerCase() === roleName.toLowerCase()) {
-      roleFound = project.rolesRequired[i];
-      roleIndex = i;
-      break;
-    }
-  }
+  if (project.status !== 'Recruiting')
+    throw new AppError(`Cannot join a project with status: ${project.status}`, 400);
 
-  if (!roleFound) {
-    const err = new Error(`Role "${roleName}" not available in this project`);
-    err.status = 400;
-    throw err;
-  }
+  const alreadyIn = await Project.findOne({ 'members.userId': userId }, 'title').lean();
+  if (alreadyIn)
+    throw new AppError(
+      `You are already a member of "${alreadyIn.title}". Complete it before joining another.`,
+      400
+    );
 
-  // Check if slots available
-  if (roleFound.filledSlots >= roleFound.totalSlots) {
-    const err = new Error(`No available slots for ${roleName}`);
-    err.status = 400;
-    throw err;
-  }
+  const alreadyRequested = (project.joinRequests || []).some(
+    (r) => String(r.userId) === String(userId) && r.status === 'pending'
+  );
+  if (alreadyRequested)
+    throw new AppError('You already have a pending request for this project', 400);
 
-  // Check skill eligibility
-  const eligibility = await skillService.checkSkillEligibility(userId, roleFound.requiredSkills);
-  if (!eligibility.eligible) {
-    const err = new Error(`Skill requirements not met: ${eligibility.reasons.join(', ')}`);
-    err.status = 400;
-    throw err;
-  }
+  const role = project.rolesRequired.find(
+    (r) => r.roleName.toLowerCase() === roleName.toLowerCase()
+  );
+  if (!role)
+    throw new AppError(`Role "${roleName}" is not available in this project`, 400);
 
-  // Check if user already joined
-  for (const member of project.members) {
-    if (member.userId.toString() === userId.toString()) {
-      const err = new Error('You already joined this project');
-      err.status = 400;
-      throw err;
-    }
-  }
+  if (role.filledSlots >= role.totalSlots)
+    throw new AppError(`No available slots for "${roleName}"`, 400);
 
-  // Enforce one project per user
-  const alreadyInProject = await Project.findOne({ 'members.userId': userId });
-  if (alreadyInProject) {
-    const err = new Error(`You are already a member of "${alreadyInProject.title}". Complete that project before joining another.`);
-    err.status = 400;
-    throw err;
-  }
-
-  // Add user to members
-  project.members.push({
+  project.joinRequests.push({
     userId,
     roleName,
-    joinedAt: new Date(),
+    status:      'pending',
+    requestedAt: new Date(),
   });
+  await project.save();
 
-  // Increase filled slots
-  project.rolesRequired[roleIndex].filledSlots += 1;
+  return { ok: true, message: 'Join request sent — waiting for owner approval' };
+}
 
-  // Check if all slots are filled - if yes, change status to In-Progress
-  let allFilled = true;
-  for (const role of project.rolesRequired) {
-    if (role.filledSlots < role.totalSlots) {
-      allFilled = false;
-      break;
+// ─────────────────────────────────────────
+// JOIN VIA INVITE LINK — private projects
+// ─────────────────────────────────────────
+
+async function joinViaInvite(token, userId, roleName) {
+  if (!token) throw new AppError('Invite token is required', 400);
+
+  const project = await Project.findOne({ inviteToken: token });
+  if (!project) throw new AppError('Invalid or expired invite link', 404);
+
+  if (project.status !== 'Recruiting')
+    throw new AppError(`Cannot join a project with status: ${project.status}`, 400);
+
+  const alreadyIn = await Project.findOne({ 'members.userId': userId }, 'title').lean();
+  if (alreadyIn)
+    throw new AppError(
+      `You are already a member of "${alreadyIn.title}". Complete it before joining another.`,
+      400
+    );
+
+  const role = project.rolesRequired.find(
+    (r) => r.roleName.toLowerCase() === roleName.toLowerCase()
+  );
+  if (!role)
+    throw new AppError(`Role "${roleName}" is not available in this project`, 400);
+
+  if (role.filledSlots >= role.totalSlots)
+    throw new AppError(`No available slots for "${roleName}"`, 400);
+
+  const updated = await Project.findOneAndUpdate(
+    {
+      _id:              project._id,
+      inviteToken:      token,
+      'members.userId': { $ne: userId },
+      rolesRequired: {
+        $elemMatch: {
+          roleName: { $regex: new RegExp(`^${roleName}$`, 'i') },
+          $expr:    { $lt: ['$filledSlots', '$totalSlots'] },
+        },
+      },
+    },
+    {
+      $push: { members: { userId, roleName, joinedAt: new Date() } },
+      $inc:  { 'rolesRequired.$[role].filledSlots': 1 },
+    },
+    {
+      arrayFilters: [{ 'role.roleName': { $regex: new RegExp(`^${roleName}$`, 'i') } }],
+      new: true,
     }
+  );
+
+  if (!updated)
+    throw new AppError('Could not join — slot just filled or already a member', 400);
+
+  await _checkAndActivate(updated);
+
+  await updated.populate([
+    { path: 'owner',          select: 'email username avatar' },
+    { path: 'members.userId', select: 'email username avatar' },
+  ]);
+
+  return updated;
+}
+
+// ─────────────────────────────────────────
+// HANDLE JOIN REQUEST — owner accepts / rejects
+// ─────────────────────────────────────────
+
+async function handleJoinRequest(projectId, requestId, action, ownerId) {
+  validateObjectId(projectId, 'project ID');
+  validateObjectId(requestId,  'request ID');
+
+  if (!['accept', 'reject'].includes(action))
+    throw new AppError('Action must be "accept" or "reject"', 400);
+
+  const project = await Project.findById(projectId);
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (String(project.owner) !== String(ownerId))
+    throw new AppError('Only the project owner can handle join requests', 403);
+
+  const request = (project.joinRequests || []).find(
+    (r) => String(r._id) === String(requestId) && r.status === 'pending'
+  );
+  if (!request) throw new AppError('Join request not found or already handled', 404);
+
+  if (action === 'reject') {
+    request.status = 'rejected';
+    await project.save();
+    return { ok: true, message: 'Request rejected' };
   }
-  if (allFilled) {
-    project.status = 'In-Progress';
-  }
+
+  // Accept — تحقق إن الـ slot لسه متاح
+  const role = project.rolesRequired.find(
+    (r) => r.roleName.toLowerCase() === request.roleName.toLowerCase()
+  );
+  if (!role || role.filledSlots >= role.totalSlots)
+    throw new AppError('No available slots for this role anymore', 400);
+
+  const alreadyIn = await Project.findOne(
+    { 'members.userId': request.userId, _id: { $ne: projectId } },
+    'title'
+  ).lean();
+  if (alreadyIn)
+    throw new AppError(`User is already a member of "${alreadyIn.title}"`, 400);
+
+  request.status = 'accepted';
+  project.members.push({ userId: request.userId, roleName: request.roleName, joinedAt: new Date() });
+  role.filledSlots += 1;
 
   await project.save();
+  await _checkAndActivate(project);
+
   await project.populate([
-    { path: 'owner', select: 'email' },
-    { path: 'members.userId', select: 'email' },
+    { path: 'owner',          select: 'email username avatar' },
+    { path: 'members.userId', select: 'email username avatar' },
   ]);
+
   return project;
 }
 
+// ─────────────────────────────────────────
+// GET JOIN REQUESTS — owner only
+// ─────────────────────────────────────────
+
+async function getJoinRequests(projectId, ownerId) {
+  validateObjectId(projectId, 'project ID');
+
+  const project = await Project.findById(projectId)
+    .select('owner joinRequests')
+    .populate('joinRequests.userId', 'email username avatar');
+
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (String(project.owner) !== String(ownerId))
+    throw new AppError('Only the project owner can view join requests', 403);
+
+  return (project.joinRequests || []).filter((r) => r.status === 'pending');
+}
+
+// ─────────────────────────────────────────
 // UPDATE PROJECT
+// ─────────────────────────────────────────
+
 async function updateProject(projectId, updates, userId) {
-  // Validate project ID
-  if (!projectId || projectId.length !== 24) {
-    const err = new Error('Invalid project ID');
-    err.status = 400;
-    throw err;
-  }
+  validateObjectId(projectId, 'project ID');
 
-  const project = await Project.findById(projectId);
-  if (!project) {
-    const err = new Error('Project not found');
-    err.status = 404;
-    throw err;
-  }
+  const project = await Project.findById(projectId).select('owner status rolesRequired');
+  if (!project) throw new AppError('Project not found', 404);
 
-  // Only owner can update
-  if (project.owner.toString() !== userId.toString()) {
-    const err = new Error('Only project owner can update');
-    err.status = 403;
-    throw err;
-  }
+  if (project.owner.toString() !== userId.toString())
+    throw new AppError('Only the project owner can update', 403);
 
-  // Cannot update roles if project is not recruiting
-  if (updates.rolesRequired && project.status !== 'Recruiting') {
-    const err = new Error(`Cannot modify roles when project is ${project.status}`);
-    err.status = 400;
-    throw err;
-  }
+  if (updates.rolesRequired && project.status !== 'Recruiting')
+    throw new AppError(`Cannot modify roles when project is ${project.status}`, 400);
 
-  // Update allowed fields
-  if (updates.title) {
-    project.title = updates.title;
-  }
-
-  if (updates.description) {
-    project.description = updates.description;
-  }
-
-  if (updates.startDate) {
-    project.startDate = updates.startDate;
-  }
-
-  if (updates.duration) {
-    project.duration = updates.duration;
+  const payload = {};
+  for (const field of ['title', 'description', 'startDate', 'duration']) {
+    if (updates[field] !== undefined) payload[field] = updates[field];
   }
 
   if (updates.status) {
-    const validStatuses = ['Recruiting', 'In-Progress', 'Completed'];
-    if (!validStatuses.includes(updates.status)) {
-      const err = new Error(`Invalid status. Use: ${validStatuses.join(', ')}`);
-      err.status = 400;
-      throw err;
-    }
-    project.status = updates.status;
+    const valid = ['Recruiting', 'In-Progress', 'Completed'];
+    if (!valid.includes(updates.status))
+      throw new AppError(`Invalid status. Use: ${valid.join(', ')}`, 400);
+    payload.status = updates.status;
   }
 
   if (updates.rolesRequired) {
-    // Check for duplicate roles
-    const roleNames = {};
-    for (const role of updates.rolesRequired) {
-      const name = role.roleName.toLowerCase();
-      if (roleNames[name]) {
-        const err = new Error('Duplicate role names not allowed');
-        err.status = 400;
-        throw err;
-      }
-      roleNames[name] = true;
-    }
-
-    // Check that new slots are not less than filled slots
+    checkDuplicateRoles(updates.rolesRequired);
     for (const newRole of updates.rolesRequired) {
-      const oldRole = project.rolesRequired.find(r => r.roleName === newRole.roleName);
-      if (oldRole && newRole.totalSlots < oldRole.filledSlots) {
-        const err = new Error(`Cannot reduce slots below ${oldRole.filledSlots} (current filled)`);
-        err.status = 400;
-        throw err;
-      }
+      const oldRole = project.rolesRequired.find(
+        (r) => r.roleName.toLowerCase() === newRole.roleName.toLowerCase()
+      );
+      if (oldRole && newRole.totalSlots < oldRole.filledSlots)
+        throw new AppError(
+          `Cannot reduce slots below ${oldRole.filledSlots} (current filled) for "${newRole.roleName}"`,
+          400
+        );
     }
-
-    project.rolesRequired = updates.rolesRequired;
+    payload.rolesRequired = updates.rolesRequired;
   }
 
-  await project.save();
-  await project.populate({ path: 'owner', select: 'email' });
-  return project;
+  return Project.findByIdAndUpdate(projectId, { $set: payload }, { new: true })
+    .populate('owner', 'email username avatar');
 }
 
+// ─────────────────────────────────────────
 // DELETE PROJECT
+// ─────────────────────────────────────────
+
 async function deleteProject(projectId, userId) {
-  // Validate project ID
-  if (!projectId || projectId.length !== 24) {
-    const err = new Error('Invalid project ID');
-    err.status = 400;
-    throw err;
-  }
+  validateObjectId(projectId, 'project ID');
 
-  const project = await Project.findById(projectId);
-  if (!project) {
-    const err = new Error('Project not found');
-    err.status = 404;
-    throw err;
-  }
+  const project = await Project.findById(projectId).select('owner status members');
+  if (!project) throw new AppError('Project not found', 404);
 
-  // Only owner can delete
-  if (project.owner.toString() !== userId.toString()) {
-    const err = new Error('Only project owner can delete');
-    err.status = 403;
-    throw err;
-  }
+  if (project.owner.toString() !== userId.toString())
+    throw new AppError('Only the project owner can delete', 403);
 
-  // Cannot delete completed projects
-  if (project.status === 'Completed') {
-    const err = new Error('Cannot delete completed projects');
-    err.status = 400;
-    throw err;
-  }
+  if (project.status === 'Completed')
+    throw new AppError('Cannot delete completed projects', 400);
 
-  // Cannot delete if members exist
-  if (project.members.length > 0) {
-    const err = new Error('Cannot delete project with members');
-    err.status = 400;
-    throw err;
-  }
+  if (project.members.length > 0)
+    throw new AppError('Cannot delete a project that has members', 400);
 
   await Project.deleteOne({ _id: projectId });
   return { ok: true };
 }
 
+// ─────────────────────────────────────────
 // GET PROJECT MEMBERS
+// ─────────────────────────────────────────
+
 async function getProjectMembers(projectId) {
-  if (!projectId || projectId.length !== 24) {
-    const err = new Error('Invalid project ID');
-    err.status = 400;
-    throw err;
-  }
+  validateObjectId(projectId, 'project ID');
 
-  const project = await Project.findById(projectId)
-    .populate('members.userId', 'email username avatar xp level reliabilityScore');
+  const project = await Project.findById(projectId).populate(
+    'members.userId',
+    'email username avatar level totalXP reliabilityScore'
+  );
+  if (!project) throw new AppError('Project not found', 404);
 
-  if (!project) {
-    const err = new Error('Project not found');
-    err.status = 404;
-    throw err;
-  }
-
-  return project.members.map(m => ({
-    user: m.userId,
-    role: m.roleName,
-    joinedAt: m.joinedAt
+  return project.members.map((m) => ({
+    user:     m.userId,
+    role:     m.roleName,
+    joinedAt: m.joinedAt,
   }));
 }
+
+// ─────────────────────────────────────────
+// Exports
+// ─────────────────────────────────────────
 
 module.exports = {
   createProject,
   getAllProjects,
   getProjectById,
-  joinProject,
+  getProjectByInviteToken,
+  requestToJoin,
+  joinViaInvite,
+  handleJoinRequest,
+  getJoinRequests,
   updateProject,
   deleteProject,
   getProjectMembers,

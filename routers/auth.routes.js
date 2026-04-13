@@ -25,6 +25,10 @@ router.post('/login', loginLimiter, [
 	body('password').notEmpty().withMessage('Password required'),
 ], validation, authController.login);
 
+router.post('/google', loginLimiter, [
+	body('idToken').isString().notEmpty().withMessage('Google ID token required'),
+], validation, authController.googleLogin);
+
 const { requireAuth } = require('../middlewares/auth.middleware');
 
 router.post('/logout', requireAuth, authController.logout);

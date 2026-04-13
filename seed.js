@@ -4,7 +4,7 @@ const User = require('./models/user.model');
 const Project = require('./models/project.model');
 const Task = require('./models/task.model');
 const Skill = require('./models/skill.model');
-const UserSkill = require('./models/userSkill.model');
+
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/jobxp';
 const skillLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
@@ -32,7 +32,7 @@ async function seed() {
         await Task.deleteMany({});
         await User.deleteMany({});
         await Project.deleteMany({});
-        await UserSkill.deleteMany({});
+        
         console.log('cleared db');
 
         // Create Admin
@@ -64,21 +64,6 @@ async function seed() {
             users.push(user);
         }
         console.log('created 5 users');
-
-        // Create Skills
-        const skills = await Skill.find();
-        if (skills.length > 0) {
-            // Assign random skills to users
-            for (const user of users) {
-                const skill = skills[Math.floor(Math.random() * skills.length)];
-                await UserSkill.create({
-                    user: user._id,
-                    skill: skill._id,
-                    level: Math.floor(Math.random() * 5) + 1,
-                    isVerified: Math.random() > 0.5
-                });
-            }
-        }
 
         // Create Projects
         const project1 = await Project.create({

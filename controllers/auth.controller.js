@@ -23,6 +23,13 @@ const login = asyncWrapper(async (req, res) => {
 	return success(res, data, 'Logged in');
 });
 
+const googleLogin = asyncWrapper(async (req, res) => {
+	const { idToken } = req.body;
+	if (!idToken) return error(res, 'Google ID token required', 400);
+	const data = await authService.googleLogin(idToken);
+	return success(res, data, 'Logged in with Google');
+});
+
 const logout = asyncWrapper(async (req, res) => {
 	const token = req.token || (req.headers.authorization && req.headers.authorization.slice(7));
 	if (!token) return error(res, 'Missing token', 400);
@@ -52,4 +59,4 @@ const changePassword = asyncWrapper(async (req, res) => {
 	return success(res, {}, 'Password changed');
 });
 
-module.exports = { signup, verifyEmail, login, logout, requestPasswordReset, resetPassword, changePassword };
+module.exports = { signup, verifyEmail, login, googleLogin, logout, requestPasswordReset, resetPassword, changePassword };
