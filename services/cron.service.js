@@ -16,27 +16,47 @@ async function checkDeadlines() {
     try {
         const now = new Date();
 
-        // Find tasks that are NOT done and deadline has passed
-        const overdueTasks = await Task.find({
-            status: { $in: ['Todo', 'In-Progress'] },
-            deadline: { $lt: now }
-        }).populate('assignedTo');
-
-        for (const task of overdueTasks) {
-            if (!task.assignedTo) continue;
-
-            // Apply penalty if not already penalized today (to avoid double counting, though this simple logic just hits them once per run)
-            // Ideally we'd have a 'penalized' flag, but for now we reduce reliability
-
-            const user = await User.findById(task.assignedTo._id);
-            if (user) {
-                // Decrease reliability score by 5 (min 0)
-                user.reliabilityScore = Math.max(0, (user.reliabilityScore || 100) - 5);
-                await user.save();
-
-                console.log(`Penalty applied to user ${user.email} for overdue task: ${task.title}`);
+        const penalties = await Task.aggregate([
+            {
+                $match: {
+                    status: { $in: ['Todo', 'In-Progress'] },
+                    deadline: { $lt: now },
+                    assignedTo: { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: '$assignedTo',
+                    overdueCount: { $sum: 1 }
+                }
             }
-        }
+        ]);
+
+        if (penalties.length === 0) return;
+
+        const updates = penalties.map((entry) => {
+            const penaltyAmount = (entry.overdueCount || 0) * 5;
+            return {
+                updateOne: {
+                    filter: { _id: entry._id },
+                    update: [
+                        {
+                            $set: {
+                                reliabilityScore: {
+                                    $max: [
+                                        0,
+                                        { $subtract: [{ $ifNull: ['$reliabilityScore', 100] }, penaltyAmount] }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            };
+        });
+
+        await User.bulkWrite(updates, { ordered: false });
+        console.log(`Deadline penalties applied for ${updates.length} users.`);
     } catch (err) {
         console.error('Error in deadline check:', err);
     }

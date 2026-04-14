@@ -54,48 +54,73 @@ exports.getMessages = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 exports.getConversations = asyncWrapper(async (req, res) => {
   const currentUserId = req.user._id;
+  const { page = 1, limit = 30 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 30));
+  const currentUserObjectId = currentUserId;
 
-  // Find all messages where user is sender or receiver
-  const messages = await DirectMessage.find({
-    $or: [{ sender: currentUserId }, { receiver: currentUserId }],
-  }).sort({ createdAt: -1 });
+  const [groupedConversations, unreadSummary] = await Promise.all([
+    DirectMessage.aggregate([
+      { $match: { $or: [{ sender: currentUserObjectId }, { receiver: currentUserObjectId }] } },
+      {
+        $project: {
+          sender: 1,
+          receiver: 1,
+          content: 1,
+          createdAt: 1,
+          read: 1,
+          otherUserId: {
+            $cond: [{ $eq: ['$sender', currentUserObjectId] }, '$receiver', '$sender'],
+          },
+          unreadFromOther: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$receiver', currentUserObjectId] },
+                  { $eq: ['$read', false] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$otherUserId',
+          latestMessage: { $first: '$content' },
+          timestamp: { $first: '$createdAt' },
+          unreadCount: { $sum: '$unreadFromOther' },
+        },
+      },
+      { $sort: { timestamp: -1 } },
+      { $skip: (pageNum - 1) * limitNum },
+      { $limit: limitNum },
+    ]),
+    DirectMessage.aggregate([
+      { $match: { receiver: currentUserObjectId, read: false } },
+      { $group: { _id: null, total: { $sum: 1 } } },
+    ]),
+  ]);
 
-  // Group by other user to get latest message per conversation
-  const conversationsMap = new Map();
-  let unreadTotal = 0;
+  const userIds = groupedConversations.map((conversation) => conversation._id);
+  const users = await User.find({ _id: { $in: userIds } })
+    .select('username email avatar')
+    .lean();
+  const userById = new Map(users.map((user) => [String(user._id), user]));
 
-  for (const msg of messages) {
-    const isSender = msg.sender.toString() === currentUserId.toString();
-    const otherUserId = isSender ? msg.receiver.toString() : msg.sender.toString();
+  const conversations = groupedConversations
+    .map((conversation) => ({
+      user: userById.get(String(conversation._id)) || null,
+      latestMessage: conversation.latestMessage,
+      timestamp: conversation.timestamp,
+      unreadCount: conversation.unreadCount,
+    }))
+    .filter((conversation) => !!conversation.user);
 
-    if (!conversationsMap.has(otherUserId)) {
-      conversationsMap.set(otherUserId, {
-        userId: otherUserId,
-        latestMessage: msg.content,
-        timestamp: msg.createdAt,
-        unreadCount: (!isSender && !msg.read) ? 1 : 0,
-      });
-    } else {
-      if (!isSender && !msg.read) {
-        conversationsMap.get(otherUserId).unreadCount += 1;
-      }
-    }
-  }
-
-  // Fetch user details for all other users
-  const userIds = Array.from(conversationsMap.keys());
-  const users = await User.find({ _id: { $in: userIds } }).select('username email avatar');
-
-  const conversations = users.map((user) => {
-    const data = conversationsMap.get(user._id.toString());
-    unreadTotal += data.unreadCount;
-    return {
-      user,
-      latestMessage: data.latestMessage,
-      timestamp: data.timestamp,
-      unreadCount: data.unreadCount,
-    };
-  }).sort((a, b) => b.timestamp - a.timestamp);
+  const unreadTotal = unreadSummary[0]?.total || 0;
 
   return success(res, { conversations, unreadTotal }, 'Conversations retrieved');
 });

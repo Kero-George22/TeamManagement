@@ -81,5 +81,9 @@ const SubmissionSchema = new mongoose.Schema({
 SubmissionSchema.index({ user: 1, task: 1 });
 SubmissionSchema.index({ status: 1 });
 SubmissionSchema.index({ project: 1 });
+SubmissionSchema.index({ createdAt: -1 });
+SubmissionSchema.index({ status: 1, reviewStatus: 1, createdAt: -1 });
+SubmissionSchema.index({ user: 1, createdAt: -1 });
+SubmissionSchema.index({ project: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Submission', SubmissionSchema);

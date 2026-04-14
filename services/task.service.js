@@ -13,6 +13,10 @@ function normalizeRole(role) {
   return String(role || '').trim().toLowerCase();
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function validateObjectId(id, label = 'ID') {
   if (!mongoose.Types.ObjectId.isValid(id))
     throw new AppError(`Invalid ${label}`, 400);
@@ -121,17 +125,22 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 
   const project = await ensureProjectAccess(projectId, userId, isAdmin);
 
-  const tasks = await Task.find({ project: projectId })
+  const isOwner = String(project.owner || '') === String(userId);
+  const query = { project: projectId };
+
+  if (!isAdmin && !isOwner) {
+    const member = getMembership(project, userId);
+    if (!member?.roleName) return [];
+
+    query.$or = [
+      { assignedTo: userId },
+      { assignedRole: { $regex: new RegExp(`^${escapeRegex(member.roleName)}$`, 'i') } },
+    ];
+  }
+
+  return Task.find(query)
     .populate('assignedTo', 'email username avatar')
     .sort({ createdAt: -1 });
-
-  const isOwner = String(project.owner || '') === String(userId);
-  if (isAdmin || isOwner) return tasks;
-
-  const member = getMembership(project, userId);
-  return tasks.filter((task) =>
-    isTaskVisibleToMember(task, userId, member?.roleName)
-  );
 }
 
 // ─────────────────────────────────────────
@@ -156,45 +165,59 @@ async function getDashboardTasks(userId, isAdmin = false) {
 
   if (accessibleProjects.length === 0) return [];
 
-  const projectMetaById = new Map();
-  for (const project of accessibleProjects) {
-    const id = String(project._id);
-    const isOwner = String(project.owner || '') === String(userId);
-    const member = (project.members || []).find(
-      (m) => String(m.userId) === String(userId)
-    );
+  const projectMetaById = new Map(
+    accessibleProjects.map((project) => [
+      String(project._id),
+      { projectRef: { _id: project._id, title: project.title } },
+    ])
+  );
 
-    projectMetaById.set(id, {
-      projectRef: { _id: project._id, title: project.title },
-      isOwner,
-      memberRole: member?.roleName || null,
-    });
+  let taskQuery = { project: { $in: accessibleProjects.map((project) => project._id) } };
+
+  if (!isAdmin) {
+    const ownedProjectIds = [];
+    const membershipClauses = [];
+
+    for (const project of accessibleProjects) {
+      const projectId = project._id;
+      const isOwner = String(project.owner || '') === String(userId);
+      if (isOwner) {
+        ownedProjectIds.push(projectId);
+        continue;
+      }
+
+      const membership = (project.members || []).find(
+        (member) => String(member.userId) === String(userId)
+      );
+
+      if (membership?.roleName) {
+        membershipClauses.push({
+          project: projectId,
+          $or: [
+            { assignedTo: userId },
+            { assignedRole: { $regex: new RegExp(`^${escapeRegex(membership.roleName)}$`, 'i') } },
+          ],
+        });
+      } else {
+        membershipClauses.push({ project: projectId, assignedTo: userId });
+      }
+    }
+
+    const accessClauses = [];
+    if (ownedProjectIds.length > 0) accessClauses.push({ project: { $in: ownedProjectIds } });
+    if (membershipClauses.length > 0) accessClauses.push(...membershipClauses);
+    taskQuery = accessClauses.length > 0 ? { $or: accessClauses } : { _id: null };
   }
 
-  const projectIds = accessibleProjects.map((project) => project._id);
-  const tasks = await Task.find({ project: { $in: projectIds } })
+  const tasks = await Task.find(taskQuery)
     .populate('assignedTo', 'email username avatar')
     .sort({ createdAt: -1 })
     .lean();
 
-  if (isAdmin) {
-    return tasks.map((task) => ({
-      ...task,
-      projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
-    }));
-  }
-
-  return tasks
-    .filter((task) => {
-      const meta = projectMetaById.get(String(task.project));
-      if (!meta) return false;
-      if (meta.isOwner) return true;
-      return isTaskVisibleToMember(task, userId, meta.memberRole);
-    })
-    .map((task) => ({
-      ...task,
-      projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
-    }));
+  return tasks.map((task) => ({
+    ...task,
+    projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
+  }));
 }
 
 // ─────────────────────────────────────────

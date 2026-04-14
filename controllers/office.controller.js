@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Message = require('../models/message.model');
 const Project = require('../models/project.model');
 const Task = require('../models/task.model');
@@ -47,9 +48,16 @@ function buildFallbackStatus(project, taskStats) {
 }
 
 async function buildSharedReport(projectId) {
-  const [project, tasks] = await Promise.all([
+  const projectObjectId = mongoose.Types.ObjectId.isValid(projectId)
+    ? new mongoose.Types.ObjectId(String(projectId))
+    : null;
+
+  const [project, aggregatedTaskStats] = await Promise.all([
     Project.findById(projectId),
-    Task.find({ project: projectId }).lean()
+    Task.aggregate([
+      { $match: { project: projectObjectId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
   ]);
 
   if (!project) return null;
@@ -60,11 +68,19 @@ async function buildSharedReport(projectId) {
     project.officeReport?.generatedAt &&
     (now - new Date(project.officeReport.generatedAt).getTime()) < REPORT_TTL_MS;
 
+  const countByStatus = new Map(
+    aggregatedTaskStats.map((entry) => [String(entry._id || ''), entry.count || 0])
+  );
+  const doneCount = (countByStatus.get('Done') || 0) + (countByStatus.get('Approved') || 0) + (countByStatus.get('done') || 0);
+  const inProgressCount = countByStatus.get('In-Progress') || 0;
+  const totalCount = aggregatedTaskStats.reduce((sum, entry) => sum + (entry.count || 0), 0);
+  const pendingCount = Math.max(0, totalCount - doneCount - inProgressCount);
+
   const taskStats = {
-    total: tasks.length,
-    done: tasks.filter(t => t.status === 'done').length,
-    inProgress: tasks.filter(t => t.status === 'In-Progress').length,
-    pending: tasks.filter(t => !['done', 'In-Progress'].includes(t.status)).length,
+    total: totalCount,
+    done: doneCount,
+    inProgress: inProgressCount,
+    pending: pendingCount,
   };
 
   if (!hasFreshReport) {

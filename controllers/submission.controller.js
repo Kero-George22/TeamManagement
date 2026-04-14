@@ -39,23 +39,39 @@ const createSubmission = asyncWrapper(async (req, res) => {
  * Get submissions for review (admin/reviewer)
  */
 const getSubmissionsForReview = asyncWrapper(async (req, res) => {
-    const { status, reviewStatus } = req.query;
+    const { status, reviewStatus, page = 1, limit = 20 } = req.query;
 
     if (!req.user.isAdmin) {
         return error(res, 'Unauthorized', 403);
     }
 
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const query = {};
     if (status) query.status = status;
     if (reviewStatus) query.reviewStatus = reviewStatus;
 
-    const submissions = await Submission.find(query)
+    const [submissions, total] = await Promise.all([
+      Submission.find(query)
         .populate('user', 'username email')
         .populate('task', 'title description')
         .populate('project', 'title')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Submission.countDocuments(query),
+    ]);
 
-    return success(res, { submissions }, 'Submissions retrieved');
+    return success(res, {
+      submissions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    }, 'Submissions retrieved');
 });
 
 /**
@@ -158,17 +174,33 @@ const submitHumanReview = asyncWrapper(async (req, res) => {
  */
 const getUserSubmissions = asyncWrapper(async (req, res) => {
     const userId = req.user._id;
-    const { status } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
 
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const query = { user: userId };
     if (status) query.status = status;
 
-    const submissions = await Submission.find(query)
+    const [submissions, total] = await Promise.all([
+      Submission.find(query)
         .populate('task', 'title description')
         .populate('project', 'title')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Submission.countDocuments(query),
+    ]);
 
-    return success(res, { submissions }, 'User submissions retrieved');
+    return success(res, {
+      submissions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    }, 'User submissions retrieved');
 });
 
 /**

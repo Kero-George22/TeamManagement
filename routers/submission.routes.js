@@ -11,7 +11,6 @@ router.use(requireAuth);
 // User routes
 router.post('/', submissionController.createSubmission);
 router.get('/user/submissions', submissionController.getUserSubmissions);
-router.get('/:submissionId', submissionController.getSubmissionDetails);
 
 // Admin routes
 router.get('/admin/review', isAdmin, submissionController.getSubmissionsForReview);
@@ -20,5 +19,7 @@ router.post('/:submissionId/request-human-review', isAdmin, submissionController
 router.post('/:submissionId/human-review', isAdmin, submissionController.submitHumanReview);
 router.post('/:submissionId/approve', isAdmin, submissionController.approveSubmission);
 router.post('/:submissionId/reject', isAdmin, submissionController.rejectSubmission);
+
+router.get('/:submissionId', submissionController.getSubmissionDetails);
 
 module.exports = router;

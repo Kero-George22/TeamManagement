@@ -11,5 +11,8 @@ const DMSchema = new mongoose.Schema(
 );
 
 DMSchema.index({ sender: 1, receiver: 1 });
+DMSchema.index({ sender: 1, createdAt: -1 });
+DMSchema.index({ receiver: 1, createdAt: -1 });
+DMSchema.index({ receiver: 1, read: 1 });
 
 module.exports = mongoose.model('DirectMessage', DMSchema);
