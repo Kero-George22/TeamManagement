@@ -15,6 +15,9 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 // Project tasks
 // ─────────────────────────────────────────
 
+// GET /tasks/dashboard/overview — dashboard tasks in one call
+router.get('/dashboard/overview', requireAuth, taskController.getDashboardTasks);
+
 // GET  /tasks/:projectId         — all tasks for a project
 // POST /tasks/:projectId/generate — AI generates tasks
 router.get( '/:projectId',          requireAuth, taskController.getProjectTasks);

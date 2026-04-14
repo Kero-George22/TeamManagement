@@ -43,6 +43,14 @@ const getProjectTasks = asyncWrapper(async (req, res) => {
   return success(res, tasks, 'Tasks retrieved');
 });
 
+const getDashboardTasks = asyncWrapper(async (req, res) => {
+  const tasks = await taskService.getDashboardTasks(
+    req.user._id,
+    req.user.isAdmin
+  );
+  return success(res, { tasks }, 'Dashboard tasks retrieved');
+});
+
 // ─────────────────────────────────────────
 // GET SINGLE TASK
 // ─────────────────────────────────────────
@@ -172,6 +180,7 @@ const uploadAttachment = asyncWrapper(async (req, res) => {
 module.exports = {
   createTasksByAI,
   createTask,
+  getDashboardTasks,
   getProjectTasks,
   getTaskById,
   updateTask,

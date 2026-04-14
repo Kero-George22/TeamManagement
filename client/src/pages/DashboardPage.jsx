@@ -97,47 +97,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let isMounted = true;
-
-    if (!projects) {
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    if (loadingProjects && projects.length === 0) {
-      setAllTasks(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    if (projects.length === 0) {
-      setAllTasks([]);
-      return () => {
-        isMounted = false;
-      };
-    }
-
     setAllTasks(null);
 
     (async () => {
-      const collected = [];
-      await Promise.all(projects.map(async project => {
-        try {
-          const list = await API.tasks.list(project._id);
-          (list || []).forEach(task => collected.push({ ...task, projectRef: project }));
-        } catch {
-          // Ignore project-level task fetch failures so the rest of the dashboard can load.
-        }
-      }));
-
-      if (isMounted) setAllTasks(collected);
+      try {
+        const response = await API.tasks.dashboardOverview();
+        const tasks = response?.tasks || [];
+        if (isMounted) setAllTasks(tasks);
+      } catch {
+        if (isMounted) setAllTasks([]);
+      }
     })();
 
     return () => {
       isMounted = false;
     };
-  }, [projects, loadingProjects]);
+  }, [user?._id]);
 
   const dashboardStats = useMemo(() => {
     const list = projects || [];

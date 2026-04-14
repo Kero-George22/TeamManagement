@@ -99,6 +99,7 @@ const projects = {
 /* Tasks */
 const tasks = {
   list:     (projectId)       => get(`/tasks/${projectId}`),
+  dashboardOverview: ()       => get('/tasks/dashboard/overview'),
   create:   (projectId, data) => post(`/tasks/${projectId}`, data),
   generate: (projectId)       => post(`/tasks/${projectId}/generate`),
   get:      (taskId)          => get(`/tasks/task/${taskId}`),

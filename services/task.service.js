@@ -135,6 +135,69 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
+// DASHBOARD TASKS OVERVIEW (single request)
+// ─────────────────────────────────────────
+
+async function getDashboardTasks(userId, isAdmin = false) {
+  if (!isAdmin) validateObjectId(userId, 'user ID');
+
+  const projectQuery = isAdmin
+    ? {}
+    : {
+        $or: [
+          { owner: userId },
+          { 'members.userId': userId },
+        ],
+      };
+
+  const accessibleProjects = await Project.find(projectQuery)
+    .select('_id title owner members')
+    .lean();
+
+  if (accessibleProjects.length === 0) return [];
+
+  const projectMetaById = new Map();
+  for (const project of accessibleProjects) {
+    const id = String(project._id);
+    const isOwner = String(project.owner || '') === String(userId);
+    const member = (project.members || []).find(
+      (m) => String(m.userId) === String(userId)
+    );
+
+    projectMetaById.set(id, {
+      projectRef: { _id: project._id, title: project.title },
+      isOwner,
+      memberRole: member?.roleName || null,
+    });
+  }
+
+  const projectIds = accessibleProjects.map((project) => project._id);
+  const tasks = await Task.find({ project: { $in: projectIds } })
+    .populate('assignedTo', 'email username avatar')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (isAdmin) {
+    return tasks.map((task) => ({
+      ...task,
+      projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
+    }));
+  }
+
+  return tasks
+    .filter((task) => {
+      const meta = projectMetaById.get(String(task.project));
+      if (!meta) return false;
+      if (meta.isOwner) return true;
+      return isTaskVisibleToMember(task, userId, meta.memberRole);
+    })
+    .map((task) => ({
+      ...task,
+      projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
+    }));
+}
+
+// ─────────────────────────────────────────
 // GET SINGLE TASK
 // ─────────────────────────────────────────
 
@@ -340,6 +403,7 @@ async function deleteTask(taskId, userId, isAdmin = false) {
 module.exports = {
   createTasksByAI,
   createTask,
+  getDashboardTasks,
   getProjectTasks,
   getTaskById,
   updateTask,
