@@ -31,6 +31,18 @@ function prepareRoles(roles) {
   }));
 }
 
+function normalizeTaskStatuses(statuses) {
+  if (!Array.isArray(statuses)) return null;
+  const cleaned = statuses
+    .map((status) => String(status || '').trim())
+    .filter(Boolean);
+  const unique = [...new Set(cleaned)];
+  if (unique.length === 0) {
+    throw new AppError('taskStatuses must include at least one valid status', 400);
+  }
+  return unique;
+}
+
 async function _checkAndActivate(project) {
   const allFilled = project.rolesRequired.every((r) => r.filledSlots >= r.totalSlots);
   if (allFilled && project.status === 'Recruiting') {
@@ -44,7 +56,7 @@ async function _checkAndActivate(project) {
 // ─────────────────────────────────────────
 
 async function createProject(data, ownerId) {
-  const { title, description, startDate, duration, status, rolesRequired, isPrivate } = data;
+  const { title, description, startDate, duration, status, rolesRequired, isPrivate, taskStatuses } = data;
 
   checkDuplicateRoles(rolesRequired);
 
@@ -61,6 +73,7 @@ async function createProject(data, ownerId) {
     startDate,
     duration,
     status:        status || 'Recruiting',
+    taskStatuses:  normalizeTaskStatuses(taskStatuses) || ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'],
     rolesRequired: prepareRoles(rolesRequired),
     isPrivate:     !!isPrivate,
     inviteToken,
@@ -425,6 +438,10 @@ async function updateProject(projectId, updates, userId) {
         );
     }
     payload.rolesRequired = updates.rolesRequired;
+  }
+
+  if (updates.taskStatuses !== undefined) {
+    payload.taskStatuses = normalizeTaskStatuses(updates.taskStatuses);
   }
 
   return Project.findByIdAndUpdate(projectId, { $set: payload }, { new: true })

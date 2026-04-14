@@ -11,6 +11,7 @@ const UserSchema = new mongoose.Schema(
 
     verificationToken:         { type: String },
     verificationTokenExpires:  { type: Date },
+    pendingEmail:              { type: String, lowercase: true, trim: true },
     resetPasswordToken:        { type: String },
     resetPasswordTokenExpires: { type: Date },
 

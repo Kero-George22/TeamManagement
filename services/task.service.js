@@ -340,16 +340,38 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
   
   const project = await ensureProjectAccess(projectId, userId, isAdmin);
+  const projectDoc = await Project.findById(projectId).select('taskStatuses');
+  const allowedStatuses = projectDoc?.taskStatuses?.length
+    ? projectDoc.taskStatuses
+    : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+  const requestedStatus = taskData.status === 'Doing'
+    ? 'In-Progress'
+    : taskData.status === 'To do'
+      ? 'Todo'
+      : taskData.status;
+  const normalizedStatus = requestedStatus && allowedStatuses.includes(requestedStatus)
+    ? requestedStatus
+    : 'Todo';
+  const labels = Array.isArray(taskData.labels)
+    ? taskData.labels
+    : String(taskData.labels || '')
+        .split(',')
+        .map((label) => label.trim())
+        .filter(Boolean);
 
   const task = new Task({
     project: projectId,
     title: taskData.title || taskData.name || 'Untitled Task',
     description: taskData.description || '',
+    taskType: taskData.taskType || 'Task',
     assignedRole: taskData.assignedRole || 'Developer',
     assignedTo: taskData.assignedTo || null,
     priority: taskData.priority || 'Medium',
-    status: taskData.status === 'Doing' ? 'In-Progress' : taskData.status === 'Done' ? 'Done' : 'Todo',
+    status: normalizedStatus,
+    startDate: taskData.startDate || null,
     deadline: taskData.deadline || taskData.endDate || null,
+    storyPoints: Number.isFinite(Number(taskData.storyPoints)) ? Number(taskData.storyPoints) : 0,
+    labels,
   });
 
   await task.save();
@@ -368,6 +390,10 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
   if (!task) throw new AppError('Task not found', 404);
 
   const project = await ensureProjectAccess(task.project, userId, isAdmin);
+  const projectDoc = await Project.findById(task.project).select('taskStatuses');
+  const allowedStatuses = projectDoc?.taskStatuses?.length
+    ? projectDoc.taskStatuses
+    : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
   // Non-admins can only edit if assigned to them
   if (!isAdmin) {
@@ -382,16 +408,31 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
   if (updates.description !== undefined) task.description = updates.description;
   if (updates.assigneeId !== undefined) task.assignedTo = updates.assigneeId || null;
   if (updates.priority !== undefined) task.priority = updates.priority;
+  if (updates.taskType !== undefined) task.taskType = updates.taskType;
+  if (updates.startDate !== undefined) task.startDate = updates.startDate || null;
   if (updates.deadline !== undefined) task.deadline = updates.deadline;
   if (updates.endDate !== undefined) task.deadline = updates.endDate;
+  if (updates.storyPoints !== undefined) task.storyPoints = Number.isFinite(Number(updates.storyPoints)) ? Number(updates.storyPoints) : task.storyPoints;
+  if (updates.labels !== undefined) {
+    task.labels = Array.isArray(updates.labels)
+      ? updates.labels
+      : String(updates.labels || '')
+          .split(',')
+          .map((label) => label.trim())
+          .filter(Boolean);
+  }
   if (updates.assignedRole !== undefined) task.assignedRole = updates.assignedRole;
 
   // Handle section → status mapping
   if (updates.section) {
     const statusMap = { 'To do': 'Todo', 'Doing': 'In-Progress', 'Done': 'Done' };
-    task.status = statusMap[updates.section] || task.status;
+    const mappedStatus = statusMap[updates.section] || updates.section;
+    if (allowedStatuses.includes(mappedStatus)) task.status = mappedStatus;
   }
   if (updates.status !== undefined) {
+    if (!allowedStatuses.includes(updates.status)) {
+      throw new AppError('Invalid status for this project workflow', 400);
+    }
     task.status = updates.status;
   }
 

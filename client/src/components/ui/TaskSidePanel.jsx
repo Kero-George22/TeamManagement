@@ -36,7 +36,7 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
     // Optimistic update
     onTaskUpdate?.({ ...task, status: newStatus });
     try {
-      await API.tasks.status(task._id, newStatus);
+      await API.tasks.update(task._id, { status: newStatus });
       toast.success(`Status → "${newStatus}"`);
     } catch (e) {
       toast.error(e.message);

@@ -10,8 +10,8 @@ const getMyProfile = asyncWrapper(async (req, res) => {
 
 // PUT /profile/me
 const updateMyProfile = asyncWrapper(async (req, res) => {
-  const { username, avatar, bio } = req.body;
-  const updated = await profileService.updateProfile(req.user._id, { username, avatar, bio });
+  const { username, avatar, bio, email } = req.body;
+  const updated = await profileService.updateProfile(req.user._id, { username, avatar, bio, email });
   return success(res, updated, 'Profile updated successfully');
 });
 

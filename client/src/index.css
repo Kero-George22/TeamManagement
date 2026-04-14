@@ -1247,6 +1247,10 @@ body.dark .team-card {
 .kanban-card--orange { border-left: 4px solid var(--orange); }
 .kanban-card--green { border-left: 4px solid var(--green); }
 .kanban-card--pink { border-left: 4px solid var(--pink); }
+.kanban-card--teal { border-left: 4px solid #14b8a6; }
+.kanban-card--indigo { border-left: 4px solid #6366f1; }
+.kanban-card--cyan { border-left: 4px solid #06b6d4; }
+.kanban-card--yellow { border-left: 4px solid #f59e0b; }
 
 .kanban-card .task-tag,
 .kanban-card .task-meta-pill {
@@ -1297,6 +1301,54 @@ body.dark .team-card {
   min-height: 200px;
   box-shadow: 0 4px 20px rgba(0,0,0,.04);
   border: 1px solid rgba(0,0,0,.03);
+}
+
+.project-board-col {
+  background: linear-gradient(180deg, #16181d 0%, #0f1115 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 16px 34px rgba(0,0,0,.22);
+}
+
+.project-board-col.board-col--blue { border-top: 3px solid var(--blue); }
+.project-board-col.board-col--purple { border-top: 3px solid var(--purple); }
+.project-board-col.board-col--red { border-top: 3px solid var(--red); }
+.project-board-col.board-col--orange { border-top: 3px solid var(--orange); }
+.project-board-col.board-col--green { border-top: 3px solid var(--green); }
+.project-board-col.board-col--pink { border-top: 3px solid var(--pink); }
+.project-board-col.board-col--teal { border-top: 3px solid #14b8a6; }
+.project-board-col.board-col--indigo { border-top: 3px solid #6366f1; }
+.project-board-col.board-col--cyan { border-top: 3px solid #06b6d4; }
+.project-board-col.board-col--yellow { border-top: 3px solid #f59e0b; }
+
+.project-board-col .board-col__header {
+  color: #f8fafc;
+  margin-bottom: 12px;
+}
+
+.project-board-col .board-col__caret {
+  color: rgba(255,255,255,.55);
+}
+
+.project-kanban-card {
+  border-radius: 12px;
+  padding: 12px;
+  gap: 10px;
+  background: linear-gradient(180deg, #232831 0%, #1a1f27 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 8px 20px rgba(0,0,0,.18);
+}
+
+.project-inline-task-card {
+  background: rgba(255,255,255,.04);
+  border: 1px dashed rgba(255,255,255,.22);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.project-inline-task-card .form-input {
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.2);
+  color: #f8fafc;
 }
 
 .board-col__header {

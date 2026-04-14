@@ -11,16 +11,22 @@ import TaskSidePanel from '../components/ui/TaskSidePanel';
 import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
-const WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
 const PROJECT_STATUS_VARIANTS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'gray' };
 const PRIORITY_DOT = { High: 'priority-dot--high', Medium: 'priority-dot--medium', Low: 'priority-dot--low' };
-const BOARD_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink'];
+const BOARD_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink', 'teal', 'indigo', 'cyan', 'yellow'];
 
 function getProjectColor(projectId) {
   if (!projectId) return BOARD_COLORS[0];
   const sum = String(projectId).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return BOARD_COLORS[sum % BOARD_COLORS.length];
+}
+
+function getTaskCardColor(taskId, fallback = 'blue') {
+  if (!taskId) return fallback;
+  const sum = String(taskId).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return BOARD_COLORS[sum % BOARD_COLORS.length] || fallback;
 }
 
 export default function ProjectPage() {
@@ -48,9 +54,11 @@ export default function ProjectPage() {
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [editTitle, setEditTitle] = useState('');
+  const [newStatusName, setNewStatusName] = useState('');
 
   const isOwner = !!project && (project.owner?._id === user?._id || project.owner === user?._id);
   const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === user?._id);
+  const workflowStatuses = project?.taskStatuses?.length ? project.taskStatuses : DEFAULT_WORKFLOW_STATUSES;
 
   useEffect(() => {
     init();
@@ -109,17 +117,20 @@ export default function ProjectPage() {
 
   const groupedTasks = useMemo(() => {
     const groups = {};
-    WORKFLOW_STATUSES.forEach(status => {
+    workflowStatuses.forEach(status => {
       groups[status] = [];
     });
 
     filteredTasks.forEach(task => {
       if (groups[task.status]) groups[task.status].push(task);
-      else groups.Todo.push(task);
+      else {
+        if (!groups.Todo) groups.Todo = [];
+        groups.Todo.push(task);
+      }
     });
 
     return groups;
-  }, [filteredTasks]);
+  }, [filteredTasks, workflowStatuses]);
 
   const overviewStats = useMemo(() => {
     const total = tasks || [];
@@ -159,9 +170,15 @@ export default function ProjectPage() {
       await API.tasks.create(id, {
         title: formData.get('title'),
         description: formData.get('description'),
+        taskType: formData.get('taskType') || 'Task',
         assignedRole: formData.get('role') || 'Member',
+        assignedTo: formData.get('assignedTo') || null,
         priority: formData.get('priority'),
+        status: formData.get('status') || 'Todo',
+        startDate: formData.get('startDate') || undefined,
         deadline: formData.get('deadline') || undefined,
+        storyPoints: formData.get('storyPoints') || 0,
+        labels: formData.get('labels') || '',
       });
       toast.success('Task created!');
       setTaskModal(false);
@@ -186,6 +203,26 @@ export default function ProjectPage() {
       toast.error(error.message);
     } finally {
       setJoinLoading(false);
+    }
+  }
+
+  async function handleAddCustomStatus() {
+    const trimmed = newStatusName.trim();
+    if (!trimmed) return;
+    if (workflowStatuses.some(status => status.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('This status already exists');
+      return;
+    }
+
+    try {
+      const nextStatuses = [...workflowStatuses, trimmed];
+      const updated = await API.projects.update(id, { taskStatuses: nextStatuses });
+      const updatedProject = updated?.project || updated;
+      setProject(current => ({ ...(current || {}), ...(updatedProject || {}), taskStatuses: nextStatuses }));
+      setNewStatusName('');
+      toast.success('Custom status added');
+    } catch (error) {
+      toast.error(error.message || 'Failed to add status');
     }
   }
 
@@ -214,7 +251,7 @@ export default function ProjectPage() {
     handleTaskUpdate({ _id: draggedTask._id, status });
 
     try {
-      await API.tasks.status(draggedTask._id, status);
+      await API.tasks.update(draggedTask._id, { status });
     } catch {
       toast.error('Failed to update status');
       handleTaskUpdate({ _id: draggedTask._id, status: previousStatus });
@@ -445,6 +482,26 @@ export default function ProjectPage() {
                 </>
               )}
             </div>
+            {isOwner && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%', marginTop: 4 }}>
+                <input
+                  className="form-input"
+                  placeholder="Add custom status (e.g. Blocked)"
+                  value={newStatusName}
+                  onChange={event => setNewStatusName(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handleAddCustomStatus();
+                    }
+                  }}
+                  style={{ maxWidth: 280 }}
+                />
+                <button className="btn btn--outline btn--sm" onClick={handleAddCustomStatus}>
+                  <i className="fa-solid fa-plus" /> Add Status
+                </button>
+              </div>
+            )}
           </div>
 
           {tasks === null ? (
@@ -457,7 +514,7 @@ export default function ProjectPage() {
             </div>
           ) : taskView === 'list' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {WORKFLOW_STATUSES.map(status => (
+              {workflowStatuses.map(status => (
                 <div key={status} style={{ border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
                   <div className="task-list-section-header" style={{ margin: 0, borderRadius: 0 }}>
                     <h4>{status}</h4>
@@ -499,10 +556,10 @@ export default function ProjectPage() {
                             onChange={event => {
                               const nextStatus = event.target.value;
                               handleTaskUpdate({ _id: task._id, status: nextStatus });
-                              API.tasks.status(task._id, nextStatus).catch(() => handleTaskUpdate({ _id: task._id, status: task.status }));
+                              API.tasks.update(task._id, { status: nextStatus }).catch(() => handleTaskUpdate({ _id: task._id, status: task.status }));
                             }}
                           >
-                            {WORKFLOW_STATUSES.map(value => <option key={value} value={value}>{value}</option>)}
+                            {workflowStatuses.map(value => <option key={value} value={value}>{value}</option>)}
                           </select>
                         </div>
                       </div>
@@ -539,11 +596,11 @@ export default function ProjectPage() {
               ))}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-              {WORKFLOW_STATUSES.map(status => (
+            <div className="project-kanban-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+              {workflowStatuses.map((status, statusIndex) => (
                 <div
                   key={status}
-                  className="board-col"
+                  className={`board-col project-board-col board-col--${BOARD_COLORS[statusIndex % BOARD_COLORS.length]}`}
                   onDragOver={event => event.preventDefault()}
                   onDrop={event => handleDrop(event, status)}
                 >
@@ -556,11 +613,11 @@ export default function ProjectPage() {
                   </div>
 
                   {groupedTasks[status].length ? groupedTasks[status].map(task => {
-                    const color = getProjectColor(task.projectRef?._id);
+                    const color = getTaskCardColor(task._id, getProjectColor(task.projectRef?._id));
                     return (
                       <div
                         key={task._id}
-                        className={`kanban-card kanban-card--${color}`}
+                        className={`kanban-card project-kanban-card kanban-card--${color}`}
                         draggable={groupedTasks[status].length > 0}
                         onDragStart={event => {
                           setDraggedTask(task);
@@ -602,20 +659,22 @@ export default function ProjectPage() {
 
                   {isOwner && (
                     inlineAdding === status ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={inlineTitle}
-                        onChange={event => setInlineTitle(event.target.value)}
-                        onKeyDown={event => handleInlineCreate(event, status)}
-                        onBlur={() => {
-                          setInlineAdding(null);
-                          setInlineTitle('');
-                        }}
-                        placeholder="Task name"
-                        className="form-input"
-                        style={{ marginTop: 8 }}
-                      />
+                      <div className="project-inline-task-card">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={inlineTitle}
+                          onChange={event => setInlineTitle(event.target.value)}
+                          onKeyDown={event => handleInlineCreate(event, status)}
+                          onBlur={() => {
+                            setInlineAdding(null);
+                            setInlineTitle('');
+                          }}
+                          placeholder="What needs to be done?"
+                          className="form-input"
+                          style={{ marginTop: 8 }}
+                        />
+                      </div>
                     ) : (
                       <div onClick={() => setInlineAdding(status)} style={{ fontSize: '.8rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>+ Add task...</div>
                     )
@@ -731,6 +790,25 @@ export default function ProjectPage() {
             <label className="form-label">Title *</label>
             <input name="title" className="form-input" required placeholder="Task title" />
           </div>
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Issue Type</label>
+              <select name="taskType" className="form-input" defaultValue="Task">
+                <option value="Task">Task</option>
+                <option value="Bug">Bug</option>
+                <option value="Story">Story</option>
+                <option value="Epic">Epic</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Workflow Status</label>
+              <select name="status" className="form-input" defaultValue={workflowStatuses[0] || 'Todo'}>
+                {workflowStatuses.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div className="form-group">
             <label className="form-label">Description *</label>
             <textarea name="description" className="form-input" rows={3} required placeholder="What needs to be done?" />
@@ -757,9 +835,37 @@ export default function ProjectPage() {
           </div>
           <div className="grid-2">
             <div className="form-group">
+              <label className="form-label">Assignee</label>
+              <select name="assignedTo" className="form-input" defaultValue="">
+                <option value="">Unassigned</option>
+                {(members || []).map((member, index) => {
+                  const userInfo = member.user || member;
+                  return (
+                    <option key={index} value={userInfo?._id}>
+                      {userInfo?.username || userInfo?.email?.split('@')[0] || 'User'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Story Points</label>
+              <input name="storyPoints" className="form-input" type="number" min="0" defaultValue="0" />
+            </div>
+          </div>
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Start Date</label>
+              <input name="startDate" className="form-input" type="date" />
+            </div>
+            <div className="form-group">
               <label className="form-label">Deadline</label>
               <input name="deadline" className="form-input" type="date" />
             </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Labels</label>
+            <input name="labels" className="form-input" placeholder="frontend, urgent, api" />
           </div>
           <button className="btn btn--green" style={{ width: '100%' }}>Create Task</button>
         </form>

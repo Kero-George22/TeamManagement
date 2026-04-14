@@ -40,7 +40,14 @@ export default function SectionPage() {
   const [showMineOnly, setShowMineOnly] = useState(false);
 
   const [collapsed, setCollapsed] = useState({});
-  const [newTaskInput, setNewTaskInput] = useState({ section: null, title: '' });
+  const [newTaskInput, setNewTaskInput] = useState({
+    section: null,
+    title: '',
+    requirements: '',
+    priority: 'Medium',
+    deadline: '',
+    assignee: 'me'
+  });
   const [taskModal, setTaskModal] = useState(false);
 
   // Inline editing state
@@ -56,6 +63,17 @@ export default function SectionPage() {
   });
 
   useEffect(() => { loadTasks(); }, [projects, selectedProject]);
+
+  function openInlineComposer(sectionId) {
+    setNewTaskInput({
+      section: sectionId,
+      title: '',
+      requirements: '',
+      priority: 'Medium',
+      deadline: '',
+      assignee: 'me'
+    });
+  }
 
   async function loadTasks() {
     if (!projects || projects.length === 0) { setTasks([]); return; }
@@ -101,27 +119,63 @@ export default function SectionPage() {
     setDraggedTaskId(null);
   }
 
-  async function handleAddTask(e, sectionKey) {
-    if (e.key === 'Enter' && newTaskInput.title.trim()) {
-      e.preventDefault();
-      const p = selectedProject || projects[0];
-      if (!p) { toast.error('Join a project first'); return; }
+  async function handleAddTask(sectionKey) {
+    if (!newTaskInput.title.trim()) return;
+    const p = selectedProject || projects[0];
+    if (!p) { toast.error('Join a project first'); return; }
 
-      let payload = { title: newTaskInput.title, description: 'Added from My Tasks', assignedRole: 'Developer', assignedTo: user._id };
-      
-      if (group === 'date') {
-        if (sectionKey === 'today') payload.deadline = new Date().toISOString();
-        else if (sectionKey === 'nextWeek') { const d = new Date(); d.setDate(d.getDate()+3); payload.deadline = d.toISOString(); }
-        else if (sectionKey === 'later') { const d = new Date(); d.setDate(d.getDate()+14); payload.deadline = d.toISOString(); }
-      } else if (group === 'status') {
-        payload.status = sectionKey;
-      }
-      
-      try {
-        await API.tasks.create(p._id, payload);
-        toast.success('Task added'); setNewTaskInput({ section: null, title: '' }); loadTasks();
-      } catch { toast.error('Could not create task'); }
-    } else if (e.key === 'Escape') setNewTaskInput({ section: null, title: '' });
+    let payload = {
+      title: newTaskInput.title.trim(),
+      description: newTaskInput.requirements.trim() || 'Added from My Tasks',
+      assignedRole: 'Developer',
+      assignedTo: newTaskInput.assignee === 'unassigned' ? null : user._id,
+      priority: newTaskInput.priority || 'Medium'
+    };
+    
+    if (group === 'date') {
+      if (sectionKey === 'today') payload.deadline = new Date().toISOString();
+      else if (sectionKey === 'nextWeek') { const d = new Date(); d.setDate(d.getDate()+3); payload.deadline = d.toISOString(); }
+      else if (sectionKey === 'later') { const d = new Date(); d.setDate(d.getDate()+14); payload.deadline = d.toISOString(); }
+    } else if (group === 'status') {
+      payload.status = sectionKey;
+    }
+    
+    try {
+      if (newTaskInput.deadline) payload.deadline = new Date(newTaskInput.deadline).toISOString();
+
+      await API.tasks.create(p._id, payload);
+      toast.success('Task added');
+      setNewTaskInput({
+        section: null,
+        title: '',
+        requirements: '',
+        priority: 'Medium',
+        deadline: '',
+        assignee: 'me'
+      });
+      loadTasks();
+    } catch {
+      toast.error('Could not create task');
+    }
+  }
+
+  function handleInlineTaskInputKeyDown(e, sectionKey) {
+    if (e.key === 'Escape') {
+      setNewTaskInput({
+        section: null,
+        title: '',
+        requirements: '',
+        priority: 'Medium',
+        deadline: '',
+        assignee: 'me'
+      });
+      return;
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey && e.target?.name !== 'requirements') {
+      e.preventDefault();
+      handleAddTask(sectionKey);
+    }
   }
 
   async function handleCreateTask(e) {
@@ -264,6 +318,106 @@ export default function SectionPage() {
         .board-col { background: var(--white); border-radius: 12px; min-width: 310px; max-width: 310px; padding: 14px; display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 200px); overflow-y: auto; }
         .board-card { background: var(--white); border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: grab; border: 1px solid var(--border); border-left: 5px solid var(--border); }
         .board-card:active { cursor: grabbing; opacity: 0.8; }
+        .jira-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+        .jira-col {
+          background: #101317;
+          border: 1px solid #1d232c;
+          border-radius: 10px;
+          min-width: 280px;
+          max-width: 280px;
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          height: calc(100vh - 210px);
+          overflow-y: auto;
+        }
+        .jira-col-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: .72rem;
+          font-weight: 800;
+          letter-spacing: .06em;
+          color: #e5e7eb;
+          text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+        .jira-col-count {
+          background: rgba(255,255,255,.1);
+          color: #d1d5db;
+          border-radius: 999px;
+          padding: 1px 7px;
+          font-size: .65rem;
+          font-weight: 700;
+        }
+        .jira-card {
+          background: #1b2129;
+          border: 1px solid #2a3340;
+          border-left: 3px solid #3b82f6;
+          border-radius: 7px;
+          padding: 8px 9px;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+          cursor: grab;
+          transition: border-color .2s, transform .2s;
+        }
+        .jira-card:hover {
+          transform: translateY(-1px);
+          border-color: #3a4758;
+        }
+        .jira-card:active { cursor: grabbing; }
+        .jira-card-title {
+          font-size: .83rem;
+          font-weight: 600;
+          color: #f9fafb;
+          line-height: 1.35;
+          word-break: break-word;
+        }
+        .jira-card-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: .7rem;
+          color: #9ca3af;
+        }
+        .jira-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          border: 1px solid #344255;
+          border-radius: 4px;
+          padding: 2px 6px;
+          color: #cbd5e1;
+          background: rgba(148,163,184,.08);
+        }
+        .jira-inline-add {
+          border: 1px dashed #344255;
+          border-radius: 7px;
+          padding: 8px;
+          color: #9ca3af;
+          font-size: .78rem;
+          cursor: pointer;
+        }
+        .jira-inline-add:hover {
+          border-color: #4b5f78;
+          color: #d1d5db;
+          background: rgba(148,163,184,.06);
+        }
+        .jira-inline-editor {
+          border: 1px dashed #4b5f78;
+          border-radius: 7px;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+        .jira-inline-editor .form-input {
+          background: #141922;
+          border-color: #344255;
+          color: #f3f4f6;
+        }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
         .cal-header-cell { background: var(--white); padding: 10px; text-align: center; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
         .cal-cell { background: var(--white); min-height: 120px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -388,11 +542,73 @@ export default function SectionPage() {
                           </div>
                         )})}
                         {newTaskInput.section === g.id ? (
-                          <div style={{ padding: '8px 10px 8px 18px', borderBottom: '1px solid var(--border)' }}>
-                            <input autoFocus type="text" value={newTaskInput.title} onChange={e => setNewTaskInput({ section: g.id, title: e.target.value })} onKeyDown={e => handleAddTask(e, g.id)} onBlur={() => setNewTaskInput({ section: null, title: '' })} placeholder="Task name" style={{ border: 'none', background: 'transparent', outline: 'none', width:'100%', fontSize:'.875rem' }} />
+                          <div style={{ padding: '10px 12px 12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <input
+                              autoFocus
+                              type="text"
+                              value={newTaskInput.title}
+                            onChange={e => setNewTaskInput(prev => ({ ...prev, section: g.id, title: e.target.value }))}
+                              onKeyDown={e => handleInlineTaskInputKeyDown(e, g.id)}
+                              placeholder="Task name"
+                              style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', outline: 'none', width:'100%', fontSize:'.875rem' }}
+                            />
+                            <textarea
+                              name="requirements"
+                              value={newTaskInput.requirements}
+                              onChange={e => setNewTaskInput(prev => ({ ...prev, requirements: e.target.value }))}
+                              onKeyDown={e => handleInlineTaskInputKeyDown(e, g.id)}
+                              placeholder="Task requirements (optional)"
+                              rows={2}
+                              style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', outline: 'none', width:'100%', fontSize:'.82rem', resize: 'vertical' }}
+                            />
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                              <select
+                                className="form-input"
+                                value={newTaskInput.priority}
+                                onChange={e => setNewTaskInput(prev => ({ ...prev, priority: e.target.value }))}
+                                style={{ fontSize: '.78rem', padding: '6px 8px' }}
+                              >
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                              </select>
+                              <input
+                                type="date"
+                                className="form-input"
+                                value={newTaskInput.deadline}
+                                onChange={e => setNewTaskInput(prev => ({ ...prev, deadline: e.target.value }))}
+                                style={{ fontSize: '.78rem', padding: '6px 8px' }}
+                              />
+                              <select
+                                className="form-input"
+                                value={newTaskInput.assignee}
+                                onChange={e => setNewTaskInput(prev => ({ ...prev, assignee: e.target.value }))}
+                                style={{ fontSize: '.78rem', padding: '6px 8px' }}
+                              >
+                                <option value="me">Collaboration: Me</option>
+                                <option value="unassigned">Collaboration: Unassigned</option>
+                              </select>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button type="button" className="btn btn--green btn--sm" onClick={() => handleAddTask(g.id)}>Create</button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => setNewTaskInput({
+                                  section: null,
+                                  title: '',
+                                  requirements: '',
+                                  priority: 'Medium',
+                                  deadline: '',
+                                  assignee: 'me'
+                                })}
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <div onClick={() => setNewTaskInput({ section: g.id, title: '' })} style={{ padding: '10px 10px 10px 18px', color: 'var(--text-secondary)', fontSize: '.85rem', cursor: 'pointer' }} className="hover-row">Add task...</div>
+                          <div onClick={() => openInlineComposer(g.id)} style={{ padding: '10px 10px 10px 18px', color: 'var(--text-secondary)', fontSize: '.85rem', cursor: 'pointer' }} className="hover-row">Add task...</div>
                         )}
                       </div>
                     )}
@@ -402,64 +618,121 @@ export default function SectionPage() {
             </div>
             
           ) : view === 'board' ? (
-            <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 20, flex: 1 }}>
+            <div className="jira-board" style={{ flex: 1 }}>
               {processedGroups.map(g => (
                 <div 
-                  key={g.id} className="board-col"
+                  key={g.id} className="jira-col"
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.currentTarget.classList.remove('drag-over'); handleDropStatus(e, g.id); }}
                   onDragEnter={e => e.currentTarget.classList.add('drag-over')}
                   onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
                 >
-                  <div className="board-col__header">
-                    <div><span className="board-col__caret">▸</span> {g.label} ({g.tasks.length})</div>
-                    <div style={{ display: 'flex', gap: 8, color: 'var(--text-muted)' }}>
-                      <i className="fa-solid fa-plus" style={{ cursor: 'pointer' }} />
-                      <i className="fa-solid fa-ellipsis-vertical" style={{ cursor: 'pointer' }} />
+                  <div className="jira-col-header">
+                    <div>{g.label}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="jira-col-count">{g.tasks.length}</span>
                     </div>
                   </div>
                   {g.tasks.map(t => {
-                    const KANBAN_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink'];
-                    let cCol = getProjectColor(t.projectRef?._id);
-                    if (!KANBAN_COLORS.includes(cCol)) cCol = KANBAN_COLORS[Math.abs(t._id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % KANBAN_COLORS.length];
+                    const colorMap = ['#3b82f6', '#8b5cf6', '#ef4444', '#f97316', '#22c55e', '#ec4899', '#14b8a6', '#6366f1'];
+                    const cardColor = colorMap[Math.abs(String(t._id).split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % colorMap.length];
 
                     return (
                     <div 
-                      key={t._id} className={`kanban-card kanban-card--${cCol}`}
+                      key={t._id} className="jira-card"
                       draggable={group === 'status'}
                       onDragStart={(e) => { setDraggedTaskId(t._id); e.dataTransfer.effectAllowed = "move"; }}
                       onDragEnd={() => setDraggedTaskId(null)}
                       onClick={() => setSelectedTask(t)}
+                      style={{ borderLeftColor: cardColor }}
                     >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <span className="task-tag">#{t.priority.toLowerCase()}</span>
-                            <span className="task-tag">#{t.projectRef?.title?.toLowerCase().replace(/\s+/g, '') || 'task'}</span>
-                          </div>
-                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'rgba(255,255,255,.45)', cursor: 'pointer', padding: 4 }} />
-                        </div>
-                        
-                        <div className="task-card-title">{t.title}</div>
-                        
-                        {t.description && <div className="task-card-description">{t.description}</div>}
-                        
+                        <div className="jira-card-title">{t.title}</div>
 
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                          <div style={{ display: 'flex', marginLeft: 8 }}>
-                            {t.assignedTo ? <Avatar user={t.assignedTo} size="sm" style={{ marginLeft: -8, width: 26, height: 26 }} /> : <div className="avatar-placeholder avatar-placeholder--pixel" style={{ width: 26, height: 26, fontSize: '.6rem', marginLeft: -8, color: '#fff' }}>UI</div>}
+                        <div className="jira-card-meta">
+                          <div>
+                            {t.deadline ? (
+                              <span className="jira-chip"><i className="fa-regular fa-calendar" /> {fmtDate(t.deadline)}</span>
+                            ) : (
+                              <span className="jira-chip"><i className="fa-regular fa-calendar" /> No date</span>
+                            )}
                           </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <div className="task-meta-pill"><i className="fa-regular fa-comment-dots" /> {t.comments?.length || 0}</div>
-                            <div className="task-meta-pill"><i className="fa-solid fa-paperclip" /> {Math.floor(Math.abs(t._id.charCodeAt(5)) % 5)}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ textTransform: 'uppercase', fontSize: '.64rem', color: '#9ca3af' }}>{t.priority || 'Medium'}</span>
+                            {t.assignedTo ? <Avatar user={t.assignedTo} size="sm" style={{ width: 22, height: 22 }} /> : <i className="fa-regular fa-user" style={{ color: '#6b7280' }} />}
                           </div>
                         </div>
                     </div>
                   )})}
                   {newTaskInput.section === g.id ? (
-                      <input autoFocus type="text" value={newTaskInput.title} onChange={e => setNewTaskInput({ section: g.id, title: e.target.value })} onKeyDown={e => handleAddTask(e, g.id)} onBlur={() => setNewTaskInput({ section: null, title: '' })} placeholder="Task name" style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px', fontSize: '.8rem' }} />
+                      <div className="jira-inline-editor">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newTaskInput.title}
+                          onChange={e => setNewTaskInput(prev => ({ ...prev, section: g.id, title: e.target.value }))}
+                          onKeyDown={e => handleInlineTaskInputKeyDown(e, g.id)}
+                          placeholder="Task name"
+                          className="form-input"
+                          style={{ padding: '8px', fontSize: '.8rem' }}
+                        />
+                        <textarea
+                          name="requirements"
+                          value={newTaskInput.requirements}
+                          onChange={e => setNewTaskInput(prev => ({ ...prev, requirements: e.target.value }))}
+                          onKeyDown={e => handleInlineTaskInputKeyDown(e, g.id)}
+                          placeholder="Task requirements (optional)"
+                          rows={2}
+                          className="form-input"
+                          style={{ padding: '8px', fontSize: '.78rem', resize: 'vertical' }}
+                        />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                          <select
+                            className="form-input"
+                            value={newTaskInput.priority}
+                            onChange={e => setNewTaskInput(prev => ({ ...prev, priority: e.target.value }))}
+                            style={{ padding: '6px 8px', fontSize: '.75rem' }}
+                          >
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                          </select>
+                          <input
+                            type="date"
+                            className="form-input"
+                            value={newTaskInput.deadline}
+                            onChange={e => setNewTaskInput(prev => ({ ...prev, deadline: e.target.value }))}
+                            style={{ padding: '6px 8px', fontSize: '.75rem' }}
+                          />
+                          <select
+                            className="form-input"
+                            value={newTaskInput.assignee}
+                            onChange={e => setNewTaskInput(prev => ({ ...prev, assignee: e.target.value }))}
+                            style={{ padding: '6px 8px', fontSize: '.75rem' }}
+                          >
+                            <option value="me">Collaboration: Me</option>
+                            <option value="unassigned">Collaboration: Unassigned</option>
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" className="btn btn--green btn--sm" onClick={() => handleAddTask(g.id)}>Create</button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() => setNewTaskInput({
+                              section: null,
+                              title: '',
+                              requirements: '',
+                              priority: 'Medium',
+                              deadline: '',
+                              assignee: 'me'
+                            })}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                   ) : (
-                    <div onClick={() => setNewTaskInput({ section: g.id, title: '' })} style={{ fontSize: '.8rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>+ Add task...</div>
+                    <div className="jira-inline-add" onClick={() => openInlineComposer(g.id)}>+ Add task...</div>
                   )}
                 </div>
               ))}

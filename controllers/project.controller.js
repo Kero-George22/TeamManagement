@@ -149,6 +149,9 @@ const updateProject = asyncWrapper(async (req, res) => {
   if (updates.rolesRequired !== undefined && !Array.isArray(updates.rolesRequired))
     throw new AppError('rolesRequired must be an array', 400);
 
+  if (updates.taskStatuses !== undefined && !Array.isArray(updates.taskStatuses))
+    throw new AppError('taskStatuses must be an array', 400);
+
   const project = await projectService.updateProject(req.params.id, updates, req.user._id);
   return success(res, project, 'Project updated successfully');
 });

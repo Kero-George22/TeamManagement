@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const User = require('../models/user.model');
 const AppError = require('../utils/AppError');
+const emailService = require('../utils/email.service');
+const crypto = require('crypto');
 
 const PRIVATE_FIELDS =
   '-password -verificationToken -verificationTokenExpires -resetPasswordToken -resetPasswordTokenExpires';
@@ -8,6 +10,10 @@ const PRIVATE_FIELDS =
 function validateObjectId(id, label = 'ID') {
   if (!id || !mongoose.Types.ObjectId.isValid(String(id)))
     throw new AppError(`Valid ${label} is required`, 400);
+}
+
+function generateVerificationToken(bytes = 32) {
+  return crypto.randomBytes(bytes).toString('hex');
 }
 
 // ─────────────────────────────────────────
@@ -23,6 +29,7 @@ async function getUserProfile(userId) {
   return {
     id:        user._id,
     email:     user.email,
+    pendingEmail: user.pendingEmail || null,
     username:  user.username || user.email.split('@')[0],
     avatar:    user.avatar   || null,
     bio:       user.bio      || null,
@@ -34,6 +41,7 @@ async function getUserProfile(userId) {
 async function getUserPublicProfile(userId) {
   const profile = await getUserProfile(userId);
   delete profile.email;
+  delete profile.pendingEmail;
   delete profile.isAdmin;
   return profile;
 }
@@ -46,6 +54,40 @@ async function updateProfile(userId, updates = {}) {
   validateObjectId(userId, 'user ID');
 
   const payload = {};
+  let emailVerificationRequired = false;
+  let verificationTarget = null;
+
+  if (updates.email !== undefined) {
+    const nextEmail = String(updates.email).trim().toLowerCase();
+    if (!nextEmail) throw new AppError('Email is required', 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail))
+      throw new AppError('Invalid email address', 400);
+
+    const currentUser = await User.findById(userId).select('email pendingEmail');
+    if (!currentUser) throw new AppError('User not found', 404);
+
+    const currentEmail = String(currentUser.email || '').toLowerCase();
+    const currentPending = String(currentUser.pendingEmail || '').toLowerCase();
+    const changed =
+      nextEmail &&
+      nextEmail !== currentEmail &&
+      nextEmail !== currentPending;
+
+    if (changed) {
+      const exists = await User.exists({
+        _id: { $ne: userId },
+        email: nextEmail,
+      });
+      if (exists) throw new AppError('Email already in use', 409);
+
+      payload.pendingEmail = nextEmail;
+      payload.verificationToken = generateVerificationToken(32);
+      payload.verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      emailVerificationRequired = true;
+      verificationTarget = nextEmail;
+    }
+  }
+
   if (updates.username !== undefined) {
     if (String(updates.username).trim().length < 2)
       throw new AppError('Username must be at least 2 characters', 400);
@@ -56,8 +98,10 @@ async function updateProfile(userId, updates = {}) {
       payload.avatar = null;
     } else {
       const avatar = String(updates.avatar).trim();
-      if (!avatar.startsWith('https://'))
-        throw new AppError('Avatar URL must start with https://', 400);
+      const isHttpsUrl = avatar.startsWith('https://');
+      const isDataImage = avatar.startsWith('data:image/');
+      if (!isHttpsUrl && !isDataImage)
+        throw new AppError('Avatar must be an https URL or data:image', 400);
       payload.avatar = avatar;
     }
   }
@@ -73,6 +117,18 @@ async function updateProfile(userId, updates = {}) {
   ).select(PRIVATE_FIELDS).lean();
 
   if (!user) throw new AppError('User not found', 404);
+
+  if (emailVerificationRequired && verificationTarget) {
+    await emailService.verificationEmail(verificationTarget, payload.verificationToken);
+  }
+
+  if (emailVerificationRequired) {
+    return {
+      ...user,
+      emailVerificationRequired: true,
+      pendingEmail: user.pendingEmail || verificationTarget,
+    };
+  }
   return user;
 }
 

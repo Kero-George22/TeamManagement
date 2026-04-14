@@ -77,7 +77,15 @@ async function verifyEmail(token) {
   });
   if (!user) throw new AppError('Invalid or expired token', 400);
 
-  user.isVerified = true;
+  if (user.pendingEmail) {
+    const nextEmail = String(user.pendingEmail).toLowerCase();
+    const exists = await User.exists({ _id: { $ne: user._id }, email: nextEmail });
+    if (exists) throw new AppError('Email already in use', 409);
+    user.email = nextEmail;
+    user.pendingEmail = undefined;
+  } else {
+    user.isVerified = true;
+  }
   user.verificationToken = undefined;
   user.verificationTokenExpires = undefined;
   await user.save();

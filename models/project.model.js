@@ -14,6 +14,11 @@ const ProjectSchema = new mongoose.Schema(
       default: 'Recruiting',
     },
 
+    taskStatuses: {
+      type: [String],
+      default: ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'],
+    },
+
     // ─── Visibility ────────────────────────
     isPrivate:   { type: Boolean, default: false },
     inviteToken: { type: String,  default: null },  // set on creation if isPrivate

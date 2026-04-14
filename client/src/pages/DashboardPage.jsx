@@ -162,7 +162,6 @@ export default function DashboardPage() {
     const priorityRank = { High: 3, Medium: 2, Low: 1 };
     return [...(allTasks || [])]
       .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime())
-      .slice(0, 8)
       .map(task => ({
         task,
         project: task.projectRef,
@@ -396,7 +395,7 @@ export default function DashboardPage() {
                 <p>Task updates will appear here as the team moves.</p>
               </div>
             ) : (
-              <div>
+              <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 4 }}>
                 {activityFeed.map(({ task, project, action }) => {
                   const color = getProjectColor(project?._id);
                   return (

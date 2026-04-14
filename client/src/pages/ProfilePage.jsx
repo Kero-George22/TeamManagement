@@ -1,32 +1,61 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
 import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
-import { fmtDate } from '../lib/utils';
+import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
 export default function ProfilePage() {
   const { user: authUser, updateUser } = useAuth();
   const toast = useToast();
-  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [projects, setProjects] = useState(null);
+  const [allTasks, setAllTasks] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [form, setForm] = useState({ username: '', email: '', bio: '' });
+  const authUserId = authUser?._id || authUser?.id;
 
   useEffect(() => {
+    if (!authUserId) return;
     (async () => {
-      try { const r = await API.profile.me(); setProfile(r?.user || r); } catch { toast.error('Failed to load profile'); }
       try {
-        const all = await API.projects.list();
-        const mine = (all || []).filter(p => p.owner?._id === authUser?._id || p.owner === authUser?._id || (p.members || []).some(m => (m.userId?._id || m.userId) === authUser?._id));
+        const [profileRes, allProjects, taskOverview, dmConversations] = await Promise.all([
+          API.profile.me(),
+          API.projects.list(),
+          API.tasks.dashboardOverview(),
+          API.dms.conversations(),
+        ]);
+
+        const currentProfile = profileRes?.user || profileRes;
+        setProfile(currentProfile);
+        setForm({
+          username: currentProfile?.username || '',
+          email: currentProfile?.email || '',
+          bio: currentProfile?.bio || '',
+        });
+
+        const mine = (allProjects || []).filter(p =>
+          p.owner?._id === authUserId ||
+          p.owner === authUserId ||
+          (p.members || []).some(m => (m.userId?._id || m.userId) === authUserId)
+        );
         setProjects(mine);
+        setAllTasks(taskOverview?.tasks || []);
+        setConversations(dmConversations || []);
       } catch {
+        toast.error('Failed to load profile');
         setProjects([]);
+        setAllTasks([]);
+        setConversations([]);
       }
     })();
-  }, []);
+  }, [authUserId]);
 
   const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
@@ -47,25 +76,78 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
+  async function handleSaveProfile() {
+    try {
+      const updated = await API.profile.update({
+        username: form.username,
+        email: form.email,
+        bio: form.bio,
+      });
+      const normalized = updated?.user || updated;
+      setProfile(normalized);
+      updateUser(normalized);
+      if (updated?.emailVerificationRequired) {
+        toast.success('Profile updated. Verify your new email to complete the change.');
+      } else {
+        toast.success('Profile updated');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to update profile');
+    }
+  }
+
+  const calendarCells = useMemo(() => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+    const map = new Map();
+
+    allTasks.forEach(task => {
+      if (!task.deadline) return;
+      const key = new Date(task.deadline).toDateString();
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+
+    const cells = [];
+    for (let x = firstDayIndex; x > 0; x--) {
+      const d = new Date(year, month - 1, daysInPrevMonth - x + 1);
+      cells.push({ day: d.getDate(), current: false, count: map.get(d.toDateString()) || 0 });
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      cells.push({ day, current: true, count: map.get(d.toDateString()) || 0 });
+    }
+
+    while (cells.length < 35) {
+      const day = cells.length - (firstDayIndex + daysInMonth) + 1;
+      const d = new Date(year, month + 1, day);
+      cells.push({ day, current: false, count: map.get(d.toDateString()) || 0 });
+    }
+
+    return cells;
+  }, [calendarDate, allTasks]);
+
   if (!profile) return <><Topbar title="My Profile" /><div className="skeleton" style={{ height: 400, borderRadius: 'var(--card-radius)' }} /></>;
 
-  // Calendar mock data
-  const calendarDays = [];
-  for (let i = 1; i <= 31; i++) {
-    let active = i === 12 || i === 27; // blue
-    let warning = i === 5 || i === 23; // red/yellow
-    let unavail = i === 8 || i === 17 || i === 20 || i === 25; // dark gray
-    calendarDays.push({ day: i, active, warning, unavail });
-  }
+  const inboxItems = conversations.slice(0, 3);
 
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <Topbar title="My Profile" />
         <div style={{ display: 'flex', gap: 10 }}>
-          <Badge variant="gray" style={{ padding: '6px 14px', fontSize: '.85rem' }}>Pending</Badge>
+          <Badge variant="gray" style={{ padding: '6px 14px', fontSize: '.85rem' }}>{allTasks.filter(task => task.status !== 'Done' && task.status !== 'Approved').length} Open Tasks</Badge>
           <Badge variant="gray" style={{ padding: '6px 14px', fontSize: '.85rem' }}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
-          <button className="icon-btn"><i className="fa-regular fa-calendar-plus" /></button>
+          <button className="icon-btn" onClick={() => {
+            setForm({
+              username: profile.username || '',
+              email: profile.email || '',
+              bio: profile.bio || '',
+            });
+          }}><i className="fa-solid fa-pen" /></button>
         </div>
       </div>
 
@@ -84,7 +166,7 @@ export default function ProfilePage() {
             </div>
 
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{profile.username || profile.email.split('@')[0]}</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '.9rem', fontWeight: 500, marginBottom: 24 }}>{profile.bio || 'Product Designer'}</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '.9rem', fontWeight: 500, marginBottom: 24 }}>{profile.bio || 'No bio yet'}</p>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 32 }}>
               <button className="icon-btn" style={{ background: 'var(--sidebar-bg)', color: 'var(--white)' }}><i className="fa-regular fa-envelope" /></button>
@@ -111,24 +193,82 @@ export default function ProfilePage() {
           <div className="card">
             <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: 20 }}>Detailed Information</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
-                { label: 'Full Name', val: profile.username || '—', icon: 'fa-regular fa-circle-dot', right: <Badge variant="green" style={{ background: 'transparent', border: '1px solid var(--green)', color: 'var(--green)' }}>Online</Badge> },
-                { label: 'Email Address', val: profile.email, icon: 'fa-regular fa-circle-dot', rightIcon: 'fa-regular fa-envelope' },
-                { label: 'Contact Number', val: '(555) 555-5674', icon: 'fa-regular fa-circle-dot', rightIcon: 'fa-solid fa-phone' },
-                { label: 'Designation', val: profile.bio || 'Product Designer', icon: 'fa-regular fa-circle-dot', rightIcon: 'fa-solid fa-circle-info' },
-                { label: 'Availability', val: 'Schedule the time slot', icon: 'fa-regular fa-circle-dot', rightIcon: 'fa-regular fa-calendar-plus' },
-              ].map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: idx < 4 ? '1px solid var(--border)' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <i className={item.icon} style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
-                    <div>
-                      <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{item.label}</div>
-                      <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{item.val}</div>
-                    </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Full Name</div>
+                    <input
+                      className="form-input"
+                      value={form.username}
+                      onChange={e => setForm(prev => ({ ...prev, username: e.target.value }))}
+                      placeholder="Full name"
+                    />
                   </div>
-                  {item.right ? item.right : <i className={item.rightIcon} style={{ color: 'var(--text-muted)' }} />}
                 </div>
-              ))}
+                <Badge variant="green" style={{ background: 'transparent', border: '1px solid var(--green)', color: 'var(--green)' }}>Online</Badge>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%' }}>
+                  <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Email Address</div>
+                    <input
+                      className="form-input"
+                      type="email"
+                      value={form.email}
+                      onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="Email address"
+                    />
+                    {profile.pendingEmail ? (
+                      <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                        Pending verification: {profile.pendingEmail}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <i className="fa-regular fa-envelope" style={{ color: 'var(--text-muted)' }} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%' }}>
+                  <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Bio</div>
+                    <textarea
+                      className="form-input"
+                      rows={3}
+                      value={form.bio}
+                      onChange={e => setForm(prev => ({ ...prev, bio: e.target.value }))}
+                      placeholder="Bio"
+                    />
+                  </div>
+                </div>
+                <i className="fa-solid fa-circle-info" style={{ color: 'var(--text-muted)' }} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
+                  <div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Projects</div>
+                    <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{projects?.length || 0} active</div>
+                  </div>
+                </div>
+                <i className="fa-regular fa-folder-open" style={{ color: 'var(--text-muted)' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button className="btn btn--green btn--sm" onClick={handleSaveProfile}>Save</button>
+                <button className="btn btn--outline btn--sm" onClick={() => {
+                  setForm({
+                    username: profile.username || '',
+                    email: profile.email || '',
+                    bio: profile.bio || '',
+                  });
+                }}>Reset</button>
+              </div>
             </div>
           </div>
         </div>
@@ -166,12 +306,12 @@ export default function ProfilePage() {
                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: 16 }}>{p.title}</h4>
                      
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                       <span>{p.category || 'Development'}</span>
-                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)' }}>{(i*10 + 30)}% Progress</Badge>
+                       <span>{p.status || 'In-Progress'}</span>
+                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)' }}>{projectProgress(p.startDate, p.duration)}% Progress</Badge>
                      </div>
                      
                      <div className="progress" style={{ background: 'rgba(0,0,0,.05)', marginBottom: 16 }}>
-                       <div className="progress__fill" style={{ width: `${(i*10 + 30)}%`, background: `var(--${col === 'yellow' ? 'orange' : col === 'blue' ? 'blue' : 'pink'})` }} />
+                       <div className="progress__fill" style={{ width: `${projectProgress(p.startDate, p.duration)}%`, background: `var(--${col === 'yellow' ? 'orange' : col === 'blue' ? 'blue' : 'pink'})` }} />
                      </div>
 
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -180,7 +320,7 @@ export default function ProfilePage() {
                          <div className="avatar-placeholder" style={{ width: 24, height: 24, fontSize: '.6rem', marginLeft: -10, border: '2px solid rgba(255,255,255,.08)' }}>AM</div>
                          <button className="icon-btn" style={{ width: 24, height: 24, marginLeft: -10, border: '2px solid rgba(255,255,255,.08)', background: 'var(--white)', fontSize: '.6rem' }}><i className="fa-solid fa-plus"/></button>
                        </div>
-                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{p.duration} Days Left</Badge>
+                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{daysLeft(p.startDate, p.duration)}</Badge>
                      </div>
                    </div>
                  );
@@ -198,14 +338,17 @@ export default function ProfilePage() {
                 <button className="icon-btn" style={{ width: 32, height: 32 }}><i className="fa-solid fa-ellipsis-vertical" /></button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <button className="icon-btn" style={{ width: 32, height: 32, background: 'transparent', border: '1px solid var(--border)', boxShadow: 'none' }}><i className="fa-solid fa-arrow-left" /></button>
-                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>{new Date().toLocaleString('default', { month: 'long' })}</h4>
-                <button className="icon-btn" style={{ width: 32, height: 32, background: 'transparent', border: '1px solid var(--border)', boxShadow: 'none' }}><i className="fa-solid fa-arrow-right" /></button>
+                <button className="icon-btn" style={{ width: 32, height: 32, background: 'transparent', border: '1px solid var(--border)', boxShadow: 'none' }} onClick={() => setCalendarDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><i className="fa-solid fa-arrow-left" /></button>
+                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>{calendarDate.toLocaleString('default', { month: 'long' })}</h4>
+                <button className="icon-btn" style={{ width: 32, height: 32, background: 'transparent', border: '1px solid var(--border)', boxShadow: 'none' }} onClick={() => setCalendarDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><i className="fa-solid fa-arrow-right" /></button>
               </div>
               <div className="calendar-widget">
-                {[1,2,3,4].map(n => <div key={'prev'+n} className="calendar-widget__day calendar-widget__day--dim">{27+n}</div>)}
-                {calendarDays.map(c => (
-                  <div key={c.day} className={`calendar-widget__day ${c.active ? 'calendar-widget__day--active' : c.warning ? 'badge--red' : c.unavail ? 'badge--gray' : ''}`} style={c.unavail ? { background: '#4b5563', color: '#fff' } : c.warning ? { background: '#f87171', color: '#fff' } : {}}>
+                {calendarCells.map((c, index) => (
+                  <div
+                    key={`${c.day}-${index}`}
+                    className={`calendar-widget__day ${!c.current ? 'calendar-widget__day--dim' : c.count > 0 ? 'calendar-widget__day--active' : ''}`}
+                    title={c.count > 0 ? `${c.count} task deadline${c.count > 1 ? 's' : ''}` : ''}
+                  >
                     {c.day}
                   </div>
                 ))}
@@ -218,40 +361,27 @@ export default function ProfilePage() {
                 <span style={{ fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>Inbox <i className="fa-regular fa-comment-dots" style={{ color: 'var(--text-muted)' }} /></span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                
-                <div style={{ display: 'flex', gap: 12, border: '1px solid var(--border)', borderRadius: 16, padding: 14 }}>
-                  <div className="avatar-placeholder" style={{ width: 36, height: 36, flexShrink: 0 }}>RB</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '.85rem', fontWeight: 800 }}>Web Designing</span>
-                      <i className="fa-solid fa-thumbtack" style={{ fontSize: '.7rem', color: 'var(--text-muted)' }} />
-                    </div>
-                    <p style={{ fontSize: '.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>Hey tell me about progress of project? Waiting for your response</p>
+                {inboxItems.length === 0 ? (
+                  <div className="empty-state" style={{ padding: '20px 0' }}>
+                    <h4>No conversations yet</h4>
+                    <p>Recent messages will appear here.</p>
                   </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, background: 'var(--sidebar-bg)', color: 'var(--white)', borderRadius: 16, padding: 14 }}>
-                  <div className="avatar-placeholder" style={{ width: 36, height: 36, flexShrink: 0, background: 'var(--yellow)', color: '#000' }}>ST</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '.85rem', fontWeight: 800 }}>Stephanie</span>
-                      <i className="fa-solid fa-thumbtack" style={{ fontSize: '.7rem' }} />
+                ) : (
+                  inboxItems.map((item, index) => (
+                    <div key={item.user?._id || index} style={{ display: 'flex', gap: 12, border: '1px solid var(--border)', borderRadius: 16, padding: 14 }}>
+                      <Avatar user={item.user} size="md" />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: '.85rem', fontWeight: 800 }}>{item.user?.username || item.user?.email?.split('@')[0] || 'User'}</span>
+                          {item.unreadCount > 0 ? (
+                            <Badge variant="blue" style={{ padding: '2px 8px', fontSize: '.68rem' }}>{item.unreadCount} new</Badge>
+                          ) : null}
+                        </div>
+                        <p style={{ fontSize: '.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>{item.latestMessage || 'No messages yet.'}</p>
+                      </div>
                     </div>
-                    <p style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', margin: 0, lineHeight: 1.4 }}>I got your first assignment. It was quite good 👌</p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, border: '1px solid var(--border)', borderRadius: 16, padding: 14 }}>
-                  <div className="avatar-placeholder" style={{ width: 36, height: 36, flexShrink: 0 }}>WM</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '.85rem', fontWeight: 800 }}>William</span>
-                      <i className="fa-solid fa-thumbtack" style={{ fontSize: '.7rem', color: 'var(--text-muted)' }} />
-                    </div>
-                    <p style={{ fontSize: '.75rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>I want some changes in previous work you sent me. Waiting for your reply.</p>
-                  </div>
-                </div>
-
+                  ))
+                )}
               </div>
             </div>
           </div>
