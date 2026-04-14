@@ -3,6 +3,12 @@ const Comment = require('../models/comment.model');
 const AppError = require('../utils/AppError');
 const asyncWrapper = require('../utils/asyncWrapper');
 
+const FEED_SORTS = {
+  newest: { createdAt: -1 },
+  oldest: { createdAt: 1 },
+  top: { upvoteCount: -1, createdAt: -1 },
+};
+
 // ======================= POSTS =======================
 
 exports.createPost = asyncWrapper(async (req, res, next) => {
@@ -24,22 +30,34 @@ exports.createPost = asyncWrapper(async (req, res, next) => {
 });
 
 exports.getFeed = asyncWrapper(async (req, res, next) => {
-  const { sort = '-createdAt', tag, page = 1, limit = 20 } = req.query;
+  const { sort = 'newest', tag, page = 1, limit = 20 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const sortConfig = FEED_SORTS[sort] || FEED_SORTS.newest;
   const filter = tag ? { tags: tag } : {};
 
   // Find posts, populating only essential fields for performance
-  const posts = await Post.find(filter)
-    .sort(sort)
-    .skip((page - 1) * limit)
-    .limit(limit * 1)
+  const [posts, total] = await Promise.all([
+    Post.find(filter)
+    .sort(sortConfig)
+    .skip((pageNum - 1) * limitNum)
+    .limit(limitNum)
     .populate({ path: 'author', select: 'name email profilePic status' })
     .populate({ path: 'linkedProject', select: 'name color' })
     .populate({ path: 'linkedTask', select: 'name priority status' })
-    .lean(); // Faster reads via Lean Mongoose objects when virtuals not strictly needed
+    .lean(), // Faster reads via Lean Mongoose objects when virtuals not strictly needed
+    Post.countDocuments(filter),
+  ]);
 
   res.status(200).json({
     status: 'success',
     results: posts.length,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
     data: { posts }
   });
 });
@@ -103,15 +121,29 @@ exports.addComment = asyncWrapper(async (req, res, next) => {
 
 exports.getPostComments = asyncWrapper(async (req, res, next) => {
   const { postId } = req.params;
+  const { page = 1, limit = 30 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 30));
 
-  const comments = await Comment.find({ post: postId })
+  const [comments, total] = await Promise.all([
+    Comment.find({ post: postId })
     .sort('-createdAt')
+    .skip((pageNum - 1) * limitNum)
+    .limit(limitNum)
     .populate({ path: 'author', select: 'name profilePic' })
-    .lean();
+    .lean(),
+    Comment.countDocuments({ post: postId }),
+  ]);
 
   res.status(200).json({
     status: 'success',
     results: comments.length,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
     data: { comments }
   });
 });

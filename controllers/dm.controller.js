@@ -32,13 +32,25 @@ exports.sendMessage = asyncWrapper(async (req, res) => {
 exports.getMessages = asyncWrapper(async (req, res) => {
   const { userId } = req.params;
   const currentUserId = req.user._id;
+  const { page = 1, limit = 50 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
 
-  const messages = await DirectMessage.find({
+  const threadFilter = {
     $or: [
       { sender: currentUserId, receiver: userId },
       { sender: userId, receiver: currentUserId },
     ],
-  }).sort({ createdAt: 1 }); // Oldest to newest for chat view
+  };
+
+  const [messages, total] = await Promise.all([
+    DirectMessage.find(threadFilter)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    DirectMessage.countDocuments(threadFilter),
+  ]);
 
   // Mark received messages as read
   await DirectMessage.updateMany(
@@ -46,7 +58,15 @@ exports.getMessages = asyncWrapper(async (req, res) => {
     { $set: { read: true } }
   );
 
-  return success(res, messages, 'Messages retrieved');
+  return success(res, {
+    messages: messages.reverse(),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  }, 'Messages retrieved');
 });
 
 // ─────────────────────────────────────────

@@ -54,5 +54,9 @@ postSchema.virtual('comments', {
   foreignField: 'post'
 });
 
+postSchema.index({ createdAt: -1 });
+postSchema.index({ tags: 1, createdAt: -1 });
+postSchema.index({ upvoteCount: -1, createdAt: -1 });
+
 const Post = mongoose.model('Post', postSchema);
 module.exports = Post;

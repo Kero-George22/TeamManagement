@@ -279,16 +279,32 @@ const submitAssessment = asyncWrapper(async (req, res) => {
 // Get user's assessment history
 const getUserAssessments = asyncWrapper(async (req, res) => {
     const userId = req.user._id;
-    const { skillArea } = req.query;
+    const { skillArea, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
 
     const query = { userId };
     if (skillArea) query.skillArea = skillArea;
 
-    const assessments = await Assessment.find(query)
+    const [assessments, total] = await Promise.all([
+      Assessment.find(query)
         .select('-questions')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      Assessment.countDocuments(query),
+    ]);
 
-    return success(res, { assessments }, 'User assessments retrieved');
+    return success(res, {
+      assessments,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    }, 'User assessments retrieved');
 });
 
 // Get specific assessment result

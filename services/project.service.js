@@ -344,16 +344,44 @@ async function handleJoinRequest(projectId, requestId, action, ownerId) {
 async function getJoinRequests(projectId, ownerId) {
   validateObjectId(projectId, 'project ID');
 
-  const project = await Project.findById(projectId)
-    .select('owner joinRequests')
-    .populate('joinRequests.userId', 'email username avatar');
+  const ownership = await Project.findById(projectId).select('owner').lean();
 
-  if (!project) throw new AppError('Project not found', 404);
+  if (!ownership) throw new AppError('Project not found', 404);
 
-  if (String(project.owner) !== String(ownerId))
+  if (String(ownership.owner) !== String(ownerId))
     throw new AppError('Only the project owner can view join requests', 403);
 
-  return (project.joinRequests || []).filter((r) => r.status === 'pending');
+  const rows = await Project.aggregate([
+    { $match: { _id: new mongoose.Types.ObjectId(String(projectId)) } },
+    { $unwind: '$joinRequests' },
+    { $match: { 'joinRequests.status': 'pending' } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'joinRequests.userId',
+        foreignField: '_id',
+        as: 'requestUser',
+      },
+    },
+    { $unwind: { path: '$requestUser', preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        _id: '$joinRequests._id',
+        userId: {
+          _id: '$requestUser._id',
+          email: '$requestUser.email',
+          username: '$requestUser.username',
+          avatar: '$requestUser.avatar',
+        },
+        roleName: '$joinRequests.roleName',
+        status: '$joinRequests.status',
+        requestedAt: '$joinRequests.requestedAt',
+      },
+    },
+    { $sort: { requestedAt: -1 } },
+  ]);
+
+  return rows;
 }
 
 // ─────────────────────────────────────────

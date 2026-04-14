@@ -41,6 +41,8 @@ app.use('/uploads',  express.static(path.join(__dirname, 'uploads')));
 
 const reactBuildPath = path.join(__dirname, 'public', 'app');
 const publicPath = path.join(__dirname, 'public');
+const reactIndexPath = path.join(reactBuildPath, 'index.html');
+const hasReactIndex = require('fs').existsSync(reactIndexPath);
 
 app.use(express.static(publicPath));
 app.use('/app', express.static(reactBuildPath));
@@ -57,9 +59,8 @@ app.get('/task',               sendPage('task.html'));
 app.get('/forgot-password',    sendPage('forgot-password.html'));
 
 app.get('/app/*path', (req, res) => {
-  const index = path.join(reactBuildPath, 'index.html');
-  require('fs').existsSync(index)
-    ? res.sendFile(index)
+  hasReactIndex
+    ? res.sendFile(reactIndexPath)
     : res.status(404).send('React app not built yet. Run: cd client && npm run build');
 });
 
