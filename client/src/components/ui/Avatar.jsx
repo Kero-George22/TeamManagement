@@ -15,7 +15,7 @@ export default function Avatar({ user, size = 'md', className = '' }) {
   const initial = (user?.username || user?.email || '?')[0].toUpperCase();
   return (
     <div
-      className={`avatar-placeholder avatar avatar--${size} ${className}`}
+      className={`avatar-placeholder avatar-placeholder--pixel avatar avatar--${size} ${className}`}
       style={{ width: px, height: px }}
     >
       {initial}

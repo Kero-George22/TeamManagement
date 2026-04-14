@@ -141,14 +141,10 @@ const submitHumanReview = asyncWrapper(async (req, res) => {
 
     await submission.save();
 
-    // Award XP if accepted
+    // Update completion stats if accepted
     if (approved) {
-        const task = await Task.findById(submission.task);
-        const xpPoints = task?.xpPoints || 100;
-
         await User.findByIdAndUpdate(submission.user, {
             $inc: {
-                totalXP: xpPoints,
                 completedTasks: 1
             }
         });
@@ -220,13 +216,9 @@ const approveSubmission = asyncWrapper(async (req, res) => {
 
     await submission.save();
 
-    // Award XP
-    const task = await Task.findById(submission.task);
-    const xpPoints = task?.xpPoints || 100;
-
+    // Update completion stats
     await User.findByIdAndUpdate(submission.user, {
         $inc: {
-            totalXP: xpPoints,
             completedTasks: 1
         }
     });

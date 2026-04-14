@@ -6,7 +6,7 @@ const Task = require('./models/task.model');
 const Skill = require('./models/skill.model');
 
 
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/jobxp';
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/teamforge';
 const skillLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
 
 function buildSkillsProfile(randomize = false) {
@@ -37,13 +37,11 @@ async function seed() {
 
         // Create Admin
         const admin = await User.create({
-            email: 'admin@jobxp.com',
+            email: 'admin@teamforge.com',
             password: 'admin123', // will be hashed by pre-save hook
             username: 'SystemAdmin',
             isAdmin: true,
             isVerified: true,
-            totalXP: 99999,
-            level: 99,
             skills: buildSkillsProfile(false),
         });
         console.log('created admin');
@@ -56,8 +54,6 @@ async function seed() {
                 password: 'password123',
                 username: `DevUser_${i}`,
                 isVerified: true,
-                totalXP: Math.floor(Math.random() * 5000),
-                level: Math.floor(Math.random() * 10) + 1,
                 reliabilityScore: 80 + Math.floor(Math.random() * 20),
                 skills: buildSkillsProfile(true),
             });

@@ -64,10 +64,10 @@ export default function LoginPage() {
       <div className="auth-wrapper">
         {/* Left brand */}
         <div className="auth-panel">
-          <div className="auth-panel__logo">Job<span>XP</span></div>
+          <div className="auth-panel__logo">Team<span>Forge</span></div>
           <div>
-            <p className="auth-panel__tagline">Build real projects.<br />Gain real experience.</p>
-            <p className="auth-panel__sub">Collaborate with teams, complete tasks, earn XP and level up your career.</p>
+            <p className="auth-panel__tagline">Build with the right team.<br />Ship work that matters.</p>
+            <p className="auth-panel__sub">Collaborate, plan, and execute projects with AI-assisted task workflows.</p>
             <div className="auth-panel__dots">
               <div className="auth-panel__dot auth-panel__dot--active" />
               <div className="auth-panel__dot" />
@@ -86,7 +86,7 @@ export default function LoginPage() {
           {/* Login */}
           {tab === 'login' && !showVerify && (
             <form className="auth-form" onSubmit={handleLogin}>
-              <div><h2 className="auth-title">Welcome back</h2><p className="auth-sub">Sign in to your JobXP account</p></div>
+              <div><h2 className="auth-title">Welcome back</h2><p className="auth-sub">Sign in to your TeamForge account</p></div>
               <button type="button" className="btn btn--outline" style={{ width: '100%', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--sidebar-bg)', color: 'var(--white)', borderColor: 'var(--border)' }}>
                 <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: 18 }} />
                 Sign in with Google
@@ -121,7 +121,7 @@ export default function LoginPage() {
           {/* Signup */}
           {tab === 'signup' && !showVerify && (
             <form className="auth-form" onSubmit={handleSignup}>
-              <div><h2 className="auth-title">Create account</h2><p className="auth-sub">Join JobXP — it's free</p></div>
+              <div><h2 className="auth-title">Create account</h2><p className="auth-sub">Join TeamForge — it's free</p></div>
               <button type="button" className="btn btn--outline" style={{ width: '100%', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--sidebar-bg)', color: 'var(--white)', borderColor: 'var(--border)' }}>
                 <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: 18 }} />
                 Sign up with Google

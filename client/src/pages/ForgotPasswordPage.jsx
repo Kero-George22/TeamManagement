@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
       <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', padding: 40, width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,.12)', margin: 20 }}>
         <div style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: -1, marginBottom: 28 }}>
-          Job<span style={{ color: 'var(--green)' }}>XP</span>
+          Team<span style={{ color: 'var(--green)' }}>Forge</span>
         </div>
 
         {step === 'request' && (

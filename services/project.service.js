@@ -435,7 +435,7 @@ async function getProjectMembers(projectId) {
 
   const project = await Project.findById(projectId).populate(
     'members.userId',
-    'email username avatar level totalXP reliabilityScore'
+    'email username avatar reliabilityScore'
   );
   if (!project) throw new AppError('Project not found', 404);
 

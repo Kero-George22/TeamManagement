@@ -33,6 +33,7 @@ app.use('/profile',  require('./routers/profile.routes'));
 app.use('/office',   require('./routers/office.routes'));
 app.use('/dms',      require('./routers/dm.routes'));
 app.use('/posts',    require('./routers/post.routes'));
+app.use('/uploads',  express.static(path.join(__dirname, 'uploads')));
 
 // ─────────────────────────────────────────
 // Static files & legacy HTML pages

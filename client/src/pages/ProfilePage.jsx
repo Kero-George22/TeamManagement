@@ -87,7 +87,7 @@ export default function ProfilePage() {
             <p style={{ color: 'var(--text-secondary)', fontSize: '.9rem', fontWeight: 500, marginBottom: 24 }}>{profile.bio || 'Product Designer'}</p>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 32 }}>
-              <button className="icon-btn" style={{ background: '#000', color: '#fff' }}><i className="fa-regular fa-envelope" /></button>
+              <button className="icon-btn" style={{ background: 'var(--sidebar-bg)', color: 'var(--white)' }}><i className="fa-regular fa-envelope" /></button>
               <button className="icon-btn"><i className="fa-solid fa-phone" /></button>
               <button className="icon-btn"><i className="fa-brands fa-whatsapp" /></button>
               <button className="icon-btn"><i className="fa-solid fa-video" /></button>
@@ -97,11 +97,11 @@ export default function ProfilePage() {
               <div style={{ fontSize: '.8rem', fontWeight: 700, marginBottom: 8, color: 'var(--text-secondary)' }}>Time Slots</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Badge variant="gray" style={{ background: '#fff', border: '1px solid var(--border)', fontSize: '.85rem', padding: '6px 12px' }}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
+                  <Badge variant="gray" style={{ background: 'var(--white)', border: '1px solid var(--border)', fontSize: '.85rem', padding: '6px 12px' }}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</Badge>
                   <button className="icon-btn" style={{ width: 34, height: 34 }}><i className="fa-regular fa-calendar" /></button>
                 </div>
-                <Badge variant="gray" style={{ background: '#fff', border: '1px solid var(--border)', fontSize: '.85rem', padding: '6px 12px' }}>
-                  Meetings <span style={{ background: '#000', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 6, fontSize: '.7rem' }}>3</span>
+                <Badge variant="gray" style={{ background: 'var(--white)', border: '1px solid var(--border)', fontSize: '.85rem', padding: '6px 12px' }}>
+                  Meetings <span style={{ background: 'var(--sidebar-bg)', color: 'var(--white)', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 6, fontSize: '.7rem' }}>3</span>
                 </Badge>
               </div>
             </div>
@@ -141,7 +141,7 @@ export default function ProfilePage() {
           <div className="card" style={{ padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ display: 'flex', gap: 10 }}>
-                <span style={{ background: '#000', color: '#fff', padding: '8px 16px', borderRadius: 99, fontSize: '.9rem', fontWeight: 600 }}>Ongoing Projects</span>
+                <span style={{ background: 'var(--sidebar-bg)', color: 'var(--white)', padding: '8px 16px', borderRadius: 99, fontSize: '.9rem', fontWeight: 600 }}>Ongoing Projects</span>
                 <button className="icon-btn" style={{ width: 36, height: 36 }}><i className="fa-solid fa-chevron-down" /></button>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -160,14 +160,14 @@ export default function ProfilePage() {
                  return (
                    <div key={p._id} className={`project-card project-card--${col}`} style={{ minWidth: 260 }}>
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid rgba(0,0,0,.1)', color: 'var(--text-secondary)' }}>{fmtDate(p.startDate)}</Badge>
-                       <button className="icon-btn" style={{ width: 28, height: 28, background: 'transparent', boxShadow: 'none', border: '1px solid rgba(0,0,0,.1)' }}><i className="fa-solid fa-ellipsis-vertical" /></button>
+                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{fmtDate(p.startDate)}</Badge>
+                       <button className="icon-btn" style={{ width: 28, height: 28, background: 'transparent', boxShadow: 'none', border: '1px solid var(--border)' }}><i className="fa-solid fa-ellipsis-vertical" /></button>
                      </div>
                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: 16 }}>{p.title}</h4>
                      
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                        <span>{p.category || 'Development'}</span>
-                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid rgba(0,0,0,.1)' }}>{(i*10 + 30)}% Progress</Badge>
+                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)' }}>{(i*10 + 30)}% Progress</Badge>
                      </div>
                      
                      <div className="progress" style={{ background: 'rgba(0,0,0,.05)', marginBottom: 16 }}>
@@ -176,11 +176,11 @@ export default function ProfilePage() {
 
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                        <div style={{ display: 'flex', marginLeft: 10 }}>
-                         <div className="avatar-placeholder" style={{ width: 24, height: 24, fontSize: '.6rem', marginLeft: -10, border: '2px solid rgba(0,0,0,.05)' }}>JD</div>
-                         <div className="avatar-placeholder" style={{ width: 24, height: 24, fontSize: '.6rem', marginLeft: -10, border: '2px solid rgba(0,0,0,.05)' }}>AM</div>
-                         <button className="icon-btn" style={{ width: 24, height: 24, marginLeft: -10, border: '2px solid rgba(0,0,0,.05)', background: '#fff', fontSize: '.6rem' }}><i className="fa-solid fa-plus"/></button>
+                         <div className="avatar-placeholder" style={{ width: 24, height: 24, fontSize: '.6rem', marginLeft: -10, border: '2px solid rgba(255,255,255,.08)' }}>JD</div>
+                         <div className="avatar-placeholder" style={{ width: 24, height: 24, fontSize: '.6rem', marginLeft: -10, border: '2px solid rgba(255,255,255,.08)' }}>AM</div>
+                         <button className="icon-btn" style={{ width: 24, height: 24, marginLeft: -10, border: '2px solid rgba(255,255,255,.08)', background: 'var(--white)', fontSize: '.6rem' }}><i className="fa-solid fa-plus"/></button>
                        </div>
-                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid rgba(0,0,0,.1)', color: 'var(--text-secondary)' }}>{p.duration} Days Left</Badge>
+                       <Badge variant="gray" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{p.duration} Days Left</Badge>
                      </div>
                    </div>
                  );
@@ -230,7 +230,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 12, background: '#000', color: '#fff', borderRadius: 16, padding: 14 }}>
+                <div style={{ display: 'flex', gap: 12, background: 'var(--sidebar-bg)', color: 'var(--white)', borderRadius: 16, padding: 14 }}>
                   <div className="avatar-placeholder" style={{ width: 36, height: 36, flexShrink: 0, background: 'var(--yellow)', color: '#000' }}>ST</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>

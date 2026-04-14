@@ -104,7 +104,6 @@ async function createTasksByAI(projectId, userId) {
       assignedRole: taskData.assignedRole,
       assignedTo,
       priority:     taskData.priority  || 'Medium',
-      xpPoints:     taskData.xpPoints  || 50,
       status:       'Todo',
       deadline,
     };
@@ -219,14 +218,14 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
-// Helper — reward user on task approval
+// Helper — update user completion stats on task approval
 // ─────────────────────────────────────────
 
 async function _rewardUser(task) {
   if (!task.assignedTo) return;
 
   await User.findByIdAndUpdate(task.assignedTo, {
-    $inc: { totalXP: task.xpPoints || 50, completedTasks: 1 },
+    $inc: { completedTasks: 1 },
   });
 
   // Reliability bonus لو خلص قبل الـ deadline
@@ -265,7 +264,6 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
     priority: taskData.priority || 'Medium',
     status: taskData.status === 'Doing' ? 'In-Progress' : taskData.status === 'Done' ? 'Done' : 'Todo',
     deadline: taskData.deadline || taskData.endDate || null,
-    xpPoints: taskData.xpPoints || 50,
   });
 
   await task.save();
@@ -298,7 +296,6 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
   if (updates.description !== undefined) task.description = updates.description;
   if (updates.assigneeId !== undefined) task.assignedTo = updates.assigneeId || null;
   if (updates.priority !== undefined) task.priority = updates.priority;
-  if (updates.xpPoints !== undefined) task.xpPoints = updates.xpPoints;
   if (updates.deadline !== undefined) task.deadline = updates.deadline;
   if (updates.endDate !== undefined) task.deadline = updates.endDate;
   if (updates.assignedRole !== undefined) task.assignedRole = updates.assignedRole;

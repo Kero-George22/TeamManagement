@@ -55,7 +55,7 @@ async function assignTasksByAI(projectData) {
   const prompt = `
 You are a project manager. Based on the project details below, generate specific tasks for the team.
 Return a JSON array of tasks with this exact structure:
-[{"title": "...", "description": "...", "assignedRole": "...", "priority": "Low|Medium|High", "xpPoints": 50}]
+[{"title": "...", "description": "...", "assignedRole": "...", "priority": "Low|Medium|High"}]
 
 Project: ${title}
 Description: ${description}
@@ -74,7 +74,7 @@ Return ONLY valid JSON, no extra text.
     throw new AppError('AI returned an empty task list', 502);
 
   for (const task of tasks) {
-    validateFields(task, ['title', 'description', 'assignedRole', 'priority', 'xpPoints'], 'task');
+    validateFields(task, ['title', 'description', 'assignedRole', 'priority'], 'task');
   }
 
   return tasks.map((task) => ({
@@ -82,7 +82,6 @@ Return ONLY valid JSON, no extra text.
     description:  task.description,
     assignedRole: task.assignedRole,
     priority:     task.priority,
-    xpPoints:     task.xpPoints,
   }));
 }
 

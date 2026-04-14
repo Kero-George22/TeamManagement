@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
@@ -11,10 +11,17 @@ import TaskSidePanel from '../components/ui/TaskSidePanel';
 import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
-const STATUSES = ['Todo', 'In-Progress', 'Done', 'Approved'];
-const SCOL = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
-const BADGE_STATUS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'gray' };
-const PDOT = { High: 'priority-dot--high', Medium: 'priority-dot--medium', Low: 'priority-dot--low' };
+const WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
+const PROJECT_STATUS_VARIANTS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'gray' };
+const PRIORITY_DOT = { High: 'priority-dot--high', Medium: 'priority-dot--medium', Low: 'priority-dot--low' };
+const BOARD_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink'];
+
+function getProjectColor(projectId) {
+  if (!projectId) return BOARD_COLORS[0];
+  const sum = String(projectId).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return BOARD_COLORS[sum % BOARD_COLORS.length];
+}
 
 export default function ProjectPage() {
   const { id } = useParams();
@@ -23,202 +30,411 @@ export default function ProjectPage() {
   const navigate = useNavigate();
 
   const [project, setProject] = useState(null);
-  const [tasks, setTasks]     = useState(null);
+  const [tasks, setTasks] = useState(null);
   const [members, setMembers] = useState(null);
   const [requests, setRequests] = useState(null);
-  const [tab, setTab]         = useState('tasks');
-  const [taskView, setTaskView] = useState('list');
+  const [selectedTask, setSelectedTask] = useState(null);
+
+  const [tab, setTab] = useState('overview');
+  const [taskView, setTaskView] = useState('board');
   const [taskModal, setTaskModal] = useState(false);
   const [joinModal, setJoinModal] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [joinRole, setJoinRole] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
   const [draggedTask, setDraggedTask] = useState(null);
-  const [inlineAdding, setInlineAdding] = useState(null); // stores the status section where adding is active
+  const [inlineAdding, setInlineAdding] = useState(null);
   const [inlineTitle, setInlineTitle] = useState('');
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
 
-  const isOwner  = project && (project.owner?._id === user?._id || project.owner === user?._id);
-  const isMember = isOwner || (project?.members || []).some(m => (m.userId?._id || m.userId) === user?._id);
+  const isOwner = !!project && (project.owner?._id === user?._id || project.owner === user?._id);
+  const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === user?._id);
 
-  useEffect(() => { init(); }, [id]);
+  useEffect(() => {
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (isOwner) {
+      loadRequests();
+    } else {
+      setRequests([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner]);
 
   async function init() {
     try {
-      const p = await API.projects.get(id);
-      setProject(p);
-      loadTasks();
-      loadMembers();
-    } catch { toast.error('Could not load project'); }
+      const response = await API.projects.get(id);
+      setProject(response);
+      await Promise.all([loadTasks(), loadMembers()]);
+    } catch {
+      toast.error('Could not load project');
+    }
   }
 
   async function loadTasks() {
-    try { setTasks(await API.tasks.list(id) || []); } catch { toast.error('Failed to load tasks'); }
+    try {
+      setTasks(await API.tasks.list(id) || []);
+    } catch {
+      toast.error('Failed to load tasks');
+      setTasks([]);
+    }
   }
 
   async function loadMembers() {
-    try { setMembers(await API.projects.members(id) || []); } catch {}
+    try {
+      setMembers(await API.projects.members(id) || []);
+    } catch {
+      setMembers([]);
+    }
   }
 
   async function loadRequests() {
-    try { setRequests((await API.projects.joinRequests(id) || []).filter(r => r.status === 'pending')); } catch {}
+    try {
+      setRequests((await API.projects.joinRequests(id) || []).filter(request => request.status === 'pending'));
+    } catch {
+      setRequests([]);
+    }
   }
 
-  useEffect(() => { if (isOwner) loadRequests(); }, [isOwner]);
+  const filteredTasks = useMemo(() => {
+    const list = tasks || [];
+    if (!myTasksOnly) return list;
+    return list.filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+  }, [tasks, myTasksOnly, user]);
 
-  const grouped = {};
-  STATUSES.forEach(s => grouped[s] = []);
-  (tasks || [])
-    .filter(t => myTasksOnly ? (t.assignedTo?._id || t.assignedTo) === user?._id : true)
-    .forEach(t => { if (grouped[t.status]) grouped[t.status].push(t); else grouped.Todo.push(t); });
+  const groupedTasks = useMemo(() => {
+    const groups = {};
+    WORKFLOW_STATUSES.forEach(status => {
+      groups[status] = [];
+    });
 
-  const pct = project ? projectProgress(project.startDate, project.duration) : 0;
+    filteredTasks.forEach(task => {
+      if (groups[task.status]) groups[task.status].push(task);
+      else groups.Todo.push(task);
+    });
+
+    return groups;
+  }, [filteredTasks]);
+
+  const overviewStats = useMemo(() => {
+    const total = tasks || [];
+    const completed = total.filter(task => task.status === 'Done' || task.status === 'Approved').length;
+    const open = total.length - completed;
+    const memberCount = members?.length || project?.members?.length || 0;
+    const roleCount = project?.rolesRequired?.length || 0;
+
+    return {
+      totalTasks: total.length,
+      completed,
+      open,
+      memberCount,
+      roleCount,
+      progress: project ? projectProgress(project.startDate, project.duration) : 0,
+    };
+  }, [tasks, members, project]);
 
   async function handleGenerate() {
     setGenLoading(true);
-    try { await API.tasks.generate(id); toast.success('Tasks generated!'); loadTasks(); } catch (e) { toast.error(e.message); }
-    finally { setGenLoading(false); }
+    try {
+      await API.tasks.generate(id);
+      toast.success('Tasks generated!');
+      loadTasks();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setGenLoading(false);
+    }
   }
 
-  async function handleCreateTask(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target);
+  async function handleCreateTask(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+
     try {
       await API.tasks.create(id, {
-        title: fd.get('title'), description: fd.get('description'),
-        assignedRole: fd.get('role'), priority: fd.get('priority'),
-        xpPoints: Number(fd.get('xp')) || 50, deadline: fd.get('deadline') || undefined,
+        title: formData.get('title'),
+        description: formData.get('description'),
+        assignedRole: formData.get('role') || 'Member',
+        priority: formData.get('priority'),
+        deadline: formData.get('deadline') || undefined,
       });
-      toast.success('Task created!'); setTaskModal(false); loadTasks();
-    } catch (e) { toast.error(e.message); }
+      toast.success('Task created!');
+      setTaskModal(false);
+      loadTasks();
+    } catch (error) {
+      toast.error(error.message);
+    }
   }
 
   async function handleJoin() {
-    if (!joinRole) { toast.error('Please select a role'); return; }
+    if (!joinRole) {
+      toast.error('Please select a role');
+      return;
+    }
+
     setJoinLoading(true);
-    try { await API.projects.requestJoin(id, joinRole); toast.success('Request sent! Waiting for owner approval.'); setJoinModal(false); }
-    catch (e) { toast.error(e.message); }
-    finally { setJoinLoading(false); }
+    try {
+      await API.projects.requestJoin(id, joinRole);
+      toast.success('Request sent! Waiting for owner approval.');
+      setJoinModal(false);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setJoinLoading(false);
+    }
   }
 
-  async function handleReq(reqId, status) {
-    try { await API.projects.handleRequest(id, reqId, status); toast.success(`Request ${status}`); loadRequests(); loadMembers(); init(); } catch (e) { toast.error(e.message); }
+  async function handleReq(requestId, status) {
+    try {
+      await API.projects.handleRequest(id, requestId, status);
+      toast.success(`Request ${status}`);
+      loadRequests();
+      loadMembers();
+      init();
+    } catch (error) {
+      toast.error(error.message);
+    }
   }
 
   function handleTaskUpdate(updatedTask) {
-    setTasks(ts => ts.map(t => t._id === updatedTask._id ? { ...t, ...updatedTask } : t));
-    setSelectedTask(prev => prev?._id === updatedTask._id ? { ...prev, ...updatedTask } : prev);
+    setTasks(current => (current || []).map(task => (task._id === updatedTask._id ? { ...task, ...updatedTask } : task)));
+    setSelectedTask(current => (current?._id === updatedTask._id ? { ...current, ...updatedTask } : current));
   }
 
-  async function handleDrop(e, status) {
-    e.preventDefault();
+  async function handleDrop(event, status) {
+    event.preventDefault();
     if (!draggedTask || draggedTask.status === status) return;
-    
-    // Optimistic update
+
     const previousStatus = draggedTask.status;
-    const updParams = { _id: draggedTask._id, status };
-    handleTaskUpdate(updParams);
+    handleTaskUpdate({ _id: draggedTask._id, status });
 
     try {
       await API.tasks.status(draggedTask._id, status);
-    } catch (err) {
+    } catch {
       toast.error('Failed to update status');
-      // Revert on failure
       handleTaskUpdate({ _id: draggedTask._id, status: previousStatus });
     }
+
     setDraggedTask(null);
   }
 
-  async function handleInlineCreate(e, status) {
-    if (e.key === 'Escape') {
+  async function handleInlineCreate(event, status) {
+    if (event.key === 'Escape') {
       setInlineAdding(null);
       setInlineTitle('');
       return;
     }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (!inlineTitle.trim()) return;
-      
-      const defaultRole = project?.rolesRequired?.[0]?.roleName || 'Member';
-      
-      try {
-        await API.tasks.create(id, {
-          title: inlineTitle.trim(),
-          description: '',
-          assignedRole: defaultRole,
-          priority: 'Medium',
-          status: status,
-          xpPoints: 50
-        });
-        setInlineAdding(null);
-        setInlineTitle('');
-        loadTasks();
-      } catch (err) {
-        toast.error(err.message);
-      }
+
+    if (event.key !== 'Enter') return;
+
+    event.preventDefault();
+    if (!inlineTitle.trim()) return;
+
+    const defaultRole = project?.rolesRequired?.[0]?.roleName || 'Member';
+
+    try {
+      await API.tasks.create(id, {
+        title: inlineTitle.trim(),
+        description: '',
+        assignedRole: defaultRole,
+        priority: 'Medium',
+        status,
+      });
+      setInlineAdding(null);
+      setInlineTitle('');
+      loadTasks();
+    } catch (error) {
+      toast.error(error.message);
     }
   }
 
-  if (!project) return <><Topbar title="Project" /><div className="skeleton" style={{ height: 160, borderRadius: 'var(--card-radius)' }} /></>;
+  function handleUpdateTitle(taskId) {
+    if (!editTitle.trim()) {
+      setEditingTask(null);
+      return;
+    }
+
+    const original = (tasks || []).find(task => task._id === taskId);
+    if (!original || original.title === editTitle.trim()) {
+      setEditingTask(null);
+      return;
+    }
+
+    const nextTitle = editTitle.trim();
+    handleTaskUpdate({ _id: taskId, title: nextTitle });
+
+    API.tasks.update(taskId, { title: nextTitle })
+      .then(() => toast.success('Task renamed'))
+      .catch(() => {
+        toast.error('Failed to rename task');
+        loadTasks();
+      })
+      .finally(() => setEditingTask(null));
+  }
+
+  if (!project) {
+    return (
+      <>
+        <Topbar title="Project" />
+        <div className="skeleton" style={{ height: 160, borderRadius: 'var(--card-radius)' }} />
+      </>
+    );
+  }
 
   return (
     <>
       <Topbar title={project.title} />
 
-      {/* Hero */}
-      <div style={{ background: 'var(--sidebar-bg)', color: '#fff', borderRadius: 'var(--card-radius)', padding: '28px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <Badge variant={BADGE_STATUS[project.status] || 'gray'}>{project.status}</Badge>
+      <section className="dashboard-hero" style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+            <Badge variant={PROJECT_STATUS_VARIANTS[project.status] || 'gray'}>{project.status}</Badge>
             {project.isPrivate && <span className="chip"><i className="fa-solid fa-lock" /> Private</span>}
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: 6 }}>{project.title}</div>
-          <div style={{ fontSize: '.875rem', color: 'rgba(255,255,255,.6)', maxWidth: 540 }}>{project.description}</div>
-          <div style={{ display: 'flex', gap: 20, marginTop: 18 }}>
-            {[['Start', fmtDate(project.startDate)], ['Duration', `${project.duration} days`], ['Members', (project.members || []).length], ['Roles', (project.rolesRequired || []).length]].map(([l, v]) => (
-              <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <label style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(255,255,255,.4)' }}>{l}</label>
-                <span style={{ fontWeight: 600, fontSize: '.9rem', color: 'rgba(255,255,255,.9)' }}>{v}</span>
-              </div>
-            ))}
+          <h2 className="dashboard-hero__title" style={{ maxWidth: '14ch' }}>{project.title}</h2>
+          <p className="dashboard-hero__sub" style={{ maxWidth: '60ch' }}>{project.description || 'No project description yet.'}</p>
+          <div className="dashboard-hero__meta">
+            <span className="chip"><i className="fa-regular fa-calendar" /> {fmtDate(project.startDate)}</span>
+            <span className="chip"><i className="fa-solid fa-flag-checkered" /> {project.duration} days</span>
+            <span className="chip"><i className="fa-solid fa-users" /> {overviewStats.memberCount} members</span>
+            <span className="chip"><i className="fa-solid fa-list-check" /> {overviewStats.totalTasks} tasks</span>
           </div>
         </div>
-      </div>
 
-      {/* Progress */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.85rem', fontWeight: 600, marginBottom: 8 }}>
-          <span>Project progress</span>
-          <span>{pct}% · {daysLeft(project.startDate, project.duration)}</span>
+        <div className="dashboard-progress-ring" style={{ background: `conic-gradient(var(--green) ${overviewStats.progress * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}>
+          <span className="dashboard-progress-ring__value">{overviewStats.progress}%</span>
         </div>
-        <ProgressBar value={pct} style={{ height: 12 }} />
-      </div>
+      </section>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, background: 'var(--white)', borderRadius: 14, padding: 5, boxShadow: 'var(--shadow)', width: 'fit-content' }}>
-        {['tasks', 'members', ...(isOwner ? ['requests'] : [])].map(t => (
-          <button key={t} onClick={() => setTab(t)} className={`btn btn--sm ${tab === t ? 'btn--primary' : 'btn--ghost'}`}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
-        ))}
-        <button className="btn btn--sm btn--ghost" onClick={() => navigate(`/app/office/${id}`)}>
+      <div className="workspace-tabs" style={{ marginTop: 20 }}>
+        <button className={`workspace-tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
+        <button className={`workspace-tab ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>Tasks</button>
+        <button className={`workspace-tab ${tab === 'team' ? 'active' : ''}`} onClick={() => setTab('team')}>Team</button>
+        <div style={{ flex: 1 }} />
+        <button className="btn btn--ghost btn--sm" onClick={() => navigate(`/app/office/${id}`)}>
           <i className="fa-solid fa-comments" /> Office
         </button>
       </div>
 
-      {/* ═══════════════ TASKS TAB ═══════════════ */}
-      {tab === 'tasks' && (
-        <>
-          {/* Toolbar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 4, background: 'var(--white)', borderRadius: 10, padding: 4, boxShadow: 'var(--shadow)' }}>
-              <button className={`btn btn--sm ${taskView === 'list' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('list')}><i className="fa-solid fa-list" /> List</button>
-              <button className={`btn btn--sm ${taskView === 'board' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('board')}><i className="fa-brands fa-trello" /> Board</button>
+      {tab === 'overview' && (
+        <div className="workspace-grid">
+          <section className="workspace-panel">
+            <div className="workspace-header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Project Snapshot</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>A quick read on progress and execution.</div>
+              </div>
+              <button className="btn btn--green btn--sm" onClick={() => setTab('tasks')}>Go to tasks</button>
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <button 
-                className={`btn btn--sm ${myTasksOnly ? 'btn--primary' : 'btn--ghost'}`} 
-                onClick={() => setMyTasksOnly(!myTasksOnly)}
-              >
+
+            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+              <div className="stat-card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                <div className="stat-card__label">Progress</div>
+                <div className="stat-card__value">{overviewStats.progress}%</div>
+                <div className="stat-card__sub">{daysLeft(project.startDate, project.duration)} remaining</div>
+              </div>
+              <div className="stat-card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                <div className="stat-card__label">Members</div>
+                <div className="stat-card__value">{overviewStats.memberCount}</div>
+                <div className="stat-card__sub">{overviewStats.roleCount} open roles</div>
+              </div>
+              <div className="stat-card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                <div className="stat-card__label">Open Work</div>
+                <div className="stat-card__value">{overviewStats.open}</div>
+                <div className="stat-card__sub">Tasks still moving</div>
+              </div>
+              <div className="stat-card" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                <div className="stat-card__label">Closed</div>
+                <div className="stat-card__value">{overviewStats.completed}</div>
+                <div className="stat-card__sub">Done or approved</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <div className="section-title" style={{ marginBottom: 12 }}>Roles Needed</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {(project.rolesRequired || []).length === 0 ? (
+                  <div className="empty-state" style={{ padding: '18px 0', alignItems: 'flex-start' }}>
+                    <h4>No roles defined</h4>
+                    <p>Add roles to make the team structure clear.</p>
+                  </div>
+                ) : (
+                  (project.rolesRequired || []).map((role, index) => {
+                    const openSlots = role.totalSlots - (role.filledSlots || 0);
+                    return (
+                      <span key={index} className="chip" style={{ padding: '8px 12px' }}>
+                        <i className="fa-solid fa-user-group" />
+                        {role.roleName}
+                        <strong style={{ marginLeft: 4, color: openSlots > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                          ({role.filledSlots || 0}/{role.totalSlots})
+                        </strong>
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </section>
+
+          <aside className="dashboard-stack">
+            <section className="workspace-panel">
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>Team Preview</h3>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Members currently inside the workspace.</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                {(members || []).slice(0, 6).map((member, index) => (
+                  <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <Avatar user={member.user || member} size="md" />
+                    <div style={{ fontSize: '.76rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: 88 }}>
+                      {member.user?.username || member.user?.email?.split('@')[0] || 'User'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="workspace-panel">
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>Quick Actions</h3>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Jump straight to the next step.</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button className="btn btn--green" onClick={() => setTab('tasks')}>Open tasks</button>
+                {isOwner && <button className="btn btn--outline" onClick={() => setTaskModal(true)}>Create task</button>}
+                {!isMember && project.status === 'Recruiting' && <button className="btn btn--outline" onClick={() => setJoinModal(true)}>Request to join</button>}
+                <button className="btn btn--ghost" onClick={() => navigate(`/app/office/${id}`)}>Open office</button>
+              </div>
+            </section>
+          </aside>
+        </div>
+      )}
+
+      {tab === 'tasks' && (
+        <section className="workspace-panel">
+          <div className="workspace-header" style={{ flexWrap: 'wrap' }}>
+            <div>
+              <h3 className="section-title" style={{ marginBottom: 4 }}>Tasks</h3>
+              <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Board or list view with a quick personal filter.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className={`btn btn--sm ${myTasksOnly ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setMyTasksOnly(!myTasksOnly)}>
                 <i className="fa-solid fa-user" /> {myTasksOnly ? 'My tasks' : 'All tasks'}
+              </button>
+              <button className={`btn btn--sm ${taskView === 'list' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('list')}>
+                <i className="fa-solid fa-list" /> List
+              </button>
+              <button className={`btn btn--sm ${taskView === 'board' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('board')}>
+                <i className="fa-brands fa-trello" /> Board
               </button>
               {isOwner && (
                 <>
@@ -231,237 +447,361 @@ export default function ProjectPage() {
             </div>
           </div>
 
-          {tasks === null ? <div className="skeleton" style={{ height: 200, borderRadius: 'var(--card-radius)' }} /> : (tasks || []).length === 0 ? (
-            <div className="empty-state"><i className="fa-solid fa-clipboard-list" /><h4>No tasks yet</h4><p>Tasks will be generated when your team is complete.</p></div>
+          {tasks === null ? (
+            <div className="skeleton" style={{ height: 220, borderRadius: 'var(--card-radius)' }} />
+          ) : filteredTasks.length === 0 ? (
+            <div className="empty-state">
+              <i className="fa-solid fa-clipboard-list" />
+              <h4>No tasks yet</h4>
+              <p>Tasks appear here once the workspace starts moving.</p>
+            </div>
           ) : taskView === 'list' ? (
-            /* ─── LIST VIEW ─── */
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              {/* Column header */}
-              <div style={{ display: 'grid', gridTemplateColumns: '28px 3fr 1fr 100px 90px 90px', gap: 12, padding: '10px 20px', borderBottom: '2px solid var(--border)', fontSize: '.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                <div></div><div>Task Name</div><div>Assignee</div><div>Due Date</div><div>Priority</div><div>Status</div>
-              </div>
-              <div style={{ padding: '0 6px' }}>
-                {STATUSES.map(status => (
-                  <div key={status}>
-                    <div className="task-list-section-header">
-                      <h4>{status}</h4>
-                      <Badge variant={SCOL[status]} style={{ fontSize: '.68rem' }}>{grouped[status].length}</Badge>
-                    </div>
-                    {grouped[status].map(t => (
-                      <div key={t._id} className="task-list-row" style={{ gridTemplateColumns: '28px 3fr 1fr 100px 90px 90px' }} onClick={() => setSelectedTask(t)}>
-                        <div className={`task-circle ${t.status === 'Done' || t.status === 'Approved' ? 'task-circle--done' : ''}`} style={{ width: 20, height: 20 }}>
-                          {(t.status === 'Done' || t.status === 'Approved') && <i className="fa-solid fa-check" style={{ fontSize: '.5rem' }} />}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {WORKFLOW_STATUSES.map(status => (
+                <div key={status} style={{ border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
+                  <div className="task-list-section-header" style={{ margin: 0, borderRadius: 0 }}>
+                    <h4>{status}</h4>
+                    <Badge variant={STATUS_VARIANTS[status] || 'gray'} style={{ fontSize: '.68rem' }}>{groupedTasks[status].length}</Badge>
+                  </div>
+                  <div style={{ padding: '0 8px 8px' }}>
+                    {groupedTasks[status].map(task => (
+                      <div
+                        key={task._id}
+                        className="task-list-row"
+                        style={{ gridTemplateColumns: '28px 3fr 1fr 100px 90px 90px' }}
+                        onClick={() => setSelectedTask(task)}
+                      >
+                        <div className={`task-circle ${task.status === 'Done' || task.status === 'Approved' ? 'task-circle--done' : ''}`} style={{ width: 20, height: 20 }}>
+                          {(task.status === 'Done' || task.status === 'Approved') && <i className="fa-solid fa-check" style={{ fontSize: '.5rem' }} />}
                         </div>
-                        <div style={{ fontWeight: 500, fontSize: '.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                        <div>{t.assignedTo ? <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Avatar user={t.assignedTo} size="sm" /><span style={{ fontSize: '.78rem' }}>{t.assignedTo?.username || t.assignedTo?.email?.split('@')[0]}</span></div> : <span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>—</span>}</div>
-                        <div style={{ fontSize: '.78rem', color: t.deadline && new Date(t.deadline) < new Date() ? '#ef4444' : 'var(--text-muted)' }}>{t.deadline ? fmtDate(t.deadline) : '—'}</div>
-                        <div><div className={`priority-dot ${PDOT[t.priority]}`} title={t.priority} /></div>
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <select 
-                            className="form-input" 
-                            style={{ padding: '2px 6px', fontSize: '.7rem', height: 24, borderRadius: 12, background: `var(--badge-${SCOL[t.status]}-bg)`, color: `var(--badge-${SCOL[t.status]}-text)`, border: 'none', fontWeight: 600 }}
-                            value={t.status}
-                            onChange={(e) => {
-                              const newStatus = e.target.value;
-                              const upd = { _id: t._id, status: newStatus };
-                              handleTaskUpdate(upd);
-                              API.tasks.status(t._id, newStatus).catch(() => handleTaskUpdate({ _id: t._id, status: t.status }));
+                        <div style={{ fontWeight: 500, fontSize: '.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {task.title}
+                        </div>
+                        <div>
+                          {task.assignedTo ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Avatar user={task.assignedTo} size="sm" />
+                              <span style={{ fontSize: '.78rem' }}>{task.assignedTo?.username || task.assignedTo?.email?.split('@')[0]}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>—</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '.78rem', color: task.deadline && new Date(task.deadline) < new Date() ? '#ef4444' : 'var(--text-muted)' }}>
+                          {task.deadline ? fmtDate(task.deadline) : '—'}
+                        </div>
+                        <div><div className={`priority-dot ${PRIORITY_DOT[task.priority]}`} title={task.priority} /></div>
+                        <div onClick={event => event.stopPropagation()}>
+                          <select
+                            className="form-input"
+                            style={{ padding: '2px 6px', fontSize: '.7rem', height: 24, borderRadius: 12, background: 'var(--white)', fontWeight: 600 }}
+                            value={task.status}
+                            onChange={event => {
+                              const nextStatus = event.target.value;
+                              handleTaskUpdate({ _id: task._id, status: nextStatus });
+                              API.tasks.status(task._id, nextStatus).catch(() => handleTaskUpdate({ _id: task._id, status: task.status }));
                             }}
                           >
-                            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            {WORKFLOW_STATUSES.map(value => <option key={value} value={value}>{value}</option>)}
                           </select>
                         </div>
                       </div>
                     ))}
-                    {isOwner && grouped[status].length === 0 && !inlineAdding && <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: '.8rem' }}>Empty</div>}
-                    
-                    {/* Inline Add Task Row */}
+
                     {isOwner && (
                       inlineAdding === status ? (
-                         <div className="task-list-row" style={{ gridTemplateColumns: '28px 1fr' }}>
-                           <div className="task-circle" style={{ width: 20, height: 20 }}></div>
-                           <input 
-                             autoFocus
-                             className="form-input" 
-                             style={{ padding: '4px 8px', fontSize: '.875rem' }}
-                             placeholder="Write a task name and press Enter" 
-                             value={inlineTitle}
-                             onChange={(e) => setInlineTitle(e.target.value)}
-                             onKeyDown={(e) => handleInlineCreate(e, status)}
-                             onBlur={() => { setInlineAdding(null); setInlineTitle(''); }}
-                           />
-                         </div>
+                        <div className="task-list-row" style={{ gridTemplateColumns: '28px 1fr' }}>
+                          <div className="task-circle" style={{ width: 20, height: 20 }} />
+                          <input
+                            autoFocus
+                            className="form-input"
+                            style={{ padding: '4px 8px', fontSize: '.875rem' }}
+                            placeholder="Write a task name and press Enter"
+                            value={inlineTitle}
+                            onChange={event => setInlineTitle(event.target.value)}
+                            onKeyDown={event => handleInlineCreate(event, status)}
+                            onBlur={() => {
+                              setInlineAdding(null);
+                              setInlineTitle('');
+                            }}
+                          />
+                        </div>
                       ) : (
-                        <div className="task-list-row" style={{ gridTemplateColumns: 'minmax(0, 1fr)', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setInlineAdding(status)}>
-                           <div style={{ fontSize: '.875rem', fontWeight: 500, paddingLeft: 34 }}>
-                             <i className="fa-solid fa-plus" style={{ marginRight: 8 }} /> Add task...
-                           </div>
+                        <div onClick={() => setInlineAdding(status)} style={{ padding: '10px 10px 10px 18px', color: 'var(--text-secondary)', fontSize: '.85rem', cursor: 'pointer' }} className="task-list-row">
+                          <div style={{ fontSize: '.875rem', fontWeight: 500 }}>
+                            <i className="fa-solid fa-plus" style={{ marginRight: 8 }} /> Add task...
+                          </div>
                         </div>
                       )
                     )}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           ) : (
-            /* ─── BOARD VIEW ─── */
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STATUSES.length}, 1fr)`, gap: 14 }}>
-              {STATUSES.map(s => (
-                <div key={s} 
-                     className="board-col"
-                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                     onDrop={(e) => handleDrop(e, s)}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+              {WORKFLOW_STATUSES.map(status => (
+                <div
+                  key={status}
+                  className="board-col"
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => handleDrop(event, status)}
+                >
                   <div className="board-col__header">
-                    <div><span className="board-col__caret">▸</span> {s === 'Todo' ? 'Todo list' : s === 'In-Progress' ? 'In Progress' : s === 'Review' ? 'In Review' : s === 'Approved' ? 'Approved' : 'Done'}</div>
+                    <div><span className="board-col__caret">▸</span> {status} ({groupedTasks[status].length})</div>
                     <div style={{ display: 'flex', gap: 8, color: 'var(--text-muted)' }}>
-                      <i className="fa-solid fa-plus" style={{ cursor: 'pointer' }} />
+                      <i className="fa-solid fa-plus" style={{ cursor: 'pointer' }} onClick={() => setInlineAdding(status)} />
                       <i className="fa-solid fa-ellipsis-vertical" style={{ cursor: 'pointer' }} />
                     </div>
                   </div>
-                  {grouped[s].length ? grouped[s].map(t => {
-                    const KANBAN_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink'];
-                    const cCol = KANBAN_COLORS[Math.abs(t._id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % KANBAN_COLORS.length];
-                    const progressVal = t.xpPoints > 100 ? 100 : (t.xpPoints < 10 ? 10 : t.xpPoints);
 
+                  {groupedTasks[status].length ? groupedTasks[status].map(task => {
+                    const color = getProjectColor(task.projectRef?._id);
                     return (
-                      <div key={t._id} className={`kanban-card kanban-card--${cCol}`} style={{ cursor: 'grab', opacity: draggedTask?._id === t._id ? 0.5 : 1 }} 
-                           onClick={() => setSelectedTask(t)}
-                           draggable
-                           onDragStart={(e) => { setDraggedTask(t); e.dataTransfer.setData('text/plain', t._id); e.dataTransfer.effectAllowed = 'move'; }}
-                           onDragEnd={() => setDraggedTask(null)}>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div
+                        key={task._id}
+                        className={`kanban-card kanban-card--${color}`}
+                        draggable={groupedTasks[status].length > 0}
+                        onDragStart={event => {
+                          setDraggedTask(task);
+                          event.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => setDraggedTask(null)}
+                        onClick={() => setSelectedTask(task)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <span className="task-tag">#{t.priority.toLowerCase()}</span>
-                            <span className="task-tag">#{t.assignedRole?.toLowerCase().replace(/\s+/g, '') || 'task'}</span>
+                            <span className="task-tag">#{(task.priority || 'medium').toLowerCase()}</span>
+                            <span className="task-tag">#{(task.assignedRole || 'task').toLowerCase().replace(/\s+/g, '')}</span>
                           </div>
-                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }} />
+                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'rgba(255,255,255,.45)', cursor: 'pointer', padding: 4 }} />
                         </div>
-                        
-                        <div style={{ fontWeight: 800, fontSize: '.95rem', color: `var(--${cCol})`, filter: 'brightness(0.4)', lineHeight: 1.3 }}>{t.title}</div>
-                        
-                        {t.description && <div style={{ fontSize: '.75rem', color: `var(--${cCol})`, filter: 'brightness(0.6)', fontStyle: 'italic', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>Note: {t.description}</div>}
-                        
 
+                        <div className="task-card-title">{task.title}</div>
+
+                        {task.description && (
+                          <div className="task-card-description">{task.description}</div>
+                        )}
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                           <div style={{ display: 'flex', marginLeft: 8 }}>
-                            {t.assignedTo ? <Avatar user={t.assignedTo} size="sm" style={{ border: '2px solid rgba(255,255,255,0.8)', marginLeft: -8, width: 26, height: 26 }} /> : <div className="avatar-placeholder" style={{ width: 26, height: 26, fontSize: '.6rem', marginLeft: -8, border: '2px solid rgba(255,255,255,0.8)', background: `var(--${cCol})`, color: '#fff', filter: 'brightness(0.8)' }}>UI</div>}
+                            {task.assignedTo ? (
+                              <Avatar user={task.assignedTo} size="sm" style={{ marginLeft: -8, width: 28, height: 28 }} />
+                            ) : (
+                              <div className="avatar-placeholder avatar-placeholder--pixel" style={{ width: 28, height: 28, fontSize: '.6rem', marginLeft: -8, color: '#fff' }}>UI</div>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <div className="task-meta-pill"><i className="fa-regular fa-comment-dots" /> {t.comments?.length || 0}</div>
-                            <div className="task-meta-pill"><i className="fa-solid fa-paperclip" /> {Math.floor(Math.abs(t._id.charCodeAt(5)) % 5)}</div>
+                            <div className="task-meta-pill"><i className="fa-regular fa-comment-dots" /> {task.comments?.length || 0}</div>
+                            <div className="task-meta-pill"><i className="fa-solid fa-paperclip" /> {Math.floor(Math.abs(task._id.charCodeAt(5)) % 5)}</div>
                           </div>
                         </div>
                       </div>
                     );
                   }) : <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: '.8rem' }}>Drop here</div>}
+
+                  {isOwner && (
+                    inlineAdding === status ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={inlineTitle}
+                        onChange={event => setInlineTitle(event.target.value)}
+                        onKeyDown={event => handleInlineCreate(event, status)}
+                        onBlur={() => {
+                          setInlineAdding(null);
+                          setInlineTitle('');
+                        }}
+                        placeholder="Task name"
+                        className="form-input"
+                        style={{ marginTop: 8 }}
+                      />
+                    ) : (
+                      <div onClick={() => setInlineAdding(status)} style={{ fontSize: '.8rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>+ Add task...</div>
+                    )
+                  )}
                 </div>
               ))}
             </div>
           )}
-        </>
+        </section>
       )}
 
-      {/* ═══════════════ MEMBERS TAB ═══════════════ */}
-      {tab === 'members' && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="section-title" style={{ margin: 0 }}>Team Members</span>
-            {!isMember && project.status === 'Recruiting' && (
-              <button className="btn btn--green btn--sm" onClick={() => setJoinModal(true)}><i className="fa-solid fa-user-plus" /> Request to Join</button>
-            )}
-          </div>
+      {tab === 'team' && (
+        <div className="workspace-grid">
+          <section className="workspace-panel">
+            <div className="workspace-header" style={{ flexWrap: 'wrap' }}>
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Team Members</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>The people currently inside the project.</div>
+              </div>
+              {!isMember && project.status === 'Recruiting' && (
+                <button className="btn btn--green btn--sm" onClick={() => setJoinModal(true)}>
+                  <i className="fa-solid fa-user-plus" /> Request to Join
+                </button>
+              )}
+            </div>
 
-          {/* Roles overview */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {(project.rolesRequired || []).map((r, i) => {
-              const open = r.totalSlots - (r.filledSlots || 0);
-              return (
-                <div key={i} className="chip" style={{ fontSize: '.78rem' }}>
-                  <i className="fa-solid fa-person" /> {r.roleName}
-                  <span style={{ color: open > 0 ? 'var(--green)' : 'var(--text-muted)', fontWeight: 700, marginLeft: 4 }}>({r.filledSlots || 0}/{r.totalSlots})</span>
+            <div className="team-grid">
+              {(members || []).map((member, index) => (
+                <div key={index} className="team-card">
+                  <Avatar user={member.user || member} size="md" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '.92rem' }}>{member.user?.username || member.user?.email?.split('@')[0] || 'User'}</div>
+                    <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>{member.roleName}</div>
+                  </div>
+                  <Badge variant="gray">Member</Badge>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          </section>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-            {(members || []).map((m, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--white)', borderRadius: 18, padding: 14, boxShadow: 'var(--shadow)' }}>
-                <Avatar user={m.user || m} size="md" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '.9rem' }}>{m.user?.username || m.user?.email?.split('@')[0] || 'User'}</div>
-                  <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>{m.roleName}</div>
+          <aside className="dashboard-stack">
+            <section className="workspace-panel">
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>Open Roles</h3>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Available slots and role demand.</div>
                 </div>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {(project.rolesRequired || []).length === 0 ? (
+                  <div className="empty-state" style={{ padding: '18px 0', alignItems: 'flex-start' }}>
+                    <h4>No roles defined</h4>
+                    <p>Add roles to make the team structure clear.</p>
+                  </div>
+                ) : (
+                  (project.rolesRequired || []).map((role, index) => {
+                    const openSlots = role.totalSlots - (role.filledSlots || 0);
+                    return (
+                      <span key={index} className="chip" style={{ padding: '8px 12px' }}>
+                        <i className="fa-solid fa-user-group" />
+                        {role.roleName}
+                        <strong style={{ marginLeft: 4, color: openSlots > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                          ({role.filledSlots || 0}/{role.totalSlots})
+                        </strong>
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+            </section>
 
-      {/* ═══════════════ REQUESTS TAB ═══════════════ */}
-      {tab === 'requests' && isOwner && (
-        <>
-          <h3 className="section-title">Join Requests {requests?.length ? <Badge variant="yellow">{requests.length} pending</Badge> : null}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {!requests?.length
-              ? <div className="empty-state"><i className="fa-solid fa-inbox" /><h4>No pending requests</h4></div>
-              : requests.map(r => (
-                <div key={r._id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--white)', borderRadius: 14, padding: 14, boxShadow: 'var(--shadow)' }}>
-                  <Avatar user={r.user} size="md" />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '.875rem' }}>{r.user?.username || r.user?.email || 'User'}</div>
-                    <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Requested: <strong>{r.roleName}</strong></div>
-                    {r.requestedAt && <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 2 }}>Sent: {fmtDate(r.requestedAt)}</div>}
+            {isOwner && (
+              <section className="workspace-panel">
+                <div className="workspace-header">
+                  <div>
+                    <h3 className="section-title" style={{ marginBottom: 4 }}>Join Requests</h3>
+                    <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Approve or decline pending applicants.</div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn--danger btn--sm" onClick={() => handleReq(r._id, 'rejected')}>Reject</button>
-                    <button className="btn btn--green btn--sm" onClick={() => handleReq(r._id, 'accepted')}>Accept</button>
-                  </div>
+                  {requests?.length ? <Badge variant="yellow">{requests.length} pending</Badge> : null}
                 </div>
-              ))
-            }
-          </div>
-        </>
+                {!requests?.length ? (
+                  <div className="empty-state" style={{ padding: '18px 0' }}>
+                    <i className="fa-solid fa-inbox" />
+                    <h4>No pending requests</h4>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {requests.map(request => (
+                      <div key={request._id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--white)', borderRadius: 18, padding: 14, border: '1px solid var(--border)' }}>
+                        <Avatar user={request.user} size="md" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{request.user?.username || request.user?.email || 'User'}</div>
+                          <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Requested: <strong>{request.roleName}</strong></div>
+                          {request.requestedAt && <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 2 }}>Sent: {fmtDate(request.requestedAt)}</div>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn btn--danger btn--sm" onClick={() => handleReq(request._id, 'rejected')}>Reject</button>
+                          <button className="btn btn--green btn--sm" onClick={() => handleReq(request._id, 'accepted')}>Accept</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </aside>
+        </div>
       )}
 
-      {/* ═══════════════ CREATE TASK MODAL ═══════════════ */}
       <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="form-group"><label className="form-label">Title *</label><input name="title" className="form-input" required placeholder="Task title" /></div>
-          <div className="form-group"><label className="form-label">Description *</label><textarea name="description" className="form-input" rows={3} required placeholder="What needs to be done?" /></div>
+          <div className="form-group">
+            <label className="form-label">Title *</label>
+            <input name="title" className="form-input" required placeholder="Task title" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Description *</label>
+            <textarea name="description" className="form-input" rows={3} required placeholder="What needs to be done?" />
+          </div>
           <div className="grid-2">
-            <div className="form-group"><label className="form-label">Role *</label>
-              <select name="role" className="form-input" required>
-                {(project.rolesRequired || []).map((r, i) => <option key={i} value={r.roleName}>{r.roleName}</option>)}
+            <div className="form-group">
+              <label className="form-label">Role *</label>
+              <select name="role" className="form-input" required defaultValue={project.rolesRequired?.[0]?.roleName || 'Member'}>
+                {project.rolesRequired?.length ? (
+                  project.rolesRequired.map((role, index) => <option key={index} value={role.roleName}>{role.roleName}</option>)
+                ) : (
+                  <option value="Member">Member</option>
+                )}
               </select>
             </div>
-            <div className="form-group"><label className="form-label">Priority</label>
-              <select name="priority" className="form-input"><option>Low</option><option selected>Medium</option><option>High</option></select>
+            <div className="form-group">
+              <label className="form-label">Priority</label>
+              <select name="priority" className="form-input" defaultValue="Medium">
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
             </div>
           </div>
           <div className="grid-2">
-            <div className="form-group"><label className="form-label">XP Points</label><input name="xp" className="form-input" type="number" defaultValue={50} min={1} /></div>
-            <div className="form-group"><label className="form-label">Deadline</label><input name="deadline" className="form-input" type="date" /></div>
+            <div className="form-group">
+              <label className="form-label">Deadline</label>
+              <input name="deadline" className="form-input" type="date" />
+            </div>
           </div>
           <button className="btn btn--green" style={{ width: '100%' }}>Create Task</button>
         </form>
       </Modal>
 
-      {/* ═══════════════ JOIN MODAL ═══════════════ */}
       <Modal open={joinModal} onClose={() => setJoinModal(false)} title={`Join ${project.title}`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={{ fontSize: '.875rem', color: 'var(--text-secondary)', margin: 0 }}>Select your role:</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(project.rolesRequired || []).map((r, i) => {
-              const full = (r.filledSlots || 0) >= r.totalSlots;
-              const open = r.totalSlots - (r.filledSlots || 0);
+            {(project.rolesRequired || []).map((role, index) => {
+              const full = (role.filledSlots || 0) >= role.totalSlots;
+              const openSlots = role.totalSlots - (role.filledSlots || 0);
+
               return (
-                <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, border: `1.5px solid ${joinRole === r.roleName ? 'var(--green)' : 'var(--border)'}`, cursor: full ? 'not-allowed' : 'pointer', opacity: full ? 0.5 : 1, background: joinRole === r.roleName ? 'var(--green-bg)' : 'transparent', transition: 'all .15s' }}>
-                  <input type="radio" name="joinRole" value={r.roleName} disabled={full} checked={joinRole === r.roleName} onChange={() => setJoinRole(r.roleName)} style={{ accentColor: 'var(--green)' }} />
-                  <span style={{ fontWeight: 600, fontSize: '.9rem', flex: 1 }}>{r.roleName}</span>
-                  <span style={{ fontSize: '.78rem', color: full ? 'var(--text-muted)' : 'var(--green)', fontWeight: 600 }}>{full ? 'Full' : `${open} slot${open > 1 ? 's' : ''} open`}</span>
+                <label
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    border: `1.5px solid ${joinRole === role.roleName ? 'var(--green)' : 'var(--border)'}`,
+                    cursor: full ? 'not-allowed' : 'pointer',
+                    opacity: full ? 0.5 : 1,
+                    background: joinRole === role.roleName ? 'var(--green-bg)' : 'transparent',
+                    transition: 'all .15s',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="joinRole"
+                    value={role.roleName}
+                    disabled={full}
+                    checked={joinRole === role.roleName}
+                    onChange={() => setJoinRole(role.roleName)}
+                    style={{ accentColor: 'var(--green)' }}
+                  />
+                  <span style={{ fontWeight: 600, fontSize: '.9rem', flex: 1 }}>{role.roleName}</span>
+                  <span style={{ fontSize: '.78rem', color: full ? 'var(--text-muted)' : 'var(--green)', fontWeight: 600 }}>
+                    {full ? 'Full' : `${openSlots} slot${openSlots > 1 ? 's' : ''} open`}
+                  </span>
                 </label>
               );
             })}
@@ -475,11 +815,13 @@ export default function ProjectPage() {
         </div>
       </Modal>
 
-      {/* ═══════════════ TASK SIDE PANEL ═══════════════ */}
       {selectedTask && (
         <TaskSidePanel
           task={selectedTask}
-          onClose={() => { setSelectedTask(null); loadTasks(); }}
+          onClose={() => {
+            setSelectedTask(null);
+            loadTasks();
+          }}
           isOwner={isOwner}
           isMember={isMember}
           userId={user?._id}

@@ -29,7 +29,7 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar__logo">JobXP</div>
+      <div className="sidebar__logo">TeamForge</div>
       <nav className="sidebar__nav" role="navigation" aria-label="Main navigation">
         {NAV.map(n => (
           <NavLink
@@ -70,7 +70,7 @@ export default function Sidebar() {
                     return (
                       <button 
                         key={p._id} 
-                        onClick={() => { selectProject(p._id); setShowProjects(false); navigate('/app/dashboard'); }}
+                        onClick={() => { selectProject(p._id); setShowProjects(false); navigate(`/app/project/${p._id}`); }}
                         style={{
                           display: 'block', padding: '8px 12px', borderRadius: 8, width: '100%', textAlign: 'left',
                           background: isActive ? 'rgba(34,197,94,.18)' : 'transparent',

@@ -2,6 +2,7 @@ const taskService = require('../services/task.service');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
+const Task = require('../models/task.model');
 
 // ─────────────────────────────────────────
 // CREATE TASKS — AI generates per role
@@ -58,7 +59,7 @@ const getTaskById = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 // UPDATE TASK STATUS
 // Member: Todo → In-Progress → Done
-// Owner:  Done → Approved (triggers XP reward)
+// Owner:  Done → Approved
 // ─────────────────────────────────────────
 
 const updateTaskStatus = asyncWrapper(async (req, res) => {
@@ -149,6 +150,22 @@ const getSubtasks = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// UPLOAD ATTACHMENT
+// ─────────────────────────────────────────
+
+const uploadAttachment = asyncWrapper(async (req, res) => {
+  if (!req.file) throw new AppError('No file uploaded', 400);
+
+  const task = await Task.findById(req.params.taskId);
+  if (!task) throw new AppError('Task not found', 404);
+
+  task.attachment = `/uploads/${req.file.filename}`;
+  await task.save();
+
+  return success(res, task, 'File uploaded', 200);
+});
+
+// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
@@ -163,4 +180,5 @@ module.exports = {
   addComment,
   getComments,
   getSubtasks,
+  uploadAttachment,
 };

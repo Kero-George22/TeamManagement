@@ -21,7 +21,7 @@ function parseJsonResponse(text, label) {
 }
 
 function validateTaskFields(tasks) {
-  const required = ['title', 'description', 'assignedRole', 'xpPoints'];
+  const required = ['title', 'description', 'assignedRole'];
   for (const task of tasks) {
     for (const field of required) {
       if (!task[field])
@@ -61,8 +61,7 @@ Return the response as a JSON array of objects with this exact structure:
   {
     "title": "Task Title",
     "description": "Detailed technical requirements",
-    "assignedRole": "Role Name",
-    "xpPoints": 50
+    "assignedRole": "Role Name"
   }
 ]
 
@@ -82,7 +81,6 @@ Keep the tasks professional and relevant to the project goal.
     title:        task.title,
     description:  task.description,
     assignedRole: task.assignedRole,
-    xpPoints:     task.xpPoints,
   }));
 };
 
@@ -100,7 +98,7 @@ const generateProjectStatus = async (project, taskStats) => {
     .join(', ');
 
   const prompt = `
-You are an AI Project Manager for JobXP, a developer skill platform.
+You are an AI Project Manager for TeamForge, a collaboration platform.
 
 PROJECT: ${title}
 DESCRIPTION: ${description}

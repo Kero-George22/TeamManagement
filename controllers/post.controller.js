@@ -32,7 +32,7 @@ exports.getFeed = asyncWrapper(async (req, res, next) => {
     .sort(sort)
     .skip((page - 1) * limit)
     .limit(limit * 1)
-    .populate({ path: 'author', select: 'name email profilePic status level.current' })
+    .populate({ path: 'author', select: 'name email profilePic status' })
     .populate({ path: 'linkedProject', select: 'name color' })
     .populate({ path: 'linkedTask', select: 'name priority status' })
     .lean(); // Faster reads via Lean Mongoose objects when virtuals not strictly needed
@@ -93,7 +93,7 @@ exports.addComment = asyncWrapper(async (req, res, next) => {
   // Atomic increment for post comments count
   await Post.findByIdAndUpdate(postId, { $inc: { commentCount: 1 } });
 
-  await comment.populate({ path: 'author', select: 'name profilePic level.current' });
+  await comment.populate({ path: 'author', select: 'name profilePic' });
 
   res.status(201).json({
     status: 'success',
@@ -106,7 +106,7 @@ exports.getPostComments = asyncWrapper(async (req, res, next) => {
 
   const comments = await Comment.find({ post: postId })
     .sort('-createdAt')
-    .populate({ path: 'author', select: 'name profilePic level.current' })
+    .populate({ path: 'author', select: 'name profilePic' })
     .lean();
 
   res.status(200).json({

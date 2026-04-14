@@ -141,12 +141,6 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
             <span className="task-panel__label">Role</span>
             <span className="chip">{task.assignedRole}</span>
           </div>
-          {task.xpPoints && (
-            <div className="task-panel__field">
-              <span className="task-panel__label">XP</span>
-              <span style={{ background: 'var(--yellow-bg)', color: '#b45309', fontSize: '.78rem', fontWeight: 700, padding: '3px 10px', borderRadius: 99 }}>+{task.xpPoints} XP</span>
-            </div>
-          )}
         </div>
 
         {/* Description */}

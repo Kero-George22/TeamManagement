@@ -32,7 +32,6 @@ async function checkDeadlines() {
             if (user) {
                 // Decrease reliability score by 5 (min 0)
                 user.reliabilityScore = Math.max(0, (user.reliabilityScore || 100) - 5);
-                user.totalXP = Math.max(0, (user.totalXP || 0) - 10); // Lose 10 XP
                 await user.save();
 
                 console.log(`Penalty applied to user ${user.email} for overdue task: ${task.title}`);

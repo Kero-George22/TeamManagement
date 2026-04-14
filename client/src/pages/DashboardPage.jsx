@@ -1,259 +1,472 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGlobalProject } from '../contexts/ProjectContext';
-import { useToast } from '../lib/toast';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
 import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/Primitives';
-import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
+import { daysLeft, fmtDate, projectProgress } from '../lib/utils';
 
-const CARD_COLORS = ['yellow', 'blue', 'pink', 'green', 'purple'];
-const FILLS = { yellow: '#f59e0b', blue: '#3b82f6', pink: '#ec4899', green: '#22c55e', purple: '#8b5cf6' };
-const BADGE_STATUS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'gray' };
+const STATUS_VARIANTS = {
+  Recruiting: 'green',
+  'In-Progress': 'blue',
+  Completed: 'gray',
+};
+
+const CARD_COLORS = ['yellow', 'blue', 'pink', 'green', 'purple', 'orange', 'teal', 'indigo', 'cyan', 'red'];
+const FILLS = {
+  yellow: '#f59e0b',
+  blue: '#3b82f6',
+  pink: '#ec4899',
+  green: '#22c55e',
+  purple: '#8b5cf6',
+  orange: '#f97316',
+  teal: '#14b8a6',
+  indigo: '#6366f1',
+  cyan: '#06b6d4',
+  red: '#ef4444',
+};
+
+const ANALYTICS_COLORS = {
+  done: '#22c55e',
+  inProgress: '#3b82f6',
+  pending: '#f59e0b',
+  overdue: '#ef4444',
+};
+
+function getFill(color) {
+  return FILLS[color] || FILLS.blue;
+}
+
+function getProjectColor(projectId) {
+  if (!projectId) return CARD_COLORS[0];
+  const sum = String(projectId).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return CARD_COLORS[sum % CARD_COLORS.length];
+}
+
+function getProjectRole(project, userId) {
+  if (!project || !userId) return 'Member';
+  if (project.owner?._id === userId || project.owner === userId) return 'Owner';
+  const membership = (project.members || []).find(member => (member.userId?._id || member.userId) === userId);
+  return membership?.roleName || 'Member';
+}
+
+function getMemberCount(project) {
+  const members = project?.members || [];
+  const roleCounts = project?.rolesRequired || [];
+  if (members.length) return members.length;
+  if (roleCounts.length) {
+    return roleCounts.reduce((count, role) => count + (role.filledSlots || 0), 0);
+  }
+  return 0;
+}
+
+function formatTimestamp(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { projects, selectedProject } = useGlobalProject();
-  const toast = useToast();
+  const { projects, loadingProjects } = useGlobalProject();
   const navigate = useNavigate();
-  
-  // Default Dashboard State
-  const [stats, setStats]     = useState(null);
-  const [profile, setProfile]   = useState(null);
-  const [convs, setConvs]       = useState(null);
 
-  // Scoped Dashboard State
-  const [scopedTasks, setScopedTasks] = useState(null);
-  const [scopedTeam, setScopedTeam]   = useState(null);
-  const [scopedAI, setScopedAI]       = useState(null);
-  const [scopedMsgs, setScopedMsgs]   = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [allTasks, setAllTasks] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
-      try { const p = await API.profile.me(); setProfile(p?.user || p); } catch {}
-      try { const c = await API.dms.conversations(); setConvs(c || []); } catch {}
+      try {
+        const response = await API.profile.me();
+        if (isMounted) setProfile(response?.user || response || null);
+      } catch {
+        if (isMounted) setProfile(null);
+      }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (!selectedProject) {
-      if (projects) {
-        const mine = projects.filter(p => p.owner?._id === user?._id || p.owner === user?._id);
-        const joined = projects.filter(p => (p.members || []).some(m => m.userId === user?._id || m.userId?._id === user?._id));
-        setStats({ total: projects.length, mine: mine.length, joined: joined.length });
-      }
-    } else {
-      // Load Scoped Project Data
-      (async () => {
-        try { setScopedTasks(await API.tasks.list(selectedProject._id) || []); } catch { setScopedTasks([]); }
-        try { setScopedTeam(await API.projects.members(selectedProject._id) || []); } catch { setScopedTeam([]); }
-        try { setScopedAI(await API.office.status(selectedProject._id)); } catch { setScopedAI(null); }
-        try { const m = await API.office.messages(selectedProject._id) || []; setScopedMsgs(m.slice(-3)); } catch { setScopedMsgs([]); }
-      })();
+    let isMounted = true;
+
+    if (!projects) {
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [selectedProject, projects, user]);
+
+    if (loadingProjects && projects.length === 0) {
+      setAllTasks(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (projects.length === 0) {
+      setAllTasks([]);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setAllTasks(null);
+
+    (async () => {
+      const collected = [];
+      await Promise.all(projects.map(async project => {
+        try {
+          const list = await API.tasks.list(project._id);
+          (list || []).forEach(task => collected.push({ ...task, projectRef: project }));
+        } catch {
+          // Ignore project-level task fetch failures so the rest of the dashboard can load.
+        }
+      }));
+
+      if (isMounted) setAllTasks(collected);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projects, loadingProjects]);
+
+  const dashboardStats = useMemo(() => {
+    const list = projects || [];
+    const owned = list.filter(project => project.owner?._id === user?._id || project.owner === user?._id);
+    const joined = list.filter(project => (project.members || []).some(member => (member.userId?._id || member.userId) === user?._id));
+    const active = list.filter(project => project.status !== 'Completed');
+    const taskList = allTasks || [];
+    const myTasks = taskList.filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+
+    return {
+      totalProjects: list.length,
+      ownedProjects: owned.length,
+      joinedProjects: joined.length,
+      activeProjects: active.length,
+      totalTasks: taskList.length,
+      myTasks: myTasks.length,
+    };
+  }, [projects, allTasks, user]);
+
+  const sortedProjects = useMemo(() => {
+    const list = [...(projects || [])];
+    return list.sort((left, right) => {
+      const leftDate = new Date(left.updatedAt || left.createdAt || 0).getTime();
+      const rightDate = new Date(right.updatedAt || right.createdAt || 0).getTime();
+      return rightDate - leftDate;
+    });
+  }, [projects]);
+
+  const myTasks = useMemo(() => {
+    const list = (allTasks || []).filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+    const priorityRank = { High: 3, Medium: 2, Low: 1 };
+
+    return list.sort((left, right) => {
+      const leftPriority = priorityRank[left.priority] || 0;
+      const rightPriority = priorityRank[right.priority] || 0;
+      if (leftPriority !== rightPriority) return rightPriority - leftPriority;
+
+      const leftDeadline = left.deadline ? new Date(left.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const rightDeadline = right.deadline ? new Date(right.deadline).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+
+      return new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime();
+    });
+  }, [allTasks, user]);
+
+  const activityFeed = useMemo(() => {
+    const priorityRank = { High: 3, Medium: 2, Low: 1 };
+    return [...(allTasks || [])]
+      .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime())
+      .slice(0, 8)
+      .map(task => ({
+        task,
+        project: task.projectRef,
+        action: task.status === 'Done' || task.status === 'Approved' ? 'Completed' : 'Updated',
+        priority: priorityRank[task.priority] || 0,
+      }));
+  }, [allTasks]);
+
+  const analyticsData = useMemo(() => {
+    const tasks = allTasks || [];
+    const now = new Date();
+    const done = tasks.filter(t => t.status === 'Done' || t.status === 'Approved').length;
+    const inProgress = tasks.filter(t => t.status === 'In Progress').length;
+    const pending = tasks.filter(t => t.status === 'Todo' || t.status === 'To Do').length;
+    const overdue = tasks.filter(t => t.deadline && new Date(t.deadline) < now && t.status !== 'Done' && t.status !== 'Approved').length;
+    const total = tasks.length || 1;
+    return {
+      done,
+      inProgress,
+      pending,
+      overdue,
+      donePct: Math.round((done / total) * 100),
+      inProgressPct: Math.round((inProgress / total) * 100),
+      pendingPct: Math.round((pending / total) * 100),
+      overduePct: Math.round((overdue / total) * 100),
+    };
+  }, [allTasks]);
+
+  const priorityData = useMemo(() => {
+    const tasks = allTasks || [];
+    const high = tasks.filter(t => t.priority === 'High').length;
+    const medium = tasks.filter(t => t.priority === 'Medium').length;
+    const low = tasks.filter(t => t.priority === 'Low').length;
+    const total = high + medium + low || 1;
+    return { high, medium, low, highPct: (high / total) * 100, mediumPct: (medium / total) * 100, lowPct: (low / total) * 100 };
+  }, [allTasks]);
 
   return (
     <>
-      <Topbar title={selectedProject ? `${selectedProject.title} Dashboard` : "Dashboard"} />
+      <Topbar title="All Projects" />
 
-      {selectedProject ? (
-        // =======================
-        // SCOPED DASHBOARD
-        // =======================
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Project Details Hero */}
-          <div style={{ background: 'var(--sidebar-bg)', color: '#fff', borderRadius: 'var(--card-radius)', padding: '28px 30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <Badge variant={BADGE_STATUS[selectedProject.status] || 'gray'}>{selectedProject.status}</Badge>
-                {selectedProject.isPrivate && <span className="chip"><i className="fa-solid fa-lock" /> Private</span>}
-              </div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: 6 }}>{selectedProject.title}</div>
-              <div style={{ fontSize: '.875rem', color: 'rgba(255,255,255,.6)', maxWidth: 540 }}>{selectedProject.description}</div>
-              <div style={{ display: 'flex', gap: 20, marginTop: 18 }}>
-                {[['Start', fmtDate(selectedProject.startDate)], ['Duration', `${selectedProject.duration} days`], ['Progress', `${projectProgress(selectedProject.startDate, selectedProject.duration)}%`], ['Time Left', daysLeft(selectedProject.startDate, selectedProject.duration)]].map(([l, v]) => (
-                  <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <label style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(255,255,255,.4)' }}>{l}</label>
-                    <span style={{ fontWeight: 600, fontSize: '.9rem', color: 'rgba(255,255,255,.9)' }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="dashboard-analytics">
+        <div className="analytics-stat">
+          <div className="analytics-stat__chart">
+            <div className="analytics-bar" style={{ '--height': `${analyticsData.donePct}%`, '--color': ANALYTICS_COLORS.done }} />
           </div>
-
-          <div className="content-grid">
-            {/* Scoped Team & Status */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 className="section-title" style={{ margin: 0 }}>Team Members</h3>
-                  <button className="btn btn--sm btn--ghost" onClick={() => navigate(`/app/project/${selectedProject._id}`)}>View All →</button>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {scopedTeam === null ? <div className="skeleton" style={{ height: 40, width: 40, borderRadius: '50%' }} /> :
-                    scopedTeam.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={m.roleName}>
-                        <Avatar user={m.user || m} size="md" />
-                        <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{m.user?.username || 'User'}</span>
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
-
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', animation: 'pulse 1.5s infinite' }} />
-                    AI Status
-                  </div>
-                  <button className="btn btn--sm btn--ghost" onClick={() => navigate(`/app/office/${selectedProject._id}`)}>Office →</button>
-                </div>
-                <div style={{ fontSize: '.82rem', color: 'var(--text)', lineHeight: 1.55 }}>
-                  {scopedAI ? (scopedAI.summary || scopedAI.status || 'No data') : 'Loading AI status...'}
-                </div>
-              </div>
+          <div className="analytics-stat__value">{analyticsData.done}</div>
+          <div className="analytics-stat__label">Completed</div>
+        </div>
+        <div className="analytics-stat">
+          <div className="analytics-stat__chart">
+            <div className="analytics-bar" style={{ '--height': `${analyticsData.inProgressPct}%`, '--color': ANALYTICS_COLORS.inProgress }} />
+          </div>
+          <div className="analytics-stat__value">{analyticsData.inProgress}</div>
+          <div className="analytics-stat__label">In Progress</div>
+        </div>
+        <div className="analytics-stat">
+          <div className="analytics-stat__chart">
+            <div className="analytics-bar" style={{ '--height': `${analyticsData.pendingPct}%`, '--color': ANALYTICS_COLORS.pending }} />
+          </div>
+          <div className="analytics-stat__value">{analyticsData.pending}</div>
+          <div className="analytics-stat__label">Pending</div>
+        </div>
+        <div className="analytics-stat">
+          <div className="analytics-stat__chart">
+            <div className="analytics-bar" style={{ '--height': `${analyticsData.overduePct}%`, '--color': ANALYTICS_COLORS.overdue }} />
+          </div>
+          <div className="analytics-stat__value">{analyticsData.overdue}</div>
+          <div className="analytics-stat__label">Overdue</div>
+        </div>
+        <div className="analytics-stat analytics-stat--wide">
+          <div className="analytics-priority">
+            <div className="analytics-priority__bar">
+              <div className="analytics-priority__fill" style={{ width: `${priorityData.highPct}%`, background: FILLS.red }} />
+              <div className="analytics-priority__fill" style={{ width: `${priorityData.mediumPct}%`, background: FILLS.yellow }} />
+              <div className="analytics-priority__fill" style={{ width: `${priorityData.lowPct}%`, background: FILLS.green }} />
             </div>
-
-            {/* Scoped Tasks & Messages */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 className="section-title" style={{ margin: 0 }}>Recent Tasks</h3>
-                  <button className="btn btn--sm btn--ghost" onClick={() => navigate(`/app/tasks`)}>My Tasks →</button>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {scopedTasks === null ? [1,2].map(i => <div key={i} className="skeleton" style={{ height: 50, borderRadius: 8 }} />) :
-                    scopedTasks.length === 0 ? <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>No tasks assigned.</div> :
-                    scopedTasks.slice(0, 4).map(t => (
-                      <div key={t._id} onClick={() => navigate(`/app/task/${t._id}`)} style={{ display: 'flex', justifyContent: 'space-between', padding: 10, background: '#f9fafb', borderRadius: 8, cursor: 'pointer' }}>
-                        <div>
-                          <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{t.title}</div>
-                          <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 2 }}>{t.assignedRole} • {t.status}</div>
-                        </div>
-                        {t.assignedTo && <Avatar user={t.assignedTo} size="sm" />}
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="section-title">Recent Office Chat</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {scopedMsgs === null ? [1,2].map(i => <div key={i} className="skeleton" style={{ height: 40, borderRadius: 8 }} />) :
-                    scopedMsgs.length === 0 ? <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>No recent messages.</div> :
-                    scopedMsgs.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 10 }}>
-                        <Avatar user={m.sender} size="sm" />
-                        <div>
-                          <div style={{ fontSize: '.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{m.sender?.username || 'User'}</div>
-                          <div style={{ fontSize: '.8rem' }}>{m.content}</div>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
+            <div className="analytics-priority__legend">
+              <span><i style={{ background: FILLS.red }} /> High ({priorityData.high})</span>
+              <span><i style={{ background: FILLS.yellow }} /> Medium ({priorityData.medium})</span>
+              <span><i style={{ background: FILLS.green }} /> Low ({priorityData.low})</span>
             </div>
           </div>
         </div>
-      ) : (
-        // =======================
-        // DEFAULT DASHBOARD
-        // =======================
-        <>
-          <div className="stats-grid">
-            {stats ? (<>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--green-bg)', color: 'var(--green)' }}><i className="fa-solid fa-folder-open" /></div>
-                <div className="stat-card__label">Total Projects</div>
-                <div className="stat-card__value">{stats.total}</div>
-                <div className="stat-card__sub">{stats.mine} owned by you</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--blue-bg)', color: 'var(--blue)' }}><i className="fa-solid fa-users" /></div>
-                <div className="stat-card__label">Joined Projects</div>
-                <div className="stat-card__value">{stats.joined}</div>
-                <div className="stat-card__sub">As a team member</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-card__icon" style={{ background: 'var(--yellow-bg)', color: 'var(--yellow)' }}><i className="fa-solid fa-star" /></div>
-                <div className="stat-card__label">Status</div>
-                <div className="stat-card__value" style={{ fontSize: '1.1rem', marginTop: 10 }}>{user?.username || user?.email?.split('@')[0]}</div>
-                <div className="stat-card__sub">{user?.email || ''}</div>
-              </div>
-            </>) : [0,1,2].map(i => <div key={i} className="stat-card skeleton" style={{ height: 120 }} />)}
-          </div>
+      </div>
 
-          <div className="content-grid">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className="section-title" style={{ margin: 0 }}>My Projects</h3>
-                <button className="btn btn--green btn--sm" onClick={() => navigate('/app/projects')}><i className="fa-solid fa-plus" /> New</button>
+      <div className="dashboard-layout">
+        <div className="dashboard-stack">
+          <section className="dashboard-widget">
+            <div className="dashboard-widget__header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Project Grid</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Open any project to jump into its workspace.</div>
               </div>
-              <div id="projects-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                {projects === null ? [0,1,2].map(i => <div key={i} className="skeleton" style={{ height: 140, borderRadius: 'var(--card-radius)' }} />) :
-                  projects.length === 0
-                    ? <div className="empty-state" style={{ gridColumn: '1/-1' }}><i className="fa-solid fa-folder-open" /><h4>No projects yet</h4><p>Create or join a project to get started.</p></div>
-                    : projects.slice(0, 6).map((p, i) => {
-                        const color = CARD_COLORS[i % CARD_COLORS.length];
-                        const pct = projectProgress(p.startDate, p.duration);
-                        return (
-                          <div key={p._id} className={`project-card project-card--${color}`} onClick={() => navigate(`/app/project/${p._id}`)} style={{ cursor: 'pointer' }}>
-                            <div className="p-card__date">{fmtDate(p.startDate)}</div>
-                            <div className="p-card__title">{p.title}</div>
-                            <ProgressBar value={pct} style={{ '--fill': FILLS[color] }} />
-                            <div className="p-card__footer">
-                              <span>{daysLeft(p.startDate, p.duration)}</span>
-                              <span className="badge badge--gray">{p.status}</span>
-                            </div>
-                          </div>
-                        );
-                      })
-                }
-              </div>
+              <button className="btn btn--green btn--sm" onClick={() => navigate('/app/projects')}>
+                <i className="fa-solid fa-compass" /> Browse all
+              </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="card">
-                {profile ? (
-                  <>
-                    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                      <Avatar user={profile} size="lg" />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>{profile.username || profile.email?.split('@')[0]}</div>
-                        <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', margin: '2px 0 10px' }}>{profile.email}</div>
+            {loadingProjects || sortedProjects.length === 0 ? (
+              loadingProjects ? (
+                <div className="dashboard-project-grid">
+                  {[0, 1, 2, 3].map(index => (
+                    <div key={index} className="skeleton" style={{ height: 192, borderRadius: 24 }} />
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <i className="fa-solid fa-folder-open" />
+                  <h4>No projects yet</h4>
+                  <p>Create a project or join one to start the workspace.</p>
+                </div>
+              )
+            ) : (
+              <div className="dashboard-project-grid">
+                {sortedProjects.slice(0, 6).map(project => {
+                  const color = getProjectColor(project._id);
+                  const progress = projectProgress(project.startDate, project.duration);
+                  const role = getProjectRole(project, user?._id);
+
+                  return (
+                    <article
+                      key={project._id}
+                      className="dashboard-project-card"
+                      style={{ borderTop: `4px solid ${FILLS[color]}` }}
+                      onClick={() => navigate(`/app/project/${project._id}`)}
+                    >
+                      <div className="dashboard-project-card__top">
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Badge variant={STATUS_VARIANTS[project.status] || 'gray'}>{project.status}</Badge>
+                          <h4 style={{ marginTop: 10, fontSize: '1.03rem', fontWeight: 800, lineHeight: 1.2 }}>{project.title}</h4>
+                          <p className="dashboard-project-card__desc" style={{ marginTop: 8, minHeight: 42, fontSize: '.82rem', color: 'var(--text-secondary)' }}>
+                            {project.description || 'No description yet.'}
+                          </p>
+                        </div>
+                        <div
+                          className="dashboard-progress-ring"
+                          style={{ background: `conic-gradient(${FILLS[color]} ${progress * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}
+                        >
+                          <span className="dashboard-progress-ring__value">{progress}%</span>
+                        </div>
+                      </div>
+
+                      <div className="dashboard-project-card__meta" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <span className="chip"><i className="fa-solid fa-user-gear" /> {role}</span>
+                          <span className="chip"><i className="fa-solid fa-users" /> {getMemberCount(project)}</span>
+                        </div>
+                        <span className="p-card__date">{daysLeft(project.startDate, project.duration)} left</span>
+                      </div>
+
+                      <ProgressBar value={progress} style={{ marginTop: 14, '--fill': FILLS[color] }} />
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="dashboard-stack">
+          <section className="dashboard-widget">
+            <div className="dashboard-widget__header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>My Tasks</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Your next actions across all projects.</div>
+              </div>
+              <button className="btn btn--ghost btn--sm" onClick={() => navigate('/app/tasks')}>
+                Open view
+              </button>
+            </div>
+
+            {allTasks === null ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {[0, 1, 2, 3].map(index => (
+                  <div key={index} className="skeleton" style={{ height: 68, borderRadius: 18 }} />
+                ))}
+              </div>
+            ) : myTasks.length === 0 ? (
+              <div className="empty-state" style={{ padding: '28px 12px' }}>
+                <i className="fa-solid fa-check-circle" />
+                <h4>No assigned tasks</h4>
+                <p>You’re clear for now. New work will surface here.</p>
+              </div>
+            ) : (
+              <div>
+                {myTasks.slice(0, 6).map(task => {
+                  const projectColor = getProjectColor(task.projectRef?._id);
+                  const projectBadge = FILLS[projectColor];
+                  const isLate = task.deadline && new Date(task.deadline) < new Date();
+
+                  return (
+                    <div key={task._id} className="dashboard-task-row" onClick={() => navigate(`/app/task/${task._id}`)} style={{ cursor: 'pointer' }}>
+                      <Avatar user={task.assignedTo || user} size="sm" />
+                      <div className="dashboard-task-row__body">
+                        <div className="dashboard-task-row__title">{task.title}</div>
+                        <div className="dashboard-task-row__meta">
+                          <Badge variant={projectColor}>{task.projectRef?.title || 'Project'}</Badge>
+                          <span className="chip"><i className="fa-regular fa-calendar" /> {task.deadline ? fmtDate(task.deadline) : 'No deadline'}</span>
+                          <span className="chip" style={{ color: isLate ? 'var(--red)' : 'inherit' }}>
+                            <i className="fa-solid fa-circle" style={{ fontSize: '.45rem', color: projectBadge }} />
+                            {task.priority || 'Medium'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </>
-                ) : <div className="skeleton" style={{ height: 80, borderRadius: 12 }} />}
+                  );
+                })}
               </div>
+            )}
+          </section>
 
-              <div className="card">
-                <h3 className="section-title">Messages</h3>
-                {convs === null ? [0,1].map(i => <div key={i} className="skeleton" style={{ height: 52, borderRadius: 10, marginBottom: 10 }} />) :
-                  convs.length === 0
-                    ? <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: '.85rem' }}>No messages yet</div>
-                    : convs.slice(0, 4).map((c) => (
-                        <div key={c.user?._id} className="inbox-row" onClick={() => navigate(`/app/messages?user=${c.user?._id}`)}>
-                          <Avatar user={c.user} size="md" className="inbox-row__avatar" />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="inbox-row__title">{c.user?.username || c.user?.email?.split('@')[0] || 'User'}</div>
-                            <div className="inbox-row__sub">{c.latestMessage || c.lastMessage?.content || '...'}</div>
-                          </div>
-                        </div>
-                      ))
-                }
+          <section className="dashboard-widget">
+            <div className="dashboard-widget__header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Activity Feed</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Recent updates from the projects you’re in.</div>
               </div>
             </div>
-          </div>
-        </>
-      )}
+
+            {allTasks === null ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {[0, 1, 2, 3].map(index => (
+                  <div key={index} className="skeleton" style={{ height: 52, borderRadius: 18 }} />
+                ))}
+              </div>
+            ) : activityFeed.length === 0 ? (
+              <div className="empty-state" style={{ padding: '28px 12px' }}>
+                <i className="fa-solid fa-bolt" />
+                <h4>No recent activity</h4>
+                <p>Task updates will appear here as the team moves.</p>
+              </div>
+            ) : (
+              <div>
+                {activityFeed.map(({ task, project, action }) => {
+                  const color = getProjectColor(project?._id);
+                  return (
+                    <div key={task._id} className="feed-item" onClick={() => navigate(`/app/task/${task._id}`)} style={{ cursor: 'pointer' }}>
+                      <span className="feed-item__dot" style={{ background: FILLS[color], boxShadow: `0 0 0 4px ${FILLS[color]}22` }} />
+                      <div className="feed-item__body">
+                        <div className="feed-item__title">{action} “{task.title}”</div>
+                        <div className="feed-item__meta">
+                          <Badge variant={color}>{project?.title || 'Project'}</Badge>
+                          <span>{formatTimestamp(task.updatedAt || task.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="dashboard-widget">
+            <div className="dashboard-widget__header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Profile</h3>
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Quick identity snapshot.</div>
+              </div>
+            </div>
+
+            {profile ? (
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                <Avatar user={profile} size="lg" />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: '1rem' }}>{profile.username || profile.email?.split('@')[0] || 'User'}</div>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>{profile.email}</div>
+                  <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="chip"><i className="fa-solid fa-folder-open" /> {dashboardStats.ownedProjects} owned</span>
+                    <span className="chip"><i className="fa-solid fa-handshake-angle" /> {dashboardStats.joinedProjects} joined</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="skeleton" style={{ height: 92, borderRadius: 18 }} />
+            )}
+          </section>
+        </div>
+      </div>
     </>
   );
 }

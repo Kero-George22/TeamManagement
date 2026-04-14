@@ -24,16 +24,15 @@ const getPlatformAnalytics = asyncWrapper(async (req, res) => {
               $group: {
                 _id: null,
                 total:    { $sum: 1 },
-                active:   { $sum: { $cond: [{ $gt: ['$totalXP', 0] }, 1, 0] } },
-                avgXP:    { $avg: '$totalXP' },
-                avgLevel: { $avg: '$level' },
+                active:   { $sum: { $cond: [{ $gt: ['$completedTasks', 0] }, 1, 0] } },
+                avgCompletedTasks: { $avg: '$completedTasks' },
               },
             },
           ],
           top: [
-            { $sort: { totalXP: -1 } },
+            { $sort: { completedTasks: -1 } },
             { $limit: 5 },
-            { $project: { email: 1, username: 1, totalXP: 1, level: 1, completedTasks: 1 } },
+            { $project: { email: 1, username: 1, completedTasks: 1 } },
           ],
         },
       },
@@ -68,8 +67,7 @@ const getPlatformAnalytics = asyncWrapper(async (req, res) => {
   const uStats       = userStats[0]?.stats?.[0] || {};
   const totalUsers   = uStats.total   || 0;
   const activeUsers  = uStats.active  || 0;
-  const avgUserXP    = Math.round(uStats.avgXP    || 0);
-  const avgUserLevel = (uStats.avgLevel || 0).toFixed(2);
+  const avgCompletedTasks = Math.round(uStats.avgCompletedTasks || 0);
   const topUsersList = userStats[0]?.top || [];
 
   // Parse submission stats
@@ -99,7 +97,7 @@ const getPlatformAnalytics = asyncWrapper(async (req, res) => {
       pending:        pendingSubs,
       acceptanceRate: totalSubs > 0 ? Math.round((acceptedSubs / totalSubs) * 100) : 0,
     },
-    averages: { avgUserXP, avgUserLevel },
+    averages: { avgCompletedTasks },
     topUsers:           topUsersList,
     recentSubmissions,
   }, 'Platform analytics retrieved successfully');
@@ -169,7 +167,7 @@ const getProjectAnalytics = asyncWrapper(async (req, res) => {
             localField:   '_id',
             foreignField: '_id',
             as:           'userDetails',
-            pipeline:     [{ $project: { username: 1, email: 1, level: 1, totalXP: 1 } }],
+            pipeline:     [{ $project: { username: 1, email: 1, completedTasks: 1 } }],
           },
         },
         {

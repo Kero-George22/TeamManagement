@@ -2,6 +2,14 @@ const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
+const multer = require('multer');
+const path = require('path');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────
 // Project tasks
@@ -24,6 +32,9 @@ router.get(  '/task/:taskId',         requireAuth, taskController.getTaskById);
 router.patch('/task/:taskId/status',  requireAuth, taskController.updateTaskStatus);
 router.put(  '/task/:taskId',         requireAuth, taskController.updateTask);
 router.delete('/task/:taskId',        requireAuth, taskController.deleteTask);
+
+// Upload attachment
+router.post('/task/:taskId/attachment', requireAuth, upload.single('file'), taskController.uploadAttachment);
 
 // Comments
 router.get( '/task/:taskId/comments', requireAuth, taskController.getComments);

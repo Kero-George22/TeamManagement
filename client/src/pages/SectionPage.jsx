@@ -37,6 +37,7 @@ export default function SectionPage() {
   const [group, setGroup] = useState('date');
   const [filter, setFilter] = useState({ status: '', project: '', assignee: '' });
   const [columns, setColumns] = useState({ collaborators: true, projects: true, visibility: true });
+  const [showMineOnly, setShowMineOnly] = useState(false);
 
   const [collapsed, setCollapsed] = useState({});
   const [newTaskInput, setNewTaskInput] = useState({ section: null, title: '' });
@@ -131,7 +132,7 @@ export default function SectionPage() {
       await API.tasks.create(projectId, {
         title: fd.get('title'), description: fd.get('description'),
         assignedRole: fd.get('role') || 'Member', priority: fd.get('priority'),
-        xpPoints: Number(fd.get('xp')) || 50, deadline: fd.get('deadline') || undefined,
+        deadline: fd.get('deadline') || undefined,
         assignedTo: user._id
       });
       toast.success('Task created!'); setTaskModal(false); loadTasks();
@@ -145,6 +146,7 @@ export default function SectionPage() {
 
     // Filter
     if (search) list = list.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+    if (showMineOnly) list = list.filter(t => t.assignedTo?._id === user._id || t.assignedTo === user._id);
     if (filter.status) list = list.filter(t => t.status === filter.status);
     if (filter.project) list = list.filter(t => t.projectRef?._id === filter.project);
     if (filter.assignee) {
@@ -173,7 +175,7 @@ export default function SectionPage() {
     });
 
     return list;
-  }, [tasks, search, filter, sort, user, view]);
+  }, [tasks, search, filter, sort, user, view, showMineOnly]);
 
   const processedGroups = useMemo(() => {
     const list = processedList;
@@ -255,19 +257,24 @@ export default function SectionPage() {
   return (
     <>
       <style>{`
-        .hover-row:hover { background: #f9fafb; border-radius: 6px; }
+        .hover-row:hover { background: rgba(0,0,0,.03); border-radius: 6px; }
         .toolbar { display: flex; gap: 12px; alignItems: center; padding: 12px 30px; background: var(--white); border-bottom: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,.02); flex-wrap: wrap; }
         .tool-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: .8rem; font-weight: 500; cursor: pointer; color: var(--text-secondary); transition: .2s; }
-        .tool-btn:hover, .tool-btn.active { background: #f9fafb; color: var(--text); border-color: #d1d5db; }
-        .board-col { background: #f9fafb; border-radius: 12px; min-width: 310px; max-width: 310px; padding: 14px; display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 200px); overflow-y: auto; }
+        .tool-btn:hover, .tool-btn.active { background: rgba(0,0,0,.03); color: var(--text); border-color: #d1d5db; }
+        .board-col { background: var(--white); border-radius: 12px; min-width: 310px; max-width: 310px; padding: 14px; display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 200px); overflow-y: auto; }
         .board-card { background: var(--white); border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: grab; border: 1px solid var(--border); border-left: 5px solid var(--border); }
         .board-card:active { cursor: grabbing; opacity: 0.8; }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-        .cal-header-cell { background: #f9fafb; padding: 10px; text-align: center; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+        .cal-header-cell { background: var(--white); padding: 10px; text-align: center; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
         .cal-cell { background: var(--white); min-height: 120px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-        .cal-cell.dim { background: #fafafa; }
+        .cal-cell.dim { background: var(--bg); }
         .cal-cell-day { font-size: .8rem; font-weight: 600; color: var(--text-muted); text-align: right; }
         .cal-task { font-size: .7rem; padding: 4px 6px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.05); border-left: 3px solid transparent; }
+        body.dark .hover-row:hover { background: rgba(255,255,255,.04); }
+        body.dark .tool-btn:hover, body.dark .tool-btn.active { background: rgba(255,255,255,.06); color: var(--text-primary); border-color: #2f2f2f; }
+        body.dark .toolbar { box-shadow: 0 2px 4px rgba(0,0,0,.12); }
+        body.dark .cal-header-cell { background: rgba(255,255,255,.03); }
+        body.dark .cal-cell.dim { background: rgba(255,255,255,.02); }
       `}</style>
 
       <Topbar title="My Tasks" />
@@ -310,6 +317,10 @@ export default function SectionPage() {
              <option value="unassigned">Unassigned</option>
            </select>
         </div>
+
+        <button className={`tool-btn ${showMineOnly ? 'active' : ''}`} onClick={() => setShowMineOnly(v => !v)}>
+          <i className="fa-solid fa-user" /> {showMineOnly ? 'My tasks only' : 'Show only my tasks'}
+        </button>
 
         <div style={{ flex: 1 }} />
         
@@ -411,7 +422,6 @@ export default function SectionPage() {
                     const KANBAN_COLORS = ['blue', 'purple', 'red', 'orange', 'green', 'pink'];
                     let cCol = getProjectColor(t.projectRef?._id);
                     if (!KANBAN_COLORS.includes(cCol)) cCol = KANBAN_COLORS[Math.abs(t._id.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % KANBAN_COLORS.length];
-                    const progressVal = t.xpPoints > 100 ? 100 : (t.xpPoints < 10 ? 10 : t.xpPoints);
 
                     return (
                     <div 
@@ -426,18 +436,18 @@ export default function SectionPage() {
                             <span className="task-tag">#{t.priority.toLowerCase()}</span>
                             <span className="task-tag">#{t.projectRef?.title?.toLowerCase().replace(/\s+/g, '') || 'task'}</span>
                           </div>
-                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }} />
+                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'rgba(255,255,255,.45)', cursor: 'pointer', padding: 4 }} />
                         </div>
                         
-                        <div style={{ fontWeight: 800, fontSize: '.95rem', color: `var(--${cCol})`, filter: 'brightness(0.4)', lineHeight: 1.3 }}>{t.title}</div>
+                        <div className="task-card-title">{t.title}</div>
                         
-                        {t.description && <div style={{ fontSize: '.75rem', color: `var(--${cCol})`, filter: 'brightness(0.6)', fontStyle: 'italic', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>Note: {t.description}</div>}
+                        {t.description && <div className="task-card-description">{t.description}</div>}
                         
 
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                           <div style={{ display: 'flex', marginLeft: 8 }}>
-                            {t.assignedTo ? <Avatar user={t.assignedTo} size="sm" style={{ border: '2px solid rgba(255,255,255,0.8)', marginLeft: -8, width: 26, height: 26 }} /> : <div className="avatar-placeholder" style={{ width: 26, height: 26, fontSize: '.6rem', marginLeft: -8, border: '2px solid rgba(255,255,255,0.8)', background: `var(--${cCol})`, color: '#fff', filter: 'brightness(0.8)' }}>UI</div>}
+                            {t.assignedTo ? <Avatar user={t.assignedTo} size="sm" style={{ marginLeft: -8, width: 26, height: 26 }} /> : <div className="avatar-placeholder avatar-placeholder--pixel" style={{ width: 26, height: 26, fontSize: '.6rem', marginLeft: -8, color: '#fff' }}>UI</div>}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <div className="task-meta-pill"><i className="fa-regular fa-comment-dots" /> {t.comments?.length || 0}</div>
@@ -526,7 +536,6 @@ export default function SectionPage() {
             </div>
           </div>
           <div className="grid-2">
-            <div className="form-group"><label className="form-label">XP Points</label><input name="xp" className="form-input" type="number" defaultValue={50} min={1} /></div>
             <div className="form-group"><label className="form-label">Deadline</label><input name="deadline" className="form-input" type="date" /></div>
           </div>
           <button className="btn btn--green" style={{ width: '100%', marginTop: 8 }}>Create Task</button>

@@ -11,7 +11,7 @@ POST /tasks/:projectId/ai-generate
 - AI analyzes project needs
 - Creates concrete, actionable tasks for each role
 - Generates detailed instructions for each task
-- Sets priorities and XP points
+- Sets priorities and clear deliverables
 
 ### 2. **Task Claims** - Team members take responsibility
 ```

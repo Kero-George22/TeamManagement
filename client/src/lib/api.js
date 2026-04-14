@@ -1,19 +1,29 @@
-/* ── JobXP API Client (ES Module) ────────── */
+/* ── TeamForge API Client (ES Module) ─────── */
 
 const BASE = '';
 
-const getToken = () => localStorage.getItem('jxp_token');
+const getToken = () => localStorage.getItem('tf_token') || localStorage.getItem('jxp_token');
 const getUser  = () => {
-  try { return JSON.parse(localStorage.getItem('jxp_user') || 'null'); }
+  try {
+    return JSON.parse(localStorage.getItem('tf_user') || localStorage.getItem('jxp_user') || 'null');
+  }
   catch { return null; }
 };
 
 const saveAuth = (data) => {
-  if (data?.token) localStorage.setItem('jxp_token', data.token);
-  if (data?.user)  localStorage.setItem('jxp_user', JSON.stringify(data.user));
+  if (data?.token) {
+    localStorage.setItem('tf_token', data.token);
+    localStorage.removeItem('jxp_token');
+  }
+  if (data?.user) {
+    localStorage.setItem('tf_user', JSON.stringify(data.user));
+    localStorage.removeItem('jxp_user');
+  }
 };
 
 const clearAuth = () => {
+  localStorage.removeItem('tf_token');
+  localStorage.removeItem('tf_user');
   localStorage.removeItem('jxp_token');
   localStorage.removeItem('jxp_user');
 };
@@ -98,6 +108,21 @@ const tasks = {
   comments: (taskId)          => get(`/tasks/task/${taskId}/comments`),
   addComment:(taskId, text)   => post(`/tasks/task/${taskId}/comments`, { text }),
   subtasks: (taskId)          => get(`/tasks/task/${taskId}/subtasks`),
+  uploadAttachment: async (taskId, file) => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(BASE + `/tasks/task/${taskId}/attachment`, {
+      method: 'POST',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.message || 'Upload failed');
+    }
+    return res.json();
+  },
 };
 
 /* DMs */

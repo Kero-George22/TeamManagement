@@ -18,6 +18,7 @@ export default function TaskPage() {
   const toast = useToast();
   const [task, setTask] = useState(null);
   const [subType, setSubType] = useState('text');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -36,6 +37,21 @@ export default function TaskPage() {
     if (subType === 'text') payload.submittedWork = document.getElementById('sub-text')?.value.trim();
     else payload.repoLink = document.getElementById('sub-link')?.value.trim();
     try { await API.tasks.update(taskId, payload); toast.success('Work submitted!'); } catch (e) { toast.error(e.message); }
+  }
+
+  async function handleAttachmentUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await API.tasks.uploadAttachment(taskId, file);
+      setTask({ ...task, attachment: res?.data?.attachment });
+      toast.success('File uploaded!');
+    } catch (err) {
+      toast.error(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
   }
 
   if (!task) return <><Topbar title="Task" /><div className="skeleton" style={{ height: 100, borderRadius: 'var(--card-radius)' }} /></>;
@@ -102,6 +118,23 @@ export default function TaskPage() {
             </div>
           )}
 
+          {isAssigned && (
+            <div className="card">
+              <h3 className="section-title">Attachment</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label className="btn btn--secondary" style={{ cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.7 : 1 }}>
+                  <i className="fa-solid fa-paperclip" /> {uploading ? 'Uploading...' : 'Upload File'}
+                  <input type="file" onChange={handleAttachmentUpload} disabled={uploading} style={{ display: 'none' }} />
+                </label>
+                {task.attachment && (
+                  <a href={task.attachment} target="_blank" rel="noopener noreferrer" className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--blue)' }}>
+                    <i className="fa-solid fa-file" /> View Attachment
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {task.aiReview && (
             <div className="card">
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><i className="fa-solid fa-star" style={{ color: 'var(--yellow)' }} /> AI Review</h3>
@@ -113,14 +146,6 @@ export default function TaskPage() {
 
         {/* Right sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--yellow-bg)', borderRadius: 14, padding: '14px 18px' }}>
-            <i className="fa-solid fa-bolt" style={{ fontSize: '1.6rem', color: '#b45309' }} />
-            <div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#b45309' }}>{task.xpPoints}</div>
-              <div style={{ fontSize: '.8rem', color: '#b45309', fontWeight: 600 }}>XP Points</div>
-            </div>
-          </div>
-
           <div className="card">
             <h3 className="section-title">Task Details</h3>
             {[['Status', <Badge variant={SCOL[task.status]}>{task.status}</Badge>],

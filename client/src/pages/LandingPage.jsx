@@ -7,7 +7,7 @@ export default function LandingPage() {
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 40px', alignItems: 'center' }}>
         <div style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-1px' }}>
-          Job<span style={{ color: 'var(--green)' }}>XP</span>
+          Team<span style={{ color: 'var(--green)' }}>Forge</span>
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
           <Link to="/app/login" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600, padding: '8px 16px' }}>Sign In</Link>
@@ -18,13 +18,13 @@ export default function LandingPage() {
       {/* Hero */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '80px 20px' }}>
         <h1 style={{ fontSize: '4.5rem', fontWeight: 800, letterSpacing: '-2px', lineHeight: 1.1, marginBottom: 24, maxWidth: 800 }}>
-          Level Up Your <br/> <span style={{ color: 'var(--green)' }}>Project Management</span>
+          Build Teams Around <br/> <span style={{ color: 'var(--green)' }}>Great Project Ideas</span>
         </h1>
         <p style={{ fontSize: '1.25rem', color: 'var(--text-secondary)', maxWidth: 600, marginBottom: 40, lineHeight: 1.6 }}>
-          Collaborate with your team, blast through tasks, earn XP, and unlock your team's true potential.
+          Share your idea, find the right collaborators, and manage delivery with AI-assisted workflows.
         </p>
         <div style={{ display: 'flex', gap: 16 }}>
-          <Link to="/app/login" className="btn btn--green" style={{ fontSize: '1.1rem', padding: '16px 32px', borderRadius: 12, textDecoration: 'none' }}>Start Playing Free</Link>
+          <Link to="/app/login" className="btn btn--green" style={{ fontSize: '1.1rem', padding: '16px 32px', borderRadius: 12, textDecoration: 'none' }}>Start Building Free</Link>
           <a href="#features" className="btn btn--outline" style={{ fontSize: '1.1rem', padding: '16px 32px', borderRadius: 12, textDecoration: 'none' }}>View Features</a>
         </div>
 
@@ -59,7 +59,7 @@ export default function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, maxWidth: 1000, width: '100%' }}>
           {[
             { icon: 'fa-trello', title: 'Kanban Boards', desc: 'Drag and drop your way to success with interactive task management.' },
-            { icon: 'fa-user-astronaut', title: 'Earn React XP', desc: 'Real-life gamification. Complete tasks, earn XP, and level up.' },
+            { icon: 'fa-users', title: 'Team Finder', desc: 'Match with collaborators by role, skills, and availability.' },
             { icon: 'fa-comment', title: 'Office Chat', desc: 'Instantly communicate with team members through realtime channels.' }
           ].map(f => (
             <div key={f.title} style={{ padding: 32, background: 'var(--white)', borderRadius: 24, border: '1px solid var(--border)' }}>
@@ -73,8 +73,8 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer style={{ padding: '40px', borderTop: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)' }}>
-        <div className="auth-panel__logo" style={{ marginBottom: 16, fontSize: '1.2rem', fontWeight: 800 }}>Job<span style={{color:'var(--green)'}}>XP</span></div>
-        <p>&copy; 2026 JobXP. All rights reserved.</p>
+        <div className="auth-panel__logo" style={{ marginBottom: 16, fontSize: '1.2rem', fontWeight: 800 }}>Team<span style={{color:'var(--green)'}}>Forge</span></div>
+        <p>&copy; 2026 TeamForge. All rights reserved.</p>
       </footer>
     </div>
   );

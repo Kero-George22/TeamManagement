@@ -13,7 +13,9 @@ export function useGlobalProject() {
 export function ProjectProvider({ children }) {
   const { isLoggedIn, user } = useAuth();
   const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(() => localStorage.getItem('jxp_project_id') || null);
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    () => localStorage.getItem('tf_project_id') || localStorage.getItem('jxp_project_id') || null
+  );
   const [loading, setLoading] = useState(true);
 
   const loadProjects = useCallback(async () => {
@@ -30,6 +32,7 @@ export function ProjectProvider({ children }) {
       // If the selected project is no longer in the list, clear it
       if (selectedProjectId && list && !list.find(p => p._id === selectedProjectId)) {
         setSelectedProjectId(null);
+        localStorage.removeItem('tf_project_id');
         localStorage.removeItem('jxp_project_id');
       }
     } catch (e) {
@@ -45,8 +48,10 @@ export function ProjectProvider({ children }) {
 
   const selectProject = useCallback((id) => {
     if (id) {
-      localStorage.setItem('jxp_project_id', id);
+      localStorage.setItem('tf_project_id', id);
+      localStorage.removeItem('jxp_project_id');
     } else {
+      localStorage.removeItem('tf_project_id');
       localStorage.removeItem('jxp_project_id');
     }
     setSelectedProjectId(id);
