@@ -50,6 +50,14 @@ export default function SectionPage() {
   });
   const [taskModal, setTaskModal] = useState(false);
 
+  // Custom Status State
+  const [customStatuses, setCustomStatuses] = useState(() => {
+    const saved = localStorage.getItem('custom_task_statuses');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [addingCustomStatus, setAddingCustomStatus] = useState(false);
+  const [newStatusName, setNewStatusName] = useState('');
+
   // Inline editing state
   const [editingTask, setEditingTask] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -119,6 +127,28 @@ export default function SectionPage() {
     setDraggedTaskId(null);
   }
 
+  function addCustomStatus() {
+    if (!newStatusName.trim()) return;
+    const normalized = newStatusName.trim();
+    if (customStatuses.includes(normalized)) {
+      toast.error('Status already exists');
+      return;
+    }
+    const updated = [...customStatuses, normalized];
+    setCustomStatuses(updated);
+    localStorage.setItem('custom_task_statuses', JSON.stringify(updated));
+    setNewStatusName('');
+    setAddingCustomStatus(false);
+    toast.success(`Status "${normalized}" added`);
+  }
+
+  function removeCustomStatus(statusName) {
+    const updated = customStatuses.filter(s => s !== statusName);
+    setCustomStatuses(updated);
+    localStorage.setItem('custom_task_statuses', JSON.stringify(updated));
+    toast.success('Status removed');
+  }
+
   async function handleAddTask(sectionKey) {
     if (!newTaskInput.title.trim()) return;
     const p = selectedProject || projects[0];
@@ -184,13 +214,20 @@ export default function SectionPage() {
     const projectId = fd.get('projectId');
     try {
       await API.tasks.create(projectId, {
-        title: fd.get('title'), description: fd.get('description'),
-        assignedRole: fd.get('role') || 'Member', priority: fd.get('priority'),
+        title: fd.get('title'),
+        description: fd.get('description'),
+        assignedRole: fd.get('role') || 'Member',
+        priority: fd.get('priority') || 'Medium',
+        status: fd.get('status') || 'Todo',
         deadline: fd.get('deadline') || undefined,
         assignedTo: user._id
       });
-      toast.success('Task created!'); setTaskModal(false); loadTasks();
-    } catch (err) { toast.error(err.message); }
+      toast.success('Task created!');
+      setTaskModal(false);
+      loadTasks();
+    } catch (err) {
+      toast.error(err.message);
+    }
   }
 
   // --- DATA PIPELINE ---
@@ -253,10 +290,11 @@ export default function SectionPage() {
       result.push({ id: 'nextWeek', label: 'Do next week', tasks: sections.nextWeek });
       result.push({ id: 'later', label: 'Do later', tasks: sections.later });
     } else if (group === 'status') {
-      const statuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
-      const map = {}; statuses.forEach(s => map[s] = []);
+      const defaultStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+      const allStatuses = [...defaultStatuses, ...customStatuses];
+      const map = {}; allStatuses.forEach(s => map[s] = []);
       list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map['Todo'].push(t); });
-      statuses.forEach(s => result.push({ id: s, label: s, tasks: map[s] }));
+      allStatuses.forEach(s => result.push({ id: s, label: s, tasks: map[s] }));
     } else if (group === 'project') {
       const map = {};
       list.forEach(t => {
@@ -267,7 +305,7 @@ export default function SectionPage() {
       result.push(...Object.values(map));
     }
     return result;
-  }, [processedList, group]);
+  }, [processedList, group, customStatuses]);
 
   // Calendar logic
   const calendarCells = useMemo(() => {
@@ -320,103 +358,150 @@ export default function SectionPage() {
         .board-card:active { cursor: grabbing; opacity: 0.8; }
         .jira-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; }
         .jira-col {
-          background: #101317;
-          border: 1px solid #1d232c;
-          border-radius: 10px;
-          min-width: 280px;
-          max-width: 280px;
-          padding: 10px;
+          background: var(--white);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          min-width: 300px;
+          max-width: 300px;
+          padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
           height: calc(100vh - 210px);
           overflow-y: auto;
+          box-shadow: 0 1px 3px rgba(0,0,0,.06);
+        }
+        body.dark .jira-col {
+          background: rgba(255,255,255,.04);
+          border-color: rgba(255,255,255,.08);
         }
         .jira-col-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: .72rem;
+          font-size: .75rem;
           font-weight: 800;
           letter-spacing: .06em;
-          color: #e5e7eb;
+          color: var(--text-primary);
           text-transform: uppercase;
-          margin-bottom: 2px;
+          margin-bottom: 4px;
+          padding: 0 4px;
         }
         .jira-col-count {
-          background: rgba(255,255,255,.1);
-          color: #d1d5db;
+          background: #f3f4f6;
+          color: var(--text-muted);
           border-radius: 999px;
-          padding: 1px 7px;
+          padding: 2px 8px;
           font-size: .65rem;
           font-weight: 700;
         }
+        body.dark .jira-col-count {
+          background: rgba(255,255,255,.08);
+          color: rgba(255,255,255,.6);
+        }
         .jira-card {
-          background: #1b2129;
-          border: 1px solid #2a3340;
-          border-left: 3px solid #3b82f6;
-          border-radius: 7px;
-          padding: 8px 9px;
+          background: var(--white);
+          border: 1px solid var(--border);
+          border-left: 4px solid var(--blue);
+          border-radius: 10px;
+          padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 7px;
+          gap: 8px;
           cursor: grab;
-          transition: border-color .2s, transform .2s;
+          transition: all .2s;
+          box-shadow: 0 1px 2px rgba(0,0,0,.04);
+        }
+        body.dark .jira-card {
+          background: rgba(255,255,255,.03);
+          border-color: rgba(255,255,255,.08);
         }
         .jira-card:hover {
-          transform: translateY(-1px);
-          border-color: #3a4758;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 8px rgba(0,0,0,.08);
+          border-color: var(--border);
+        }
+        body.dark .jira-card:hover {
+          box-shadow: 0 4px 8px rgba(0,0,0,.3);
         }
         .jira-card:active { cursor: grabbing; }
         .jira-card-title {
-          font-size: .83rem;
+          font-size: .9rem;
           font-weight: 600;
-          color: #f9fafb;
-          line-height: 1.35;
+          color: var(--text-primary);
+          line-height: 1.4;
           word-break: break-word;
         }
         .jira-card-meta {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: .7rem;
-          color: #9ca3af;
+          font-size: .75rem;
+          color: var(--text-muted);
+          gap: 8px;
         }
         .jira-chip {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          border: 1px solid #344255;
-          border-radius: 4px;
-          padding: 2px 6px;
-          color: #cbd5e1;
-          background: rgba(148,163,184,.08);
+          gap: 4px;
+          border: 1px solid var(--border);
+          border-radius: 5px;
+          padding: 3px 7px;
+          color: var(--text-secondary);
+          background: #f9fafb;
+          font-size: .7rem;
+        }
+        body.dark .jira-chip {
+          background: rgba(255,255,255,.05);
+          border-color: rgba(255,255,255,.08);
         }
         .jira-inline-add {
-          border: 1px dashed #344255;
-          border-radius: 7px;
-          padding: 8px;
-          color: #9ca3af;
-          font-size: .78rem;
+          border: 1.5px dashed var(--border);
+          border-radius: 8px;
+          padding: 12px;
+          color: var(--text-secondary);
+          font-size: .8rem;
+          font-weight: 500;
           cursor: pointer;
+          text-align: center;
+          transition: .2s;
+          background: var(--bg);
         }
         .jira-inline-add:hover {
-          border-color: #4b5f78;
-          color: #d1d5db;
-          background: rgba(148,163,184,.06);
+          border-color: var(--blue);
+          color: var(--blue);
+          background: rgba(59,130,246,.04);
+        }
+        body.dark .jira-inline-add {
+          background: rgba(255,255,255,.02);
+          color: rgba(255,255,255,.5);
+        }
+        body.dark .jira-inline-add:hover {
+          background: rgba(59,130,246,.1);
+          border-color: var(--blue);
+          color: var(--blue);
         }
         .jira-inline-editor {
-          border: 1px dashed #4b5f78;
-          border-radius: 7px;
-          padding: 8px;
+          border: 1.5px solid var(--blue);
+          border-radius: 10px;
+          padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 7px;
+          gap: 10px;
+          background: var(--bg);
+        }
+        body.dark .jira-inline-editor {
+          background: rgba(59,130,246,.05);
         }
         .jira-inline-editor .form-input {
-          background: #141922;
-          border-color: #344255;
-          color: #f3f4f6;
+          background: var(--white);
+          border-color: var(--border);
+          color: var(--text-primary);
+        }
+        body.dark .jira-inline-editor .form-input {
+          background: rgba(255,255,255,.08);
+          border-color: rgba(255,255,255,.1);
+          color: var(--text-primary);
         }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
         .cal-header-cell { background: var(--white); padding: 10px; text-align: center; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
@@ -685,16 +770,16 @@ export default function SectionPage() {
                           className="form-input"
                           style={{ padding: '8px', fontSize: '.78rem', resize: 'vertical' }}
                         />
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <select
                             className="form-input"
                             value={newTaskInput.priority}
                             onChange={e => setNewTaskInput(prev => ({ ...prev, priority: e.target.value }))}
                             style={{ padding: '6px 8px', fontSize: '.75rem' }}
                           >
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
+                            <option value="Low">Low Priority</option>
+                            <option value="Medium">Medium Priority</option>
+                            <option value="High">High Priority</option>
                           </select>
                           <input
                             type="date"
@@ -703,15 +788,6 @@ export default function SectionPage() {
                             onChange={e => setNewTaskInput(prev => ({ ...prev, deadline: e.target.value }))}
                             style={{ padding: '6px 8px', fontSize: '.75rem' }}
                           />
-                          <select
-                            className="form-input"
-                            value={newTaskInput.assignee}
-                            onChange={e => setNewTaskInput(prev => ({ ...prev, assignee: e.target.value }))}
-                            style={{ padding: '6px 8px', fontSize: '.75rem' }}
-                          >
-                            <option value="me">Collaboration: Me</option>
-                            <option value="unassigned">Collaboration: Unassigned</option>
-                          </select>
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button type="button" className="btn btn--green btn--sm" onClick={() => handleAddTask(g.id)}>Create</button>
@@ -736,6 +812,110 @@ export default function SectionPage() {
                   )}
                 </div>
               ))}
+              
+              {/* Add Custom Status Column */}
+              {group === 'status' && (
+                <div style={{
+                  background: 'var(--bg)',
+                  border: '2px dashed var(--border)',
+                  borderRadius: 12,
+                  minWidth: 300,
+                  maxWidth: 300,
+                  padding: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  height: 'calc(100vh - 210px)',
+                  overflow: 'y-auto',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start'
+                }}>
+                  <div style={{ paddingTop: 20, textAlign: 'center', width: '100%' }}>
+                    {addingCustomStatus ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <input
+                          autoFocus
+                          type="text"
+                          className="form-input"
+                          placeholder="Status name..."
+                          value={newStatusName}
+                          onChange={e => setNewStatusName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') addCustomStatus();
+                            if (e.key === 'Escape') {
+                              setAddingCustomStatus(false);
+                              setNewStatusName('');
+                            }
+                          }}
+                          style={{ padding: '8px', fontSize: '.85rem' }}
+                        />
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                          <button
+                            className="btn btn--sm btn--primary"
+                            onClick={addCustomStatus}
+                          >
+                            Add
+                          </button>
+                          <button
+                            className="btn btn--sm btn--ghost"
+                            onClick={() => {
+                              setAddingCustomStatus(false);
+                              setNewStatusName('');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn--sm btn--outline"
+                        onClick={() => setAddingCustomStatus(true)}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        <i className="fa-solid fa-plus" /> Add Status
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* List Custom Statuses */}
+                  {customStatuses.length > 0 && (
+                    <div style={{ width: '100%', paddingTop: 12, borderTop: '1px solid var(--border)', marginTop: 8 }}>
+                      <div style={{ fontSize: '.7rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Custom Statuses</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {customStatuses.map(status => (
+                          <div key={status} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 8px',
+                            background: 'var(--white)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 6,
+                            fontSize: '.8rem'
+                          }}>
+                            <span>{status}</span>
+                            <button
+                              onClick={() => removeCustomStatus(status)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontSize: '.75rem'
+                              }}
+                              title="Delete status"
+                            >
+                              <i className="fa-solid fa-trash-can" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             
           ) : ( // CALENDAR VIEW
@@ -792,26 +972,56 @@ export default function SectionPage() {
 
       {/* ═══════════════ CREATE TASK MODAL ═══════════════ */}
       <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">
-        <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="form-group"><label className="form-label">Project *</label>
+        <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="form-group">
+            <label className="form-label">Project *</label>
             <select name="projectId" className="form-input" required defaultValue={selectedProject?._id || ''}>
               {(projects || []).map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
             </select>
           </div>
-          <div className="form-group"><label className="form-label">Title *</label><input name="title" className="form-input" required placeholder="Task title" /></div>
-          <div className="form-group"><label className="form-label">Description</label><textarea name="description" className="form-input" rows={2} placeholder="Optional notes" /></div>
-          <div className="grid-2">
-            <div className="form-group"><label className="form-label">Role</label>
+
+          <div className="form-group">
+            <label className="form-label">Task Title *</label>
+            <input name="title" className="form-input" required placeholder="What needs to be done?" />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Description</label>
+            <textarea name="description" className="form-input" rows={2} placeholder="Add task details and requirements..." style={{ resize: 'vertical' }} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Priority</label>
+              <select name="priority" className="form-input">
+                <option value="Low">Low</option>
+                <option defaultValue value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Status</label>
+              <select name="status" className="form-input">
+                <option value="Todo">To Do</option>
+                <option value="In-Progress">In Progress</option>
+                <option value="Review">Review</option>
+                <option value="Done">Done</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Deadline</label>
+              <input name="deadline" className="form-input" type="date" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Role</label>
               <input name="role" className="form-input" placeholder="e.g. Developer" />
             </div>
-            <div className="form-group"><label className="form-label">Priority</label>
-              <select name="priority" className="form-input"><option>Low</option><option defaultValue>Medium</option><option>High</option></select>
-            </div>
           </div>
-          <div className="grid-2">
-            <div className="form-group"><label className="form-label">Deadline</label><input name="deadline" className="form-input" type="date" /></div>
-          </div>
-          <button className="btn btn--green" style={{ width: '100%', marginTop: 8 }}>Create Task</button>
+
+          <button className="btn btn--primary" style={{ width: '100%', marginTop: 8 }}>Create Task</button>
         </form>
       </Modal>
     </>
