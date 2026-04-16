@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalProject } from '../../contexts/ProjectContext';
 
@@ -14,6 +14,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { projects, selectedProject, selectProject } = useGlobalProject();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const [showProjects, setShowProjects] = useState(false);
   const dropdownRef = useRef(null);
@@ -70,7 +71,7 @@ export default function Sidebar() {
                     return (
                       <button 
                         key={p._id} 
-                        onClick={() => { selectProject(p._id); setShowProjects(false); navigate(`/app/project/${p._id}`); }}
+                        onClick={() => { selectProject(p._id); setShowProjects(false); navigate(`/app/project/${p._id}`, { state: { from: location.pathname + location.search } }); }}
                         style={{
                           display: 'block', padding: '8px 12px', borderRadius: 8, width: '100%', textAlign: 'left',
                           background: isActive ? 'rgba(34,197,94,.18)' : 'transparent',

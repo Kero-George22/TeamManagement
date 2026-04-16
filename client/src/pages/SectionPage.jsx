@@ -21,11 +21,18 @@ function getProjectColor(projectId) {
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export default function SectionPage() {
+export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProjectMembers = [] }) {
   const { user } = useAuth();
   const { projects, selectedProject } = useGlobalProject();
   const toast = useToast();
   const navigate = useNavigate();
+
+  const activeProject = useMemo(() => {
+    if (forcedProjectId) {
+      return projects.find(p => p._id === forcedProjectId) || { _id: forcedProjectId, title: 'Project' };
+    }
+    return selectedProject;
+  }, [forcedProjectId, projects, selectedProject]);
 
   const [tasks, setTasks] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -49,6 +56,7 @@ export default function SectionPage() {
     assignee: 'me'
   });
   const [taskModal, setTaskModal] = useState(false);
+  const [projectMembers, setProjectMembers] = useState([]);
 
   // Custom Status State
   const [customStatuses, setCustomStatuses] = useState(() => {
@@ -70,7 +78,28 @@ export default function SectionPage() {
     const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
   });
 
-  useEffect(() => { loadTasks(); }, [projects, selectedProject]);
+  useEffect(() => { loadTasks(); }, [projects, selectedProject, forcedProjectId]);
+
+  useEffect(() => {
+    if (forcedProjectMembers?.length) {
+      setProjectMembers(forcedProjectMembers);
+      return;
+    }
+
+    if (!activeProject?._id) {
+      setProjectMembers([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const members = await API.projects.members(activeProject._id);
+        setProjectMembers(members || []);
+      } catch {
+        setProjectMembers([]);
+      }
+    })();
+  }, [activeProject?._id, forcedProjectMembers]);
 
   function openInlineComposer(sectionId) {
     setNewTaskInput({
@@ -84,11 +113,11 @@ export default function SectionPage() {
   }
 
   async function loadTasks() {
-    if (!projects || projects.length === 0) { setTasks([]); return; }
+    if (!activeProject?._id && (!projects || projects.length === 0)) { setTasks([]); return; }
     try {
-      if (selectedProject) {
-        const list = await API.tasks.list(selectedProject._id);
-        setTasks(list.map(t => ({ ...t, projectRef: selectedProject })) || []);
+      if (activeProject?._id) {
+        const list = await API.tasks.list(activeProject._id);
+        setTasks(list.map(t => ({ ...t, projectRef: activeProject })) || []);
       } else {
         // Fetch all visible tasks in one request (avoids N+1 calls across projects)
         const response = await API.tasks.dashboardOverview();
@@ -148,7 +177,7 @@ export default function SectionPage() {
 
   async function handleAddTask(sectionKey) {
     if (!newTaskInput.title.trim()) return;
-    const p = selectedProject || projects[0];
+    const p = activeProject || projects[0];
     if (!p) { toast.error('Join a project first'); return; }
 
     // In board view we always render status columns, regardless of the
@@ -159,7 +188,7 @@ export default function SectionPage() {
       title: newTaskInput.title.trim(),
       description: newTaskInput.requirements.trim() || 'Added from My Tasks',
       assignedRole: 'Developer',
-      assignedTo: newTaskInput.assignee === 'unassigned' ? null : user._id,
+      assignedTo: newTaskInput.assignee === 'unassigned' ? null : (newTaskInput.assignee === 'me' ? user._id : newTaskInput.assignee),
       priority: newTaskInput.priority || 'Medium'
     };
     
@@ -212,7 +241,8 @@ export default function SectionPage() {
   async function handleCreateTask(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const projectId = fd.get('projectId');
+    const projectId = activeProject?._id || fd.get('projectId');
+    const assignedTo = fd.get('assignedTo');
     try {
       await API.tasks.create(projectId, {
         title: fd.get('title'),
@@ -221,7 +251,7 @@ export default function SectionPage() {
         priority: fd.get('priority') || 'Medium',
         status: fd.get('status') || 'Todo',
         deadline: fd.get('deadline') || undefined,
-        assignedTo: user._id
+        assignedTo: assignedTo === 'unassigned' ? null : (assignedTo || user._id)
       });
       toast.success('Task created!');
       setTaskModal(false);
@@ -244,6 +274,7 @@ export default function SectionPage() {
     if (filter.assignee) {
       if (filter.assignee === 'me') list = list.filter(t => t.assignedTo?._id === user._id || t.assignedTo === user._id);
       else if (filter.assignee === 'unassigned') list = list.filter(t => !t.assignedTo);
+      else list = list.filter(t => (t.assignedTo?._id || t.assignedTo) === filter.assignee);
     } else if (!filter.status && view !== 'calendar') {
       // hide Done unless requested (except in calendar view where we might want to see them)
       list = list.filter(t => t.status !== 'Done' && t.status !== 'Approved');
@@ -520,7 +551,7 @@ export default function SectionPage() {
         body.dark .cal-cell.dim { background: rgba(255,255,255,.02); }
       `}</style>
 
-      <Topbar title="My Tasks" />
+      {!embedded && <Topbar title="My Tasks" />}
 
       {/* Toolbar */}
       <div className="toolbar">
@@ -558,6 +589,12 @@ export default function SectionPage() {
              <option value="">Everyone</option>
              <option value="me">Just Me</option>
              <option value="unassigned">Unassigned</option>
+             {projectMembers.map(m => {
+               const memberId = m.user?._id || m.userId?._id || m.userId;
+               const memberName = m.user?.username || m.user?.email?.split('@')[0] || 'Member';
+               if (!memberId) return null;
+               return <option key={memberId} value={memberId}>{memberName}</option>;
+             })}
            </select>
         </div>
 
@@ -977,12 +1014,14 @@ export default function SectionPage() {
       {/* ═══════════════ CREATE TASK MODAL ═══════════════ */}
       <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="form-group">
-            <label className="form-label">Project *</label>
-            <select name="projectId" className="form-input" required defaultValue={selectedProject?._id || ''}>
-              {(projects || []).map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
-            </select>
-          </div>
+          {!activeProject?._id && (
+            <div className="form-group">
+              <label className="form-label">Project *</label>
+              <select name="projectId" className="form-input" required defaultValue={selectedProject?._id || ''}>
+                {(projects || []).map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
+              </select>
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Task Title *</label>
@@ -1023,6 +1062,20 @@ export default function SectionPage() {
               <label className="form-label">Role</label>
               <input name="role" className="form-input" placeholder="e.g. Developer" />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Collaborator</label>
+            <select name="assignedTo" className="form-input" defaultValue="me">
+              <option value="me">Assign to me</option>
+              <option value="unassigned">Unassigned</option>
+              {projectMembers.map(m => {
+                const memberId = m.user?._id || m.userId?._id || m.userId;
+                const memberName = m.user?.username || m.user?.email?.split('@')[0] || 'Member';
+                if (!memberId) return null;
+                return <option key={memberId} value={memberId}>{memberName}</option>;
+              })}
+            </select>
           </div>
 
           <button className="btn btn--primary" style={{ width: '100%', marginTop: 8 }}>Create Task</button>

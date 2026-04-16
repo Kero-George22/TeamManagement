@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGlobalProject } from '../contexts/ProjectContext';
 import { useToast } from '../lib/toast';
@@ -17,6 +17,7 @@ export default function ProjectsPage() {
   const { refreshProjects } = useGlobalProject();
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [projects, setProjects] = useState(null);
   const [filter, setFilter]     = useState('');
   const [search, setSearch]     = useState('');
@@ -61,7 +62,7 @@ export default function ProjectsPage() {
       setRoles([{ roleName: '', totalSlots: 1 }]);
       loadProjects();
       refreshProjects();
-      navigate(`/app/project/${proj._id || proj.project?._id}`);
+      navigate(`/app/project/${proj._id || proj.project?._id}`, { state: { from: location.pathname + location.search } });
     } catch (err) { toast.error(err.message); }
     finally { setCreating(false); }
   }
@@ -103,7 +104,7 @@ export default function ProjectsPage() {
                 const totalOpen = (p.rolesRequired || []).reduce((acc, r) => acc + Math.max(0, r.totalSlots - (r.filledSlots || 0)), 0);
                 const isFullTeam = totalOpen === 0;
                 return (
-                  <div key={p._id} className="card" onClick={() => navigate(`/app/project/${p._id}`)} style={{ cursor: 'pointer' }}>
+                  <div key={p._id} className="card" onClick={() => navigate(`/app/project/${p._id}`, { state: { from: location.pathname + location.search } })} style={{ cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

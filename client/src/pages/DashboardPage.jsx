@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useGlobalProject } from '../contexts/ProjectContext';
 import API from '../lib/api';
@@ -74,6 +74,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { projects, loadingProjects } = useGlobalProject();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [profile, setProfile] = useState(null);
   const [allTasks, setAllTasks] = useState(null);
@@ -287,7 +288,7 @@ export default function DashboardPage() {
                       key={project._id}
                       className="dashboard-project-card"
                       style={{ borderTop: `4px solid ${FILLS[color]}` }}
-                      onClick={() => navigate(`/app/project/${project._id}`)}
+                      onClick={() => navigate(`/app/project/${project._id}`, { state: { from: location.pathname + location.search } })}
                     >
                       <div className="dashboard-project-card__top">
                         <div style={{ flex: 1, minWidth: 0 }}>

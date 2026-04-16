@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
@@ -13,6 +13,8 @@ const SCOL = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'gre
 export default function TaskPage() {
   const { id: taskId } = useParams();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const projectId = params.get('project');
   const { user } = useAuth();
   const toast = useToast();
@@ -72,7 +74,14 @@ export default function TaskPage() {
             <h1 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 6 }}>{task.title}</h1>
             <p style={{ fontSize: '.875rem', color: 'var(--text-secondary)' }}>{task.description}</p>
           </div>
-          {projectId && <a href={`/app/project/${projectId}`} className="btn btn--ghost btn--sm"><i className="fa-solid fa-arrow-left" /> Back to Project</a>}
+          {projectId && (
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => navigate(`/app/project/${projectId}`, { state: { from: location.pathname + location.search } })}
+            >
+              <i className="fa-solid fa-arrow-left" /> Back to Project
+            </button>
+          )}
         </div>
       </div>
 

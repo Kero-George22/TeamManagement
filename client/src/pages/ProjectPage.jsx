@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
@@ -10,6 +10,7 @@ import Modal from '../components/ui/Modal';
 import TaskSidePanel from '../components/ui/TaskSidePanel';
 import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
+import SectionPage from './SectionPage';
 
 const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
@@ -34,6 +35,8 @@ export default function ProjectPage() {
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const backTo = location.state?.from || '/app/projects';
 
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState(null);
@@ -323,30 +326,18 @@ export default function ProjectPage() {
     );
   }
 
+  if (tab === 'tasks') {
+    return (
+      <>
+        <Topbar title={project.title} backTo={backTo} />
+        <SectionPage embedded forcedProjectId={id} forcedProjectMembers={members || []} />
+      </>
+    );
+  }
+
   return (
     <>
-      <Topbar title={project.title} />
-
-      <section className="dashboard-hero" style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-            <Badge variant={PROJECT_STATUS_VARIANTS[project.status] || 'gray'}>{project.status}</Badge>
-            {project.isPrivate && <span className="chip"><i className="fa-solid fa-lock" /> Private</span>}
-          </div>
-          <h2 className="dashboard-hero__title" style={{ maxWidth: '14ch' }}>{project.title}</h2>
-          <p className="dashboard-hero__sub" style={{ maxWidth: '60ch' }}>{project.description || 'No project description yet.'}</p>
-          <div className="dashboard-hero__meta">
-            <span className="chip"><i className="fa-regular fa-calendar" /> {fmtDate(project.startDate)}</span>
-            <span className="chip"><i className="fa-solid fa-flag-checkered" /> {project.duration} days</span>
-            <span className="chip"><i className="fa-solid fa-users" /> {overviewStats.memberCount} members</span>
-            <span className="chip"><i className="fa-solid fa-list-check" /> {overviewStats.totalTasks} tasks</span>
-          </div>
-        </div>
-
-        <div className="dashboard-progress-ring" style={{ background: `conic-gradient(var(--green) ${overviewStats.progress * 3.6}deg, rgba(255,255,255,.12) 0deg)` }}>
-          <span className="dashboard-progress-ring__value">{overviewStats.progress}%</span>
-        </div>
-      </section>
+      <Topbar title={project.title} backTo={backTo} />
 
       <div className="workspace-tabs" style={{ marginTop: 20 }}>
         <button className={`workspace-tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
@@ -454,236 +445,6 @@ export default function ProjectPage() {
             </section>
           </aside>
         </div>
-      )}
-
-      {tab === 'tasks' && (
-        <section className="workspace-panel">
-          <div className="workspace-header" style={{ flexWrap: 'wrap' }}>
-            <div>
-              <h3 className="section-title" style={{ marginBottom: 4 }}>Tasks</h3>
-              <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Board or list view with a quick personal filter.</div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className={`btn btn--sm ${myTasksOnly ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setMyTasksOnly(!myTasksOnly)}>
-                <i className="fa-solid fa-user" /> {myTasksOnly ? 'My tasks' : 'All tasks'}
-              </button>
-              <button className={`btn btn--sm ${taskView === 'list' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('list')}>
-                <i className="fa-solid fa-list" /> List
-              </button>
-              <button className={`btn btn--sm ${taskView === 'board' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setTaskView('board')}>
-                <i className="fa-brands fa-trello" /> Board
-              </button>
-              {isOwner && (
-                <>
-                  <button className="btn btn--ghost btn--sm" onClick={handleGenerate} disabled={genLoading}>
-                    {genLoading ? <span className="spinner" style={{ borderTopColor: 'var(--text-primary)' }} /> : <><i className="fa-solid fa-wand-magic-sparkles" /> AI Generate</>}
-                  </button>
-                  <button className="btn btn--green btn--sm" onClick={() => setTaskModal(true)}><i className="fa-solid fa-plus" /> Add Task</button>
-                </>
-              )}
-            </div>
-            {isOwner && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%', marginTop: 4 }}>
-                <input
-                  className="form-input"
-                  placeholder="Add custom status (e.g. Blocked)"
-                  value={newStatusName}
-                  onChange={event => setNewStatusName(event.target.value)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      handleAddCustomStatus();
-                    }
-                  }}
-                  style={{ maxWidth: 280 }}
-                />
-                <button className="btn btn--outline btn--sm" onClick={handleAddCustomStatus}>
-                  <i className="fa-solid fa-plus" /> Add Status
-                </button>
-              </div>
-            )}
-          </div>
-
-          {tasks === null ? (
-            <div className="skeleton" style={{ height: 220, borderRadius: 'var(--card-radius)' }} />
-          ) : filteredTasks.length === 0 ? (
-            <div className="empty-state">
-              <i className="fa-solid fa-clipboard-list" />
-              <h4>No tasks yet</h4>
-              <p>Tasks appear here once the workspace starts moving.</p>
-            </div>
-          ) : taskView === 'list' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {workflowStatuses.map(status => (
-                <div key={status} style={{ border: '1px solid var(--border)', borderRadius: 18, overflow: 'hidden' }}>
-                  <div className="task-list-section-header" style={{ margin: 0, borderRadius: 0 }}>
-                    <h4>{status}</h4>
-                    <Badge variant={STATUS_VARIANTS[status] || 'gray'} style={{ fontSize: '.68rem' }}>{groupedTasks[status].length}</Badge>
-                  </div>
-                  <div style={{ padding: '0 8px 8px' }}>
-                    {groupedTasks[status].map(task => (
-                      <div
-                        key={task._id}
-                        className="task-list-row"
-                        style={{ gridTemplateColumns: '28px 3fr 1fr 100px 90px 90px' }}
-                        onClick={() => setSelectedTask(task)}
-                      >
-                        <div className={`task-circle ${task.status === 'Done' || task.status === 'Approved' ? 'task-circle--done' : ''}`} style={{ width: 20, height: 20 }}>
-                          {(task.status === 'Done' || task.status === 'Approved') && <i className="fa-solid fa-check" style={{ fontSize: '.5rem' }} />}
-                        </div>
-                        <div style={{ fontWeight: 500, fontSize: '.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {task.title}
-                        </div>
-                        <div>
-                          {task.assignedTo ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <Avatar user={task.assignedTo} size="sm" />
-                              <span style={{ fontSize: '.78rem' }}>{task.assignedTo?.username || task.assignedTo?.email?.split('@')[0]}</span>
-                            </div>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>—</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '.78rem', color: task.deadline && new Date(task.deadline) < new Date() ? '#ef4444' : 'var(--text-muted)' }}>
-                          {task.deadline ? fmtDate(task.deadline) : '—'}
-                        </div>
-                        <div><div className={`priority-dot ${PRIORITY_DOT[task.priority]}`} title={task.priority} /></div>
-                        <div onClick={event => event.stopPropagation()}>
-                          <select
-                            className="form-input"
-                            style={{ padding: '2px 6px', fontSize: '.7rem', height: 24, borderRadius: 12, background: 'var(--white)', fontWeight: 600 }}
-                            value={task.status}
-                            onChange={event => {
-                              const nextStatus = event.target.value;
-                              handleTaskUpdate({ _id: task._id, status: nextStatus });
-                              API.tasks.update(task._id, { status: nextStatus }).catch(() => handleTaskUpdate({ _id: task._id, status: task.status }));
-                            }}
-                          >
-                            {workflowStatuses.map(value => <option key={value} value={value}>{value}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-
-                    {isOwner && (
-                      inlineAdding === status ? (
-                        <div className="task-list-row" style={{ gridTemplateColumns: '28px 1fr' }}>
-                          <div className="task-circle" style={{ width: 20, height: 20 }} />
-                          <input
-                            autoFocus
-                            className="form-input"
-                            style={{ padding: '4px 8px', fontSize: '.875rem' }}
-                            placeholder="Write a task name and press Enter"
-                            value={inlineTitle}
-                            onChange={event => setInlineTitle(event.target.value)}
-                            onKeyDown={event => handleInlineCreate(event, status)}
-                            onBlur={() => {
-                              setInlineAdding(null);
-                              setInlineTitle('');
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <div onClick={() => setInlineAdding(status)} style={{ padding: '10px 10px 10px 18px', color: 'var(--text-secondary)', fontSize: '.85rem', cursor: 'pointer' }} className="task-list-row">
-                          <div style={{ fontSize: '.875rem', fontWeight: 500 }}>
-                            <i className="fa-solid fa-plus" style={{ marginRight: 8 }} /> Add task...
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="project-kanban-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
-              {workflowStatuses.map((status, statusIndex) => (
-                <div
-                  key={status}
-                  className={`board-col project-board-col board-col--${BOARD_COLORS[statusIndex % BOARD_COLORS.length]}`}
-                  onDragOver={event => event.preventDefault()}
-                  onDrop={event => handleDrop(event, status)}
-                >
-                  <div className="board-col__header">
-                    <div><span className="board-col__caret">▸</span> {status} ({groupedTasks[status].length})</div>
-                    <div style={{ display: 'flex', gap: 8, color: 'var(--text-muted)' }}>
-                      <i className="fa-solid fa-plus" style={{ cursor: 'pointer' }} onClick={() => setInlineAdding(status)} />
-                      <i className="fa-solid fa-ellipsis-vertical" style={{ cursor: 'pointer' }} />
-                    </div>
-                  </div>
-
-                  {groupedTasks[status].length ? groupedTasks[status].map(task => {
-                    const color = getTaskCardColor(task._id, getProjectColor(task.projectRef?._id));
-                    return (
-                      <div
-                        key={task._id}
-                        className={`kanban-card project-kanban-card kanban-card--${color}`}
-                        draggable={groupedTasks[status].length > 0}
-                        onDragStart={event => {
-                          setDraggedTask(task);
-                          event.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => setDraggedTask(null)}
-                        onClick={() => setSelectedTask(task)}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <span className="task-tag">#{(task.priority || 'medium').toLowerCase()}</span>
-                            <span className="task-tag">#{(task.assignedRole || 'task').toLowerCase().replace(/\s+/g, '')}</span>
-                          </div>
-                          <i className="fa-solid fa-ellipsis-vertical" style={{ color: 'rgba(255,255,255,.45)', cursor: 'pointer', padding: 4 }} />
-                        </div>
-
-                        <div className="task-card-title">{task.title}</div>
-
-                        {task.description && (
-                          <div className="task-card-description">{task.description}</div>
-                        )}
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                          <div style={{ display: 'flex', marginLeft: 8 }}>
-                            {task.assignedTo ? (
-                              <Avatar user={task.assignedTo} size="sm" style={{ marginLeft: -8, width: 28, height: 28 }} />
-                            ) : (
-                              <div className="avatar-placeholder avatar-placeholder--pixel" style={{ width: 28, height: 28, fontSize: '.6rem', marginLeft: -8, color: '#fff' }}>UI</div>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <div className="task-meta-pill"><i className="fa-regular fa-comment-dots" /> {task.comments?.length || 0}</div>
-                            <div className="task-meta-pill"><i className="fa-solid fa-paperclip" /> {Math.floor(Math.abs(task._id.charCodeAt(5)) % 5)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }) : <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: '.8rem' }}>Drop here</div>}
-
-                  {isOwner && (
-                    inlineAdding === status ? (
-                      <div className="project-inline-task-card">
-                        <input
-                          autoFocus
-                          type="text"
-                          value={inlineTitle}
-                          onChange={event => setInlineTitle(event.target.value)}
-                          onKeyDown={event => handleInlineCreate(event, status)}
-                          onBlur={() => {
-                            setInlineAdding(null);
-                            setInlineTitle('');
-                          }}
-                          placeholder="What needs to be done?"
-                          className="form-input"
-                          style={{ marginTop: 8 }}
-                        />
-                      </div>
-                    ) : (
-                      <div onClick={() => setInlineAdding(status)} style={{ fontSize: '.8rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>+ Add task...</div>
-                    )
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
       )}
 
       {tab === 'team' && (
