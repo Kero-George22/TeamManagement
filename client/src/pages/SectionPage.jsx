@@ -112,7 +112,9 @@ export default function SectionPage() {
 
   async function handleDropStatus(e, targetStatus) {
     e.preventDefault();
-    if (!draggedTaskId || group !== 'status') return;
+    // In board view we always render status columns, so dropping should
+    // not depend on the "Group by Status" dropdown selection.
+    if (!draggedTaskId) return;
     const t = tasks.find(x => x._id === draggedTaskId);
     if (!t || t.status === targetStatus) return;
 
@@ -149,6 +151,10 @@ export default function SectionPage() {
     const p = selectedProject || projects[0];
     if (!p) { toast.error('Join a project first'); return; }
 
+    // In board view we always render status columns, regardless of the
+    // "Group by" dropdown. Make sure new tasks get a correct `status`.
+    const activeGroup = view === 'board' ? 'status' : group;
+
     let payload = {
       title: newTaskInput.title.trim(),
       description: newTaskInput.requirements.trim() || 'Added from My Tasks',
@@ -157,11 +163,11 @@ export default function SectionPage() {
       priority: newTaskInput.priority || 'Medium'
     };
     
-    if (group === 'date') {
+    if (activeGroup === 'date') {
       if (sectionKey === 'today') payload.deadline = new Date().toISOString();
       else if (sectionKey === 'nextWeek') { const d = new Date(); d.setDate(d.getDate()+3); payload.deadline = d.toISOString(); }
       else if (sectionKey === 'later') { const d = new Date(); d.setDate(d.getDate()+14); payload.deadline = d.toISOString(); }
-    } else if (group === 'status') {
+    } else if (activeGroup === 'status') {
       payload.status = sectionKey;
     }
     
@@ -264,9 +270,12 @@ export default function SectionPage() {
   }, [tasks, search, filter, sort, user, view, showMineOnly]);
 
   const processedGroups = useMemo(() => {
+    // Board view should always be grouped by status so drag-and-drop works
+    // regardless of the current "Group by" dropdown selection.
+    const activeGroup = view === 'board' ? 'status' : group;
     const list = processedList;
     const result = [];
-    if (group === 'date') {
+    if (activeGroup === 'date') {
       const now = new Date(); now.setHours(0,0,0,0);
       const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
       const nw = new Date(now); nw.setDate(nw.getDate()+7);
@@ -284,13 +293,13 @@ export default function SectionPage() {
       result.push({ id: 'today', label: 'Do today', tasks: sections.today });
       result.push({ id: 'nextWeek', label: 'Do next week', tasks: sections.nextWeek });
       result.push({ id: 'later', label: 'Do later', tasks: sections.later });
-    } else if (group === 'status') {
+    } else if (activeGroup === 'status') {
       const defaultStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
       const allStatuses = [...defaultStatuses, ...customStatuses];
       const map = {}; allStatuses.forEach(s => map[s] = []);
       list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map['Todo'].push(t); });
       allStatuses.forEach(s => result.push({ id: s, label: s, tasks: map[s] }));
-    } else if (group === 'project') {
+    } else if (activeGroup === 'project') {
       const map = {};
       list.forEach(t => {
         const pId = t.projectRef?._id || 'none';
@@ -300,7 +309,7 @@ export default function SectionPage() {
       result.push(...Object.values(map));
     }
     return result;
-  }, [processedList, group, customStatuses]);
+  }, [processedList, group, customStatuses, view]);
 
   // Calendar logic
   const calendarCells = useMemo(() => {
@@ -720,7 +729,7 @@ export default function SectionPage() {
                     return (
                     <div 
                       key={t._id} className="jira-card"
-                      draggable={group === 'status'}
+                      draggable
                       onDragStart={(e) => { setDraggedTaskId(t._id); e.dataTransfer.effectAllowed = "move"; }}
                       onDragEnd={() => setDraggedTaskId(null)}
                       onClick={() => setSelectedTask(t)}
@@ -809,7 +818,7 @@ export default function SectionPage() {
               ))}
               
               {/* Add Custom Status Column */}
-              {group === 'status' && (
+              {view !== 'calendar' && (
                 <div style={{
                   background: 'var(--bg)',
                   border: '2px dashed var(--border)',
