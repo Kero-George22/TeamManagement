@@ -27,4 +27,11 @@ const getUserProfile = asyncWrapper(async (req, res) => {
   return success(res, profile, 'Profile retrieved successfully');
 });
 
-module.exports = { getMyProfile, updateMyProfile, getUserProfile };
+// GET /profile/public/:userId (public, no auth required)
+const getPublicProfile = asyncWrapper(async (req, res) => {
+  const { userId } = req.params;
+  const profile = await profileService.getUserPublicProfile(userId);
+  return success(res, profile, 'Public profile retrieved successfully');
+});
+
+module.exports = { getMyProfile, updateMyProfile, getUserProfile, getPublicProfile };

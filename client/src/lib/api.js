@@ -80,6 +80,7 @@ const profile = {
   me:     ()         => get('/profile/me'),
   update: (data)     => put('/profile/me', data),
   user:   (userId)   => get(`/profile/${userId}`),
+  public: (userId)   => fetch(BASE + `/profile/public/${userId}`).then(r => r.json()),
 };
 
 /* Projects */

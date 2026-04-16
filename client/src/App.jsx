@@ -18,6 +18,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const OfficePage = lazy(() => import('./pages/OfficePage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
 const GoalsPage = lazy(() => import('./pages/GoalsPage'));
+const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 
 function RouteLoader() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/"                    element={<LandingPage />} />
               <Route path="/app/login"           element={<LoginPage />} />
               <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/app/profile/:userId" element={<PublicProfilePage />} />
 
               {/* Protected routes with layout shell */}
               <Route element={<ProtectedRoute><ProjectProvider><AppShell /></ProjectProvider></ProtectedRoute>}>

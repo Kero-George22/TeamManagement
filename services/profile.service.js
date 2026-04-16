@@ -39,11 +39,22 @@ async function getUserProfile(userId) {
 }
 
 async function getUserPublicProfile(userId) {
-  const profile = await getUserProfile(userId);
-  delete profile.email;
-  delete profile.pendingEmail;
-  delete profile.isAdmin;
-  return profile;
+  validateObjectId(userId, 'user ID');
+
+  const user = await User.findById(userId)
+    .select('username avatar bio lastSeen createdAt')
+    .lean();
+
+  if (!user) throw new AppError('User not found', 404);
+
+  return {
+    id:        user._id,
+    username:  user.username || `user_${String(user._id).slice(-6)}`,
+    avatar:    user.avatar   || null,
+    bio:       user.bio      || null,
+    lastSeen:  user.lastSeen || null,
+    createdAt: user.createdAt,
+  };
 }
 
 // ─────────────────────────────────────────
