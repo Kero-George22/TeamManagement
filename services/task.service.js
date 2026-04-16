@@ -160,7 +160,7 @@ async function getDashboardTasks(userId, isAdmin = false) {
       };
 
   const accessibleProjects = await Project.find(projectQuery)
-    .select('_id title owner members')
+    .select('_id title owner members isPrivate')
     .lean();
 
   if (accessibleProjects.length === 0) return [];
@@ -168,7 +168,7 @@ async function getDashboardTasks(userId, isAdmin = false) {
   const projectMetaById = new Map(
     accessibleProjects.map((project) => [
       String(project._id),
-      { projectRef: { _id: project._id, title: project.title } },
+      { projectRef: { _id: project._id, title: project.title, isPrivate: project.isPrivate } },
     ])
   );
 

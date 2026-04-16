@@ -90,14 +90,9 @@ export default function SectionPage() {
         const list = await API.tasks.list(selectedProject._id);
         setTasks(list.map(t => ({ ...t, projectRef: selectedProject })) || []);
       } else {
-        const allTasks = [];
-        await Promise.all(projects.map(async p => {
-          try {
-            const list = await API.tasks.list(p._id);
-            if (list && list.length) list.forEach(t => allTasks.push({ ...t, projectRef: p }));
-          } catch (e) {}
-        }));
-        setTasks(allTasks);
+        // Fetch all visible tasks in one request (avoids N+1 calls across projects)
+        const response = await API.tasks.dashboardOverview();
+        setTasks(response?.tasks || []);
       }
     } catch { toast.error('Failed to load tasks'); setTasks([]); }
   }
