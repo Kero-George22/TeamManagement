@@ -70,15 +70,15 @@ const getTaskById = asyncWrapper(async (req, res) => {
 // Owner:  Done → Approved
 // ─────────────────────────────────────────
 
-const \updateTaskStatus = asyncWrapper(async (req, res) => {
+const updateTaskStatus = asyncWrapper(async (req, res) => {
   const { status } = req.body;
 
-    if (!status || typeof status !== 'string' || !status.trim())
-      throw new AppError('Status must be a valid string', 400);
+  if (!status || typeof status !== 'string' || !status.trim())
+    throw new AppError('Status must be a valid string', 400);
 
   const task = await taskService.updateTaskStatus(
     req.params.taskId,
-      status.trim(),
+    status.trim(),
     req.user._id,
     req.user.isAdmin
   );

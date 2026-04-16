@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
@@ -35,8 +35,6 @@ export default function ProjectPage() {
   const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
-  const backTo = location.state?.from || '/app/projects';
 
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState(null);
@@ -44,7 +42,11 @@ export default function ProjectPage() {
   const [requests, setRequests] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
 
-  const [tab, setTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'overview';
+  const setTab = (newTab) => {
+    setSearchParams(newTab === 'overview' ? {} : { tab: newTab }, { replace: false });
+  };
   const [taskView, setTaskView] = useState('board');
   const [taskModal, setTaskModal] = useState(false);
   const [joinModal, setJoinModal] = useState(false);
@@ -329,7 +331,7 @@ export default function ProjectPage() {
   if (tab === 'tasks') {
     return (
       <>
-        <Topbar title={project.title} backTo={backTo} />
+        <Topbar title={project.title} onBack={() => navigate(-1)} />
         <SectionPage embedded forcedProjectId={id} forcedProjectMembers={members || []} />
       </>
     );
@@ -337,7 +339,7 @@ export default function ProjectPage() {
 
   return (
     <>
-      <Topbar title={project.title} backTo={backTo} />
+      <Topbar title={project.title} />
 
       <div className="workspace-tabs" style={{ marginTop: 20 }}>
         <button className={`workspace-tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>

@@ -9,7 +9,7 @@ const NAV = [
   { label: 'Profile',   to: '/app/profile'   },
 ];
 
-export default function Topbar({ title, backTo = null }) {
+export default function Topbar({ title, backTo = null, onBack = null }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isDark, setIsDark] = useState(
@@ -31,7 +31,15 @@ export default function Topbar({ title, backTo = null }) {
   return (
     <header className="topbar">
       <div className="topbar__left">
-        <button className="icon-btn" onClick={() => (backTo ? navigate(backTo) : navigate(-1))} aria-label="Back">
+        <button
+          className="icon-btn"
+          onClick={() => {
+            if (onBack) return onBack();
+            if (backTo) return navigate(backTo);
+            return navigate(-1);
+          }}
+          aria-label="Back"
+        >
           <i className="fa-solid fa-arrow-left" />
         </button>
         <h1 className="topbar__title">{title}</h1>
