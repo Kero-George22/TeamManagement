@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
 const authController = require('../controllers/auth.controller');
 const rateLimit = require('express-rate-limit');
-const validation = require('../middlewares/validation.middleware');
+const { requireAuth } = require('../middlewares/auth.middleware');
 
 const loginLimiter = rateLimit({
 	windowMs: Number(process.env.LOGIN_WINDOW_MS) || 15 * 60 * 1000,
@@ -13,36 +12,13 @@ const loginLimiter = rateLimit({
 	message: { success: false, message: 'Too many login attempts, try later.' },
 });
 
-router.post('/signup', [
-	body('email').isEmail().withMessage('Valid email required'),
-	body('password').isLength({ min: 8 }).withMessage('Password min length 8'),
-], validation, authController.signup);
-
-router.post('/verify', [body('token').notEmpty().withMessage('Token required')], validation, authController.verifyEmail);
-
-router.post('/login', loginLimiter, [
-	body('email').isEmail().withMessage('Valid email required'),
-	body('password').notEmpty().withMessage('Password required'),
-], validation, authController.login);
-
-router.post('/google', loginLimiter, [
-	body('idToken').isString().notEmpty().withMessage('Google ID token required'),
-], validation, authController.googleLogin);
-
-const { requireAuth } = require('../middlewares/auth.middleware');
-
+router.post('/signup', authController.signup);
+router.post('/verify', authController.verifyEmail);
+router.post('/login', loginLimiter, authController.login);
+router.post('/google', loginLimiter, authController.googleLogin);
 router.post('/logout', requireAuth, authController.logout);
-
-router.post('/forgot-password', [body('email').isEmail().withMessage('Valid email required')], validation, authController.requestPasswordReset);
-
-router.post('/reset-password', [
-	body('token').notEmpty().withMessage('Token required'),
-	body('newPassword').isLength({ min: 8 }).withMessage('Password min length 8'),
-], validation, authController.resetPassword);
-
-router.post('/change-password', requireAuth, [
-	body('oldPassword').notEmpty().withMessage('Old password required'),
-	body('newPassword').isLength({ min: 8 }).withMessage('Password min length 8'),
-], validation, authController.changePassword);
+router.post('/forgot-password', authController.requestPasswordReset);
+router.post('/reset-password', authController.resetPassword);
+router.post('/change-password', requireAuth, authController.changePassword);
 
 module.exports = router;

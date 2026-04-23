@@ -7,6 +7,8 @@ import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
 export default function ProfilePage() {
   const { user: authUser, updateUser } = useAuth();
   const toast = useToast();
@@ -113,18 +115,18 @@ export default function ProfilePage() {
     const cells = [];
     for (let x = firstDayIndex; x > 0; x--) {
       const d = new Date(year, month - 1, daysInPrevMonth - x + 1);
-      cells.push({ day: d.getDate(), current: false, count: map.get(d.toDateString()) || 0 });
+      cells.push({ day: d.getDate(), current: false, count: map.get(d.toDateString()) || 0, dateStr: d.toDateString() });
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(year, month, day);
-      cells.push({ day, current: true, count: map.get(d.toDateString()) || 0 });
+      cells.push({ day, current: true, count: map.get(d.toDateString()) || 0, dateStr: d.toDateString() });
     }
 
-    while (cells.length < 35) {
+    while (cells.length < 42) {
       const day = cells.length - (firstDayIndex + daysInMonth) + 1;
       const d = new Date(year, month + 1, day);
-      cells.push({ day, current: false, count: map.get(d.toDateString()) || 0 });
+      cells.push({ day, current: false, count: map.get(d.toDateString()) || 0, dateStr: d.toDateString() });
     }
 
     return cells;
@@ -343,13 +345,25 @@ export default function ProfilePage() {
                 <button className="icon-btn" style={{ width: 32, height: 32, background: 'transparent', border: '1px solid var(--border)', boxShadow: 'none' }} onClick={() => setCalendarDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><i className="fa-solid fa-arrow-right" /></button>
               </div>
               <div className="calendar-widget">
+                {WEEKDAYS.map(day => (
+                  <div key={day} style={{ textAlign: 'center', fontSize: '.66rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {day}
+                  </div>
+                ))}
                 {calendarCells.map((c, index) => (
                   <div
                     key={`${c.day}-${index}`}
                     className={`calendar-widget__day ${!c.current ? 'calendar-widget__day--dim' : c.count > 0 ? 'calendar-widget__day--active' : ''}`}
                     title={c.count > 0 ? `${c.count} task deadline${c.count > 1 ? 's' : ''}` : ''}
+                    style={{
+                      border: c.dateStr === new Date().toDateString() ? '1px solid var(--green)' : '1px solid transparent',
+                      position: 'relative',
+                    }}
                   >
                     {c.day}
+                    {c.count > 0 && (
+                      <span style={{ position: 'absolute', bottom: 5, width: 5, height: 5, borderRadius: '50%', background: c.current ? 'rgba(255,255,255,.9)' : 'var(--green)' }} />
+                    )}
                   </div>
                 ))}
               </div>

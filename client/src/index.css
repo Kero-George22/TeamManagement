@@ -42,6 +42,10 @@
   --red-bg:    #fee2e2;
 
   --sidebar-active: rgba(255,255,255,.12);
+  --nav-active-bg: #111827;
+  --nav-active-text: #ffffff;
+  --selection-bg: rgba(34, 197, 94, 0.28);
+  --selection-text: #0b1220;
 
   --transition: 0.2s ease;
 }
@@ -67,6 +71,10 @@ body.dark {
   --indigo-bg:   rgba(99, 102, 241, 0.15);
   --cyan-bg:     rgba(6, 182, 212, 0.15);
   --red-bg:      rgba(239, 68, 68, 0.15);
+  --nav-active-bg: rgba(34, 197, 94, 0.24);
+  --nav-active-text: #d1fae5;
+  --selection-bg: rgba(34, 197, 94, 0.4);
+  --selection-text: #f8fafc;
 }
 
 /* ─── Reset ──────────────────────────────── */
@@ -100,6 +108,11 @@ input, textarea, select {
 }
 img { display: block; max-width: 100%; }
 ul { list-style: none; }
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
 
 /* ─── Layout Shell ───────────────────────── */
 .shell {
@@ -255,8 +268,8 @@ ul { list-style: none; }
 
 .topbar__nav-link:hover { color: var(--text-primary); }
 .topbar__nav-link.active {
-  background: var(--text-primary);
-  color: #fff;
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
 }
 
 .topbar__actions {
@@ -727,10 +740,14 @@ body.dark .chip { background: rgba(255,255,255,.06); }
 
 /* ─── Skeleton ───────────────────────────── */
 .skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, rgba(0,0,0,.06) 25%, rgba(0,0,0,.1) 50%, rgba(0,0,0,.06) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
   border-radius: 8px;
+}
+body.dark .skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.11) 50%, rgba(255,255,255,.05) 75%);
+  background-size: 200% 100%;
 }
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
@@ -1142,8 +1159,14 @@ body.dark .dashboard-progress-ring::after {
 }
 
 .workspace-tab.active {
-  background: var(--text-primary);
-  color: #fff;
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+}
+
+select,
+option {
+  color: var(--text-primary);
+  background: var(--white);
 }
 
 .workspace-grid {

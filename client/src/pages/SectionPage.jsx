@@ -787,6 +787,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           border-radius: 8px; padding: 6px 12px; font-size: .78rem;
           font-weight: 500; cursor: pointer; color: var(--text-secondary);
           transition: all .15s;
+          appearance: none;
         }
         .tool-btn:hover, .tool-btn.active {
           background: rgba(0,0,0,.03); color: var(--text-primary); border-color: #d1d5db;
@@ -862,13 +863,47 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         .del-btn:hover { opacity: 1 !important; color: #ef4444 !important; }
 
         /* Calendar */
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-        .cal-header-cell { background: var(--white); padding: 10px; text-align: center; font-size: .72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+        .calendar-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 1px;
+          background: var(--border);
+          border-radius: 16px;
+          overflow: hidden;
+          border: 1px solid var(--border);
+        }
+        .cal-header-cell {
+          background: rgba(255,255,255,.78);
+          padding: 12px 8px;
+          text-align: center;
+          font-size: .68rem;
+          font-weight: 700;
+          letter-spacing: .06em;
+          color: var(--text-muted);
+          text-transform: uppercase;
+        }
         body.dark .cal-header-cell { background: rgba(255,255,255,.03); }
-        .cal-cell { background: var(--white); min-height: 110px; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+        .cal-cell {
+          background: var(--white);
+          min-height: 124px;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
         .cal-cell.dim { background: var(--bg); }
         body.dark .cal-cell.dim { background: rgba(255,255,255,.015); }
-        .cal-task { font-size: .68rem; padding: 3px 6px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; border-left: 3px solid transparent; }
+        .cal-task {
+          font-size: .68rem;
+          padding: 5px 8px;
+          border-radius: 7px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          cursor: pointer;
+          border-left: 3px solid transparent;
+          font-weight: 600;
+        }
 
         /* Priority dots */
         .pdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -888,7 +923,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
               key={v}
               className={`tool-btn ${view === v ? 'active' : ''}`}
               onClick={() => setView(v)}
-              style={{ borderRadius: 7, border: 'none', background: view === v ? 'var(--white)' : 'transparent',
+              style={{ borderRadius: 7, border: 'none', background: view === v ? 'var(--nav-active-bg)' : 'transparent',
+                color: view === v ? 'var(--nav-active-text)' : 'var(--text-secondary)',
                 boxShadow: view === v ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}
             >
               <i className={`fa-solid ${icon}`} style={{ fontSize: '.75rem' }} /> {lbl}
@@ -1291,7 +1327,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         ) : (
 
           /* ══ CALENDAR VIEW ══════════════════════════════ */
-          <div style={{ background: 'var(--white)', borderRadius: 16, boxShadow: 'var(--shadow)', padding: 16, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--white)', borderRadius: 18, boxShadow: 'var(--shadow)', border: '1px solid var(--border)', padding: 18, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontWeight: 700 }}>{MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}</h3>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -1304,7 +1340,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
               {CAL_DAYS.map(day => <div key={day} className="cal-header-cell">{day}</div>)}
               {calendarCells.map((c, i) => (
                 <div key={i} className={`cal-cell ${!c.current ? 'dim' : ''}`}>
-                  <div style={{ fontSize: '.78rem', fontWeight: c.dateStr === new Date().toDateString() ? 800 : 600, color: c.current ? 'var(--text-primary)' : 'var(--text-muted)', textAlign: 'right', background: c.dateStr === new Date().toDateString() ? 'var(--green)' : 'transparent', color: c.dateStr === new Date().toDateString() ? '#fff' : c.current ? 'var(--text-primary)' : 'var(--text-muted)', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto', fontSize: '.75rem' }}>{c.day}</div>
+                  <div style={{ fontWeight: c.dateStr === new Date().toDateString() ? 800 : 600, textAlign: 'right', background: c.dateStr === new Date().toDateString() ? 'var(--green)' : 'transparent', color: c.dateStr === new Date().toDateString() ? '#fff' : c.current ? 'var(--text-primary)' : 'var(--text-muted)', width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto', fontSize: '.75rem' }}>{c.day}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflowY: 'auto' }}>
                     {c.tasks.map(t => {
                       const cCol = getProjectColor(t.projectRef?._id);
