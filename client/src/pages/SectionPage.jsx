@@ -452,6 +452,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     return selectedProject;
   }, [forcedProjectId, projects, selectedProject]);
 
+  const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id));
+
   const [tasks, setTasks] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
 
@@ -546,9 +548,34 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     if (!draggedTaskId) return;
     const t = tasks.find(x => x._id === draggedTaskId);
     if (!t || t.status === targetStatus) return;
+
+    const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user._id));
+    const isAssignee = String(t.assignedTo?._id || t.assignedTo) === String(user._id);
+    const isAdmin = user?.isAdmin;
+    const isBlockedStatus = targetStatus === 'Done' || targetStatus === 'Approved';
+
+    // Admin أو Owner يقدر يحط أي task في أي حالة
+    if (!isAdmin && !isOwner) {
+      // Member عادي
+      if (!isAssignee) {
+        toast.error('You can only move tasks assigned to you');
+        setDraggedTaskId(null);
+        return;
+      }
+      // Member ممنوع يحط task في Done أو Approved
+      if (isBlockedStatus) {
+        toast.error('Only the project owner can mark tasks as Done or Approved');
+        setDraggedTaskId(null);
+        return;
+      }
+    }
+
     setTasks(ts => ts.map(x => x._id === draggedTaskId ? { ...x, status: targetStatus } : x));
     try { await API.tasks.status(draggedTaskId, targetStatus); }
-    catch { toast.error('Failed to move task'); loadTasks(); }
+    catch (err) {
+      toast.error(err.message || 'Failed to move task');
+      loadTasks();
+    }
     setDraggedTaskId(null);
   }
 
@@ -1364,7 +1391,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         <TaskSidePanel
           task={selectedTask}
           onClose={() => { setSelectedTask(null); loadTasks(); }}
-          isOwner={false}
+          isOwner={isOwner}
           isMember={true}
           userId={user?._id}
           projectId={selectedTask.projectRef?._id || selectedTask.project}

@@ -74,9 +74,9 @@ exports.getMessages = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 exports.getConversations = asyncWrapper(async (req, res) => {
   const currentUserId = req.user._id;
-  const { page = 1, limit = 30 } = req.query;
+  const { page = 1, limit = 20 } = req.query;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 30));
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
   const currentUserObjectId = currentUserId;
 
   const [groupedConversations, unreadSummary] = await Promise.all([
@@ -121,14 +121,16 @@ exports.getConversations = asyncWrapper(async (req, res) => {
     ]),
     DirectMessage.aggregate([
       { $match: { receiver: currentUserObjectId, read: false } },
-      { $group: { _id: null, total: { $sum: 1 } } },
+      { $count: 'total' },
     ]),
   ]);
 
   const userIds = groupedConversations.map((conversation) => conversation._id);
-  const users = await User.find({ _id: { $in: userIds } })
-    .select('username email avatar')
-    .lean();
+  const users = userIds.length > 0
+    ? await User.find({ _id: { $in: userIds } })
+        .select('username email avatar')
+        .lean()
+    : [];
   const userById = new Map(users.map((user) => [String(user._id), user]));
 
   const conversations = groupedConversations

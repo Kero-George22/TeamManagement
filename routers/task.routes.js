@@ -5,11 +5,16 @@ const { requireAuth } = require('../middlewares/auth.middleware');
 const multer = require('multer');
 const path = require('path');
 
+const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'application/zip', 'application/json'];
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const fileFilter = (req, file, cb) => {
+  if (ALLOWED_MIMES.includes(file.mimetype)) return cb(null, true);
+  cb(new Error(`File type ${file.mimetype} is not allowed`));
+};
+const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ─────────────────────────────────────────
 // Project tasks
@@ -19,8 +24,10 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 router.get('/dashboard/overview', requireAuth, taskController.getDashboardTasks);
 
 // GET  /tasks/:projectId         — all tasks for a project
+// GET  /tasks/:projectId/board   — board view grouped by status
 // POST /tasks/:projectId/generate — AI generates tasks
 router.get( '/:projectId',          requireAuth, taskController.getProjectTasks);
+router.get( '/:projectId/board',    requireAuth, taskController.getBoardView);
 router.post('/:projectId/generate', requireAuth, taskController.createTasksByAI);
 router.post('/:projectId',          requireAuth, taskController.createTask);
 

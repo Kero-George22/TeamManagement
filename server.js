@@ -1,17 +1,34 @@
+// test
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
+const helmet = require('helmet');
+const http = require('http');
+const { Server } = require('socket.io');
 const errorHandler = require('./middlewares/error.handler');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+// ─────────────────────────────────────────
+// Security headers
+// ─────────────────────────────────────────
+
+app.use(helmet());
 
 // ─────────────────────────────────────────
 // Middleware
 // ─────────────────────────────────────────
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // CORS — في production استبدل * بـ domain بتاعك
 app.use((req, res, next) => {
@@ -33,7 +50,20 @@ app.use('/profile',  require('./routers/profile.routes'));
 app.use('/office',   require('./routers/office.routes'));
 app.use('/dms',      require('./routers/dm.routes'));
 app.use('/posts',    require('./routers/post.routes'));
+app.use('/time',     require('./routers/time.routes'));
+app.use('/notifications', require('./routers/notification.routes'));
+app.use('/analytics',   require('./routers/analytics.routes'));
+app.use('/portfolio',   require('./routers/portfolio.routes'));
+app.use('/submissions', require('./routers/submission.routes'));
+app.use('/goals',       require('./routers/goal.routes'));
 app.use('/uploads',  express.static(path.join(__dirname, 'uploads')));
+
+// ─────────────────────────────────────────
+// WebSocket (Socket.io)
+// ─────────────────────────────────────────
+
+const { setupSocket } = require('./services/socket.service');
+setupSocket(io);
 
 // ─────────────────────────────────────────
 // Static files & legacy HTML pages
@@ -86,11 +116,17 @@ mongoose
     socketTimeoutMS:          30000,
     connectTimeoutMS:         30000,
   })
-  .then(() => {
+  .then(async () => {
     console.log('✓ Connected to MongoDB');
 
+    try {
+      // Skills initialization removed
+    } catch (err) {
+      console.warn('Init skipped:', err.message);
+    }
+
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`✓ Server listening on ${PORT}`));
+    server.listen(PORT, () => console.log(`✓ Server listening on ${PORT}`));
   })
   .catch((err) => {
     console.error('✗ MongoDB connection failed:', err.message);

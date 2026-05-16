@@ -59,7 +59,7 @@ export default function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, maxWidth: 1000, width: '100%' }}>
           {[
             { icon: 'fa-trello', title: 'Kanban Boards', desc: 'Drag and drop your way to success with interactive task management.' },
-            { icon: 'fa-users', title: 'Team Finder', desc: 'Match with collaborators by role, skills, and availability.' },
+            { icon: 'fa-users', title: 'Team Finder', desc: 'Discover projects and find collaborators by role and category.' },
             { icon: 'fa-comment', title: 'Office Chat', desc: 'Instantly communicate with team members through realtime channels.' }
           ].map(f => (
             <div key={f.title} style={{ padding: 32, background: 'var(--white)', borderRadius: 24, border: '1px solid var(--border)' }}>

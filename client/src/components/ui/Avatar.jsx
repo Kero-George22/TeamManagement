@@ -3,11 +3,15 @@ export default function Avatar({ user, size = 'md', className = '' }) {
   const px = sizeMap[size] || 44;
 
   if (user?.avatar) {
+    const isDataUrl = user.avatar.startsWith('data:');
     return (
       <img
         src={user.avatar}
         alt={user.username || 'User'}
         className={`avatar avatar--${size} ${className}`}
+        loading={isDataUrl ? 'eager' : 'lazy'}
+        decoding="async"
+        style={isDataUrl ? { imageRendering: 'auto' } : undefined}
       />
     );
   }

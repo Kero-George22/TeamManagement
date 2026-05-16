@@ -1,5 +1,27 @@
 const mongoose = require('mongoose');
 
+const PROJECT_CATEGORIES = [
+  'Software Development',
+  'Web Development',
+  'Mobile Development',
+  'Data Science & AI',
+  'DevOps & Cloud',
+  'Cybersecurity',
+  'Blockchain',
+  'IoT & Hardware',
+  'Game Development',
+  'UI/UX Design',
+  'Business & Marketing',
+  'Finance & Accounting',
+  'Engineering',
+  'Education & Training',
+  'Healthcare',
+  'E-commerce',
+  'Social Impact',
+  'Research & Development',
+  'Other',
+];
+
 const ProjectSchema = new mongoose.Schema(
   {
     title:       { type: String, required: true, trim: true },
@@ -7,6 +29,8 @@ const ProjectSchema = new mongoose.Schema(
     owner:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     startDate:   { type: Date,   required: true },
     duration:    { type: Number, required: true }, // in days
+
+    category:    { type: String, enum: PROJECT_CATEGORIES, default: 'Other' },
 
     status: {
       type:    String,
@@ -29,12 +53,6 @@ const ProjectSchema = new mongoose.Schema(
         roleName:    { type: String, required: true },
         totalSlots:  { type: Number, required: true, min: 1 },
         filledSlots: { type: Number, default: 0,     min: 0 },
-        requiredSkills: [
-          {
-            skillName: { type: String, required: true },
-            minLevel:  { type: Number, default: 1, min: 1, max: 5 },
-          },
-        ],
       },
     ],
 
@@ -56,6 +74,11 @@ const ProjectSchema = new mongoose.Schema(
         requestedAt: { type: Date, default: Date.now },
       },
     ],
+
+    // ─── Community Features ───────────────
+    likes:        [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    lookingFor:   { type: String, default: '' }, // e.g., "Frontend developer, UI designer"
   },
   { timestamps: true }
 );
@@ -65,5 +88,9 @@ ProjectSchema.index({ isPrivate: 1, status: 1 });          // discovery queries
 ProjectSchema.index({ 'members.userId': 1 });               // "projects I joined"
 ProjectSchema.index({ owner: 1 });                          // "projects I own"
 ProjectSchema.index({ inviteToken: 1 }, { sparse: true });  // invite link lookup
+ProjectSchema.index({ category: 1 });                       // category filtering
+ProjectSchema.index({ owner: 1, createdAt: -1 });           // User's projects list
+ProjectSchema.index({ 'members.userId': 1, createdAt: -1 }); // Joined projects list
 
 module.exports = mongoose.model('Project', ProjectSchema);
+module.exports.PROJECT_CATEGORIES = PROJECT_CATEGORIES;

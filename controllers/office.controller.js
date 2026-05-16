@@ -104,15 +104,34 @@ async function buildSharedReport(projectId) {
   };
 }
 
-// GET MESSAGES – last 50, oldest first
+// GET MESSAGES – paginated, newest first by default
 const getMessages = asyncWrapper(async (req, res) => {
   const { projectId } = req.params;
+  const { page = 1, limit = 50 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+
   await ensureOfficeMember(projectId, req.user._id);
-  const messages = await Message.find({ project: projectId, type: { $ne: 'ai' } })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
-  return success(res, messages.reverse(), 'Messages retrieved');
+
+  const filter = { project: projectId, type: { $ne: 'ai' } };
+  const [messages, total] = await Promise.all([
+    Message.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+    Message.countDocuments(filter),
+  ]);
+
+  return success(res, {
+    messages: messages.reverse(),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  }, 'Messages retrieved');
 });
 
 // SEND MESSAGE

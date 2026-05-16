@@ -28,8 +28,9 @@ function getMembership(project, userId) {
   );
 }
 
-async function ensureProjectAccess(projectId, userId, isAdmin = false) {
-  const project = await Project.findById(projectId).select('owner members');
+async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFields = []) {
+  const fields = ['owner', 'members', ...extraFields].join(' ');
+  const project = await Project.findById(projectId).select(fields);
   if (!project) throw new AppError('Project not found', 404);
   if (isAdmin) return project;
 
@@ -134,7 +135,7 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 
     query.$or = [
       { assignedTo: userId },
-      { assignedRole: { $regex: new RegExp(`^${escapeRegex(member.roleName)}$`, 'i') } },
+      { assignedRole: member.roleName },
     ];
   }
 
@@ -144,79 +145,71 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
-// DASHBOARD TASKS OVERVIEW (single request)
+// DASHBOARD TASKS OVERVIEW (single request, aggregate-based)
 // ─────────────────────────────────────────
 
 async function getDashboardTasks(userId, isAdmin = false) {
   if (!isAdmin) validateObjectId(userId, 'user ID');
 
+  const userIdObj = new mongoose.Types.ObjectId(String(userId));
+
+  // 1) Get accessible projects (fast lean query)
   const projectQuery = isAdmin
     ? {}
-    : {
-        $or: [
-          { owner: userId },
-          { 'members.userId': userId },
-        ],
-      };
+    : { $or: [{ owner: userIdObj }, { 'members.userId': userIdObj }] };
 
-  const accessibleProjects = await Project.find(projectQuery)
+  const projects = await Project.find(projectQuery)
     .select('_id title owner members isPrivate')
     .lean();
 
-  if (accessibleProjects.length === 0) return [];
+  if (!projects.length) return [];
 
-  const projectMetaById = new Map(
-    accessibleProjects.map((project) => [
-      String(project._id),
-      { projectRef: { _id: project._id, title: project.title, isPrivate: project.isPrivate } },
-    ])
+  const projectMap = new Map(
+    projects.map((p) => [String(p._id), { _id: p._id, title: p.title, isPrivate: p.isPrivate }])
   );
 
-  let taskQuery = { project: { $in: accessibleProjects.map((project) => project._id) } };
+  // 2) Build visibility filters per project (avoids JS loops in DB)
+  const orClauses = [];
 
-  if (!isAdmin) {
-    const ownedProjectIds = [];
-    const membershipClauses = [];
-
-    for (const project of accessibleProjects) {
-      const projectId = project._id;
-      const isOwner = String(project.owner || '') === String(userId);
+  if (isAdmin) {
+    orClauses.push({ project: { $in: projects.map((p) => p._id) } });
+  } else {
+    for (const project of projects) {
+      const isOwner = String(project.owner) === String(userId);
       if (isOwner) {
-        ownedProjectIds.push(projectId);
+        orClauses.push({ project: project._id });
         continue;
       }
-
       const membership = (project.members || []).find(
-        (member) => String(member.userId) === String(userId)
+        (m) => String(m.userId) === String(userId)
       );
-
       if (membership?.roleName) {
-        membershipClauses.push({
-          project: projectId,
+        orClauses.push({
+          project: project._id,
           $or: [
-            { assignedTo: userId },
-            { assignedRole: { $regex: new RegExp(`^${escapeRegex(membership.roleName)}$`, 'i') } },
+            { assignedTo: userIdObj },
+            { assignedRole: membership.roleName },
           ],
         });
       } else {
-        membershipClauses.push({ project: projectId, assignedTo: userId });
+        orClauses.push({ project: project._id, assignedTo: userIdObj });
       }
     }
-
-    const accessClauses = [];
-    if (ownedProjectIds.length > 0) accessClauses.push({ project: { $in: ownedProjectIds } });
-    if (membershipClauses.length > 0) accessClauses.push(...membershipClauses);
-    taskQuery = accessClauses.length > 0 ? { $or: accessClauses } : { _id: null };
   }
 
+  // 3) Single query to get tasks (limited to 50 most recent for performance)
+  const taskQuery = orClauses.length === 1 ? orClauses[0] : { $or: orClauses };
+  
   const tasks = await Task.find(taskQuery)
-    .populate('assignedTo', 'email username avatar')
     .sort({ createdAt: -1 })
+    .limit(50)
+    .populate('assignedTo', 'email username avatar')
     .lean();
 
+  // 4) Attach projectRef in-memory (fast Map lookup vs DB join)
   return tasks.map((task) => ({
     ...task,
-    projectRef: projectMetaById.get(String(task.project))?.projectRef || null,
+    projectRef: projectMap.get(String(task.project)) || null,
   }));
 }
 
@@ -249,12 +242,40 @@ async function getTaskById(taskId, userId, isAdmin = false) {
 // Member بيحدث الـ status — owner بيعمل approve لما تبقى Done
 // ─────────────────────────────────────────
 
-const VALID_TRANSITIONS = {
-  'Todo':        ['In-Progress'],
-  'In-Progress': ['Done'],
-  'Done':        [],
-  'Approved':    [],
-};
+const BLOCKED_FOR_MEMBERS = ['Done', 'Approved'];
+
+async function checkDependencies(task, targetStatus) {
+  if (!task.dependsOn || task.dependsOn.length === 0) return;
+
+  const doneOrApproved = ['Done', 'Approved'];
+  if (!doneOrApproved.includes(targetStatus)) return;
+
+  const deps = await Task.find({ _id: { $in: task.dependsOn } })
+    .select('status title')
+    .lean();
+
+  const blocked = deps.filter(
+    (d) => !doneOrApproved.includes(d.status)
+  );
+
+  if (blocked.length > 0) {
+    const names = blocked.map((d) => `"${d.title}"`).join(', ');
+    throw new AppError(
+      `Cannot mark as "${targetStatus}" — dependencies not completed: ${names}`,
+      400
+    );
+  }
+}
+
+async function _syncLinkedGoals(taskId, newStatus) {
+  if (newStatus !== 'Done' && newStatus !== 'Approved') return;
+  try {
+    const { completeGoalsForTask } = require('./goal.service');
+    await completeGoalsForTask(taskId);
+  } catch {
+    // Goals sync is best-effort
+  }
+}
 
 async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
   validateObjectId(taskId, 'task ID');
@@ -264,42 +285,40 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 
   const project = await ensureProjectAccess(task.project, userId, isAdmin);
 
-  // Admin يقدر يعمل أي transition
-  if (isAdmin) {
-    task.status = newStatus;
-    await task.save();
-    return task;
-  }
-
   const isOwner    = String(project.owner || '') === String(userId);
   const isAssigned = String(task.assignedTo || '') === String(userId);
+  const isMember   = project.members.some(
+    (m) => String(m.userId) === String(userId)
+  );
 
-  // Owner بس هو اللي يقدر يعمل approve لما task تبقى Done
-  if (newStatus === 'Approved') {
-    if (!isOwner)
-      throw new AppError('Only the project owner can approve tasks', 403);
-    if (task.status !== 'Done')
-      throw new AppError('Can only approve tasks that are marked as Done', 400);
-
-    task.status = 'Approved';
+  // Admin أو Owner يقدر يعمل أي transition
+  if (isAdmin || isOwner) {
+    await checkDependencies(task, newStatus);
+    task.status = newStatus;
     await task.save();
-    await _rewardUser(task);
+    if (newStatus === 'Approved' && task.assignedTo) {
+      await _rewardUser(task);
+    }
+    await _syncLinkedGoals(task._id, newStatus);
     return task;
   }
 
-  // Member بس هو اللي يقدر يحدث task بتاعته
+  // Member عادي
+  if (!isMember)
+    throw new AppError('You must be a project member to update tasks', 403);
+
+  // Member يقدر يغير الـ tasks المسندة له بس
   if (!isAssigned)
     throw new AppError('You can only update tasks assigned to you', 403);
 
-  const allowed = VALID_TRANSITIONS[task.status] || [];
-  if (!allowed.includes(newStatus))
-    throw new AppError(
-      `Cannot move task from "${task.status}" to "${newStatus}"`,
-      400
-    );
+  // Member ممنوع يحط task في Done أو Approved
+  if (BLOCKED_FOR_MEMBERS.includes(newStatus))
+    throw new AppError('Only the project owner can mark tasks as Done or Approved', 403);
 
+  await checkDependencies(task, newStatus);
   task.status = newStatus;
   await task.save();
+  await _syncLinkedGoals(task._id, newStatus);
   return task;
 }
 
@@ -310,22 +329,18 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 async function _rewardUser(task) {
   if (!task.assignedTo) return;
 
+  const isOnTime = task.deadline && new Date() <= new Date(task.deadline);
+
   await User.findByIdAndUpdate(task.assignedTo, {
     $inc: { completedTasks: 1 },
-  });
-
-  // Reliability bonus لو خلص قبل الـ deadline
-  if (task.deadline && new Date() <= new Date(task.deadline)) {
-    await User.findByIdAndUpdate(task.assignedTo, [
-      {
-        $set: {
-          reliabilityScore: {
-            $min: [100, { $add: [{ $ifNull: ['$reliabilityScore', 0] }, 2] }],
-          },
+    ...(isOnTime && {
+      $set: {
+        reliabilityScore: {
+          $min: [100, { $add: [{ $ifNull: ['$reliabilityScore', 0] }, 2] }],
         },
       },
-    ]);
-  }
+    }),
+  });
 }
 
 // ─────────────────────────────────────────
@@ -339,10 +354,9 @@ async function _rewardUser(task) {
 async function createTask(projectId, userId, taskData, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
   
-  const project = await ensureProjectAccess(projectId, userId, isAdmin);
-  const projectDoc = await Project.findById(projectId).select('taskStatuses');
-  const allowedStatuses = projectDoc?.taskStatuses?.length
-    ? projectDoc.taskStatuses
+  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['taskStatuses']);
+  const allowedStatuses = project?.taskStatuses?.length
+    ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
   const requestedStatus = taskData.status === 'Doing'
     ? 'In-Progress'
@@ -359,15 +373,25 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
         .map((label) => label.trim())
         .filter(Boolean);
 
+  let resolvedAssignedTo = taskData.assignedTo || taskData.assigneeId || null;
+  if (resolvedAssignedTo === 'me') {
+    resolvedAssignedTo = userId;
+  } else if (resolvedAssignedTo && !mongoose.Types.ObjectId.isValid(resolvedAssignedTo)) {
+    resolvedAssignedTo = null;
+  }
+
   const task = new Task({
     project: projectId,
     title: taskData.title || taskData.name || 'Untitled Task',
     description: taskData.description || '',
     taskType: taskData.taskType || 'Task',
     assignedRole: taskData.assignedRole || 'Developer',
-    assignedTo: taskData.assignedTo || null,
+    assignedTo: resolvedAssignedTo,
     priority: taskData.priority || 'Medium',
     status: normalizedStatus,
+    dependsOn: Array.isArray(taskData.dependsOn)
+      ? taskData.dependsOn.filter((id) => mongoose.Types.ObjectId.isValid(id))
+      : [],
     startDate: taskData.startDate || null,
     deadline: taskData.deadline || taskData.endDate || null,
     storyPoints: Number.isFinite(Number(taskData.storyPoints)) ? Number(taskData.storyPoints) : 0,
@@ -389,10 +413,9 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
   const task = await Task.findById(taskId);
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin);
-  const projectDoc = await Project.findById(task.project).select('taskStatuses');
-  const allowedStatuses = projectDoc?.taskStatuses?.length
-    ? projectDoc.taskStatuses
+  const project = await ensureProjectAccess(task.project, userId, isAdmin, ['taskStatuses']);
+  const allowedStatuses = project?.taskStatuses?.length
+    ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
   // Non-admins can only edit if assigned to them
@@ -406,7 +429,16 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
   // Map frontend fields to backend fields
   if (updates.name) task.title = updates.name;
   if (updates.description !== undefined) task.description = updates.description;
-  if (updates.assigneeId !== undefined) task.assignedTo = updates.assigneeId || null;
+  if (updates.assigneeId !== undefined || updates.assignedTo !== undefined) {
+    let assignedTo = updates.assigneeId !== undefined ? updates.assigneeId : updates.assignedTo;
+    if (assignedTo === 'me') {
+      task.assignedTo = userId;
+    } else if (assignedTo && mongoose.Types.ObjectId.isValid(assignedTo)) {
+      task.assignedTo = assignedTo;
+    } else {
+      task.assignedTo = null;
+    }
+  }
   if (updates.priority !== undefined) task.priority = updates.priority;
   if (updates.taskType !== undefined) task.taskType = updates.taskType;
   if (updates.startDate !== undefined) task.startDate = updates.startDate || null;
@@ -422,6 +454,13 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
           .filter(Boolean);
   }
   if (updates.assignedRole !== undefined) task.assignedRole = updates.assignedRole;
+  if (updates.dependsOn !== undefined) {
+    if (!Array.isArray(updates.dependsOn)) {
+      task.dependsOn = updates.dependsOn ? [updates.dependsOn] : [];
+    } else {
+      task.dependsOn = updates.dependsOn.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    }
+  }
 
   // Handle section → status mapping
   if (updates.section) {
@@ -464,11 +503,90 @@ async function deleteTask(taskId, userId, isAdmin = false) {
   return { success: true, message: 'Task deleted' };
 }
 
+// ─────────────────────────────────────────
+// GET PROJECT BOARD — tasks grouped by status
+// ─────────────────────────────────────────
+
+async function getProjectBoard(projectId, userId, isAdmin = false) {
+  validateObjectId(projectId, 'project ID');
+
+  const project = await ensureProjectAccess(projectId, userId, isAdmin);
+  const isOwner = String(project.owner || '') === String(userId);
+
+  const match = { project: new mongoose.Types.ObjectId(String(projectId)) };
+
+  if (!isAdmin && !isOwner) {
+    const member = getMembership(project, userId);
+    if (!member?.roleName) return [];
+
+    match.$or = [
+      { assignedTo: new mongoose.Types.ObjectId(String(userId)) },
+      { assignedRole: { $regex: new RegExp(`^${escapeRegex(member.roleName)}$`, 'i') } },
+    ];
+  }
+
+  const groups = await Task.aggregate([
+    { $match: match },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'assignedTo',
+        foreignField: '_id',
+        as: 'assignedTo',
+      },
+    },
+    { $unwind: { path: '$assignedTo', preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        assignedTo: {
+          $cond: {
+            if: '$assignedTo',
+            then: { _id: '$assignedTo._id', email: '$assignedTo.email', username: '$assignedTo.username', avatar: '$assignedTo.avatar' },
+            else: null,
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
+        tasks: { $push: '$$CURRENT' },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: '$_id',
+        count: 1,
+        tasks: {
+          _id: 1,
+          title: 1,
+          description: 1,
+          assignedTo: 1,
+          assignedRole: 1,
+          priority: 1,
+          status: 1,
+          deadline: 1,
+          labels: 1,
+          storyPoints: 1,
+          taskType: 1,
+          createdAt: 1,
+        },
+      },
+    },
+    { $sort: { status: 1 } },
+  ]);
+
+  return groups;
+}
+
 module.exports = {
   createTasksByAI,
   createTask,
   getDashboardTasks,
   getProjectTasks,
+  getProjectBoard,
   getTaskById,
   updateTask,
   updateTaskStatus,

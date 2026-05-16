@@ -24,10 +24,9 @@ function checkDuplicateRoles(roles) {
 
 function prepareRoles(roles) {
   return roles.map((role) => ({
-    roleName:       role.roleName,
-    totalSlots:     role.totalSlots,
-    filledSlots:    0,
-    requiredSkills: role.requiredSkills || [],
+    roleName:    role.roleName,
+    totalSlots:  role.totalSlots,
+    filledSlots: 0,
   }));
 }
 
@@ -84,6 +83,104 @@ async function createProject(data, ownerId) {
   await project.save();
   await project.populate({ path: 'owner', select: 'email username avatar' });
   return project;
+}
+
+// ─────────────────────────────────────────
+// EXPLORE — public projects with category filtering
+// ─────────────────────────────────────────
+
+function countOpenSlots(project) {
+  return (project.rolesRequired || []).reduce(
+    (acc, r) => acc + Math.max(0, (r.totalSlots || 0) - (r.filledSlots || 0)),
+    0
+  );
+}
+
+async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null) {
+  const query = { isPrivate: false };
+
+  const status = filters.status || 'Recruiting';
+  if (status !== 'all') {
+    const valid = ['Recruiting', 'In-Progress', 'Completed'];
+    if (!valid.includes(status))
+      throw new AppError(`Invalid status. Use: ${valid.join(', ')}, or all`, 400);
+    query.status = status;
+  }
+
+  if (userId) {
+    const uid = new mongoose.Types.ObjectId(String(userId));
+    query.$and = [
+      { owner: { $ne: uid } },
+      { members: { $not: { $elemMatch: { userId: uid } } } },
+    ];
+  }
+
+  if (filters.category && filters.category !== 'all') {
+    query.category = filters.category;
+  }
+
+  if (filters.roleName)
+    query['rolesRequired.roleName'] = { $regex: filters.roleName, $options: 'i' };
+
+  if (filters.durationMin || filters.durationMax) {
+    query.duration = {};
+    if (filters.durationMin) query.duration.$gte = parseInt(filters.durationMin, 10);
+    if (filters.durationMax) query.duration.$lte = parseInt(filters.durationMax, 10);
+  }
+
+  if (filters.q?.trim()) {
+    const q = filters.q.trim();
+    query.$or = [
+      { title: { $regex: q, $options: 'i' } },
+      { description: { $regex: q, $options: 'i' } },
+      { lookingFor: { $regex: q, $options: 'i' } },
+    ];
+  }
+
+  // Hard cap to prevent memory explosion — only fetch recent 500 projects
+  const MAX_PROJECTS = 500;
+  let projects = await Project.find(query)
+    .populate('owner', 'email username avatar')
+    .sort({ createdAt: -1 })
+    .limit(MAX_PROJECTS)
+    .lean();
+
+  projects = projects.filter((p) => countOpenSlots(p) > 0);
+
+  let enriched = projects.map((p) => {
+    const end = new Date(p.startDate);
+    end.setDate(end.getDate() + (p.duration || 0));
+    return {
+      ...p,
+      openSlots: countOpenSlots(p),
+      endDate: end,
+      likesCount: (p.likes || []).length,
+      collaboratorsCount: (p.collaborators || []).length,
+    };
+  });
+
+  const sort = filters.sort || 'newest';
+  if (sort === 'deadline') {
+    enriched.sort((a, b) => new Date(a.endDate) - new Date(b.endDate));
+  } else if (sort === 'slots') {
+    enriched.sort((a, b) => b.openSlots - a.openSlots);
+  } else if (sort === 'popular') {
+    enriched.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
+  } else {
+    enriched.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  const total = enriched.length;
+  const skip = (page - 1) * limit;
+  const pageItems = enriched.slice(skip, skip + limit);
+
+  return {
+    projects: pageItems,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
 
 // ─────────────────────────────────────────
@@ -196,13 +293,6 @@ async function requestToJoin(projectId, userId, roleName) {
   if (project.status !== 'Recruiting')
     throw new AppError(`Cannot join a project with status: ${project.status}`, 400);
 
-  const alreadyIn = await Project.findOne({ 'members.userId': userId }, 'title').lean();
-  if (alreadyIn)
-    throw new AppError(
-      `You are already a member of "${alreadyIn.title}". Complete it before joining another.`,
-      400
-    );
-
   const alreadyRequested = (project.joinRequests || []).some(
     (r) => String(r.userId) === String(userId) && r.status === 'pending'
   );
@@ -241,13 +331,6 @@ async function joinViaInvite(token, userId, roleName) {
 
   if (project.status !== 'Recruiting')
     throw new AppError(`Cannot join a project with status: ${project.status}`, 400);
-
-  const alreadyIn = await Project.findOne({ 'members.userId': userId }, 'title').lean();
-  if (alreadyIn)
-    throw new AppError(
-      `You are already a member of "${alreadyIn.title}". Complete it before joining another.`,
-      400
-    );
 
   const role = project.rolesRequired.find(
     (r) => r.roleName.toLowerCase() === roleName.toLowerCase()
@@ -327,13 +410,6 @@ async function handleJoinRequest(projectId, requestId, action, ownerId) {
   );
   if (!role || role.filledSlots >= role.totalSlots)
     throw new AppError('No available slots for this role anymore', 400);
-
-  const alreadyIn = await Project.findOne(
-    { 'members.userId': request.userId, _id: { $ne: projectId } },
-    'title'
-  ).lean();
-  if (alreadyIn)
-    throw new AppError(`User is already a member of "${alreadyIn.title}"`, 400);
 
   request.status = 'accepted';
   project.members.push({ userId: request.userId, roleName: request.roleName, joinedAt: new Date() });
@@ -497,6 +573,7 @@ async function getProjectMembers(projectId) {
 
 module.exports = {
   createProject,
+  exploreProjects,
   getAllProjects,
   getProjectById,
   getProjectByInviteToken,

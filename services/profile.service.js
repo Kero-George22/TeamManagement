@@ -113,6 +113,11 @@ async function updateProfile(userId, updates = {}) {
       const isDataImage = avatar.startsWith('data:image/');
       if (!isHttpsUrl && !isDataImage)
         throw new AppError('Avatar must be an https URL or data:image', 400);
+      if (isDataImage) {
+        const sizeBytes = Math.ceil((avatar.length * 3) / 4);
+        if (sizeBytes > 500 * 1024)
+          throw new AppError('Avatar image is too large. Max 500KB.', 400);
+      }
       payload.avatar = avatar;
     }
   }

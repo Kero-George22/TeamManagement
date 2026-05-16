@@ -34,10 +34,12 @@ export function AuthProvider({ children }) {
   }, [navigate]);
 
   const updateUser = useCallback((userData) => {
-    const merged = { ...user, ...userData };
-    API.saveAuth({ user: merged });
-    setUser(merged);
-  }, [user]);
+    setUser((prev) => {
+      const merged = { ...prev, ...userData };
+      API.saveAuth({ user: merged });
+      return merged;
+    });
+  }, []);
 
   const isLoggedIn = !!token;
 

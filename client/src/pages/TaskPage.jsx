@@ -35,10 +35,18 @@ export default function TaskPage() {
   }
 
   async function submitWork() {
-    const payload = { submissionType: subType };
+    const payload = {
+      taskId,
+      submissionType: subType,
+    };
     if (subType === 'text') payload.submittedWork = document.getElementById('sub-text')?.value.trim();
     else payload.repoLink = document.getElementById('sub-link')?.value.trim();
-    try { await API.tasks.update(taskId, payload); toast.success('Work submitted!'); } catch (e) { toast.error(e.message); }
+    if (task.attachment) payload.attachment = task.attachment;
+    try {
+      const sub = await API.submissions.create(payload);
+      setTask({ ...task, status: 'Review', ...(sub || {}) });
+      toast.success('Work submitted for review!');
+    } catch (e) { toast.error(e.message); }
   }
 
   async function handleAttachmentUpload(e) {

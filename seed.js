@@ -3,25 +3,8 @@ const mongoose = require('mongoose');
 const User = require('./models/user.model');
 const Project = require('./models/project.model');
 const Task = require('./models/task.model');
-const Skill = require('./models/skill.model');
-
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/teamforge';
-const skillLevels = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
-
-function buildSkillsProfile(randomize = false) {
-    const pickLevel = () => randomize
-        ? skillLevels[Math.floor(Math.random() * skillLevels.length)]
-        : 'Expert';
-
-    return {
-        Frontend: { level: pickLevel(), score: randomize ? Math.floor(Math.random() * 100) : 95 },
-        Backend: { level: pickLevel(), score: randomize ? Math.floor(Math.random() * 100) : 98 },
-        FullStack: { level: pickLevel(), score: randomize ? Math.floor(Math.random() * 100) : 92 },
-        DevOps: { level: pickLevel(), score: randomize ? Math.floor(Math.random() * 100) : 88 },
-        DataScience: { level: pickLevel(), score: randomize ? Math.floor(Math.random() * 100) : 76 },
-    };
-}
 
 async function seed() {
     try {
@@ -38,11 +21,10 @@ async function seed() {
         // Create Admin
         const admin = await User.create({
             email: 'admin@teamforge.com',
-            password: 'admin123', // will be hashed by pre-save hook
+            password: 'admin123',
             username: 'SystemAdmin',
             isAdmin: true,
             isVerified: true,
-            skills: buildSkillsProfile(false),
         });
         console.log('created admin');
 
@@ -55,24 +37,25 @@ async function seed() {
                 username: `DevUser_${i}`,
                 isVerified: true,
                 reliabilityScore: 80 + Math.floor(Math.random() * 20),
-                skills: buildSkillsProfile(true),
             });
             users.push(user);
         }
         console.log('created 5 users');
 
-        // Create Projects
+        // Create Projects with Categories
         const project1 = await Project.create({
             title: 'E-Commerce Platform',
             description: 'Building a scalable e-commerce platform with microservices architecture. Needs strong backend developers.',
             owner: admin._id,
             startDate: new Date(),
-            duration: 30, // 30 days
+            duration: 30,
             status: 'Recruiting',
+            category: 'E-commerce',
+            lookingFor: 'Backend developers, DevOps engineers',
             rolesRequired: [
-                { roleName: 'Backend Developer', totalSlots: 2, filledSlots: 0, requiredSkills: [] },
-                { roleName: 'Frontend Developer', totalSlots: 2, filledSlots: 0, requiredSkills: [] },
-                { roleName: 'DevOps Engineer', totalSlots: 1, filledSlots: 0, requiredSkills: [] }
+                { roleName: 'Backend Developer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'Frontend Developer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'DevOps Engineer', totalSlots: 1, filledSlots: 0 }
             ]
         });
 
@@ -83,9 +66,11 @@ async function seed() {
             startDate: new Date(),
             duration: 45,
             status: 'Recruiting',
+            category: 'Mobile Development',
+            lookingFor: 'Mobile developers, UI designers',
             rolesRequired: [
-                { roleName: 'Mobile Developer', totalSlots: 3, filledSlots: 0, requiredSkills: [] },
-                { roleName: 'UI Designer', totalSlots: 1, filledSlots: 0, requiredSkills: [] }
+                { roleName: 'Mobile Developer', totalSlots: 3, filledSlots: 0 },
+                { roleName: 'UI Designer', totalSlots: 1, filledSlots: 0 }
             ]
         });
 
@@ -96,9 +81,11 @@ async function seed() {
             startDate: new Date(),
             duration: 60,
             status: 'In-Progress',
+            category: 'DevOps & Cloud',
+            lookingFor: 'System architects, database admins',
             rolesRequired: [
-                { roleName: 'System Architect', totalSlots: 1, filledSlots: 1, requiredSkills: [] },
-                { roleName: 'Database Admin', totalSlots: 1, filledSlots: 1, requiredSkills: [] }
+                { roleName: 'System Architect', totalSlots: 1, filledSlots: 1 },
+                { roleName: 'Database Admin', totalSlots: 1, filledSlots: 1 }
             ],
             members: [
                 { userId: users[0]._id, roleName: 'System Architect', joinedAt: new Date() },
@@ -106,7 +93,82 @@ async function seed() {
             ]
         });
 
-        console.log('created 3 projects');
+        const project4 = await Project.create({
+            title: 'AI Chatbot Assistant',
+            description: 'Building an intelligent chatbot using NLP and machine learning for customer support automation.',
+            owner: users[0]._id,
+            startDate: new Date(),
+            duration: 40,
+            status: 'Recruiting',
+            category: 'Data Science & AI',
+            lookingFor: 'ML engineers, NLP specialists',
+            rolesRequired: [
+                { roleName: 'ML Engineer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'Backend Developer', totalSlots: 1, filledSlots: 0 }
+            ]
+        });
+
+        const project5 = await Project.create({
+            title: 'Cybersecurity Audit Tool',
+            description: 'Developing an automated security auditing tool for web applications and APIs.',
+            owner: users[1]._id,
+            startDate: new Date(),
+            duration: 35,
+            status: 'Recruiting',
+            category: 'Cybersecurity',
+            lookingFor: 'Security researchers, penetration testers',
+            rolesRequired: [
+                { roleName: 'Security Engineer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'Full Stack Developer', totalSlots: 1, filledSlots: 0 }
+            ]
+        });
+
+        const project6 = await Project.create({
+            title: 'Blockchain Payment Gateway',
+            description: 'Creating a decentralized payment gateway supporting multiple cryptocurrencies.',
+            owner: users[2]._id,
+            startDate: new Date(),
+            duration: 50,
+            status: 'Recruiting',
+            category: 'Blockchain',
+            lookingFor: 'Blockchain developers, smart contract engineers',
+            rolesRequired: [
+                { roleName: 'Blockchain Developer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'Smart Contract Engineer', totalSlots: 1, filledSlots: 0 }
+            ]
+        });
+
+        const project7 = await Project.create({
+            title: 'IoT Smart Home Hub',
+            description: 'Building a centralized smart home management system with IoT device integration.',
+            owner: users[3]._id,
+            startDate: new Date(),
+            duration: 55,
+            status: 'Recruiting',
+            category: 'IoT & Hardware',
+            lookingFor: 'Embedded systems engineers, mobile developers',
+            rolesRequired: [
+                { roleName: 'Embedded Engineer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'Mobile Developer', totalSlots: 1, filledSlots: 0 }
+            ]
+        });
+
+        const project8 = await Project.create({
+            title: 'Educational Platform',
+            description: 'Creating an online learning platform with interactive courses and progress tracking.',
+            owner: users[4]._id,
+            startDate: new Date(),
+            duration: 45,
+            status: 'Recruiting',
+            category: 'Education & Training',
+            lookingFor: 'Full stack developers, content designers',
+            rolesRequired: [
+                { roleName: 'Full Stack Developer', totalSlots: 2, filledSlots: 0 },
+                { roleName: 'UX Designer', totalSlots: 1, filledSlots: 0 }
+            ]
+        });
+
+        console.log('created 8 projects');
         console.log('SEEDING COMPLETE');
         process.exit(0);
 

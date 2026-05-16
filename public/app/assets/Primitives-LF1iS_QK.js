@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-Bg_NI1en.js";var t=e();function n({value:e=0,style:n}){return(0,t.jsx)(`div`,{className:`progress`,style:n,children:(0,t.jsx)(`div`,{className:`progress__fill`,style:{width:`${e}%`}})})}export{n as t};

@@ -11,6 +11,7 @@ import TaskSidePanel from '../components/ui/TaskSidePanel';
 import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 import SectionPage from './SectionPage';
+import ProjectAnalyticsTab from '../components/ProjectAnalyticsTab';
 
 const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
@@ -345,6 +346,9 @@ export default function ProjectPage() {
         <button className={`workspace-tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
         <button className={`workspace-tab ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>Tasks</button>
         <button className={`workspace-tab ${tab === 'team' ? 'active' : ''}`} onClick={() => setTab('team')}>Team</button>
+        {(isOwner || user?.isAdmin) && (
+          <button className={`workspace-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>Analytics</button>
+        )}
         <div style={{ flex: 1 }} />
         <button className="btn btn--ghost btn--sm" onClick={() => navigate(`/app/office/${id}`)}>
           <i className="fa-solid fa-comments" /> Office
@@ -545,6 +549,10 @@ export default function ProjectPage() {
             )}
           </aside>
         </div>
+      )}
+
+      {tab === 'analytics' && (isOwner || user?.isAdmin) && (
+        <ProjectAnalyticsTab projectId={id} />
       )}
 
       <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">

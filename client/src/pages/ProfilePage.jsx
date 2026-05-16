@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useGlobalProject } from '../contexts/ProjectContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
@@ -11,9 +12,10 @@ const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 export default function ProfilePage() {
   const { user: authUser, updateUser } = useAuth();
+  const { projects: globalProjects } = useGlobalProject();
   const toast = useToast();
-  const [profile, setProfile] = useState(null);
-  const [projects, setProjects] = useState(null);
+  const [profile, setProfile] = useState(() => authUser);
+  const [projects, setProjects] = useState(() => globalProjects || []);
   const [allTasks, setAllTasks] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [calendarDate, setCalendarDate] = useState(() => {
@@ -27,37 +29,35 @@ export default function ProfilePage() {
     if (!authUserId) return;
     (async () => {
       try {
-        const [profileRes, allProjects, taskOverview, dmConversations] = await Promise.all([
+        const [profileRes, taskOverview, dmConversations] = await Promise.all([
           API.profile.me(),
-          API.projects.list(),
           API.tasks.dashboardOverview(),
           API.dms.conversations(),
         ]);
 
         const currentProfile = profileRes?.user || profileRes;
-        setProfile(currentProfile);
-        setForm({
-          username: currentProfile?.username || '',
-          email: currentProfile?.email || '',
-          bio: currentProfile?.bio || '',
-        });
+        if (currentProfile) {
+          setProfile(currentProfile);
+          setForm({
+            username: currentProfile.username || '',
+            email: currentProfile.email || '',
+            bio: currentProfile.bio || '',
+          });
+        }
 
-        const mine = (allProjects || []).filter(p =>
+        const mine = (globalProjects || []).filter(p =>
           p.owner?._id === authUserId ||
           p.owner === authUserId ||
           (p.members || []).some(m => (m.userId?._id || m.userId) === authUserId)
         );
         setProjects(mine);
         setAllTasks(taskOverview?.tasks || []);
-        setConversations(dmConversations || []);
+        setConversations(dmConversations?.conversations || dmConversations || []);
       } catch {
         toast.error('Failed to load profile');
-        setProjects([]);
-        setAllTasks([]);
-        setConversations([]);
       }
     })();
-  }, [authUserId]);
+  }, [authUserId, globalProjects]);
 
   const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
@@ -278,7 +278,7 @@ export default function ProfilePage() {
 
         {/* ================= RIGHT COLUMN ================= */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
-          
+
           {/* Ongoing Projects (Horizontal Scroll) */}
           <div className="card" style={{ padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>

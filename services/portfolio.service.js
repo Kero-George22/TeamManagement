@@ -1,13 +1,11 @@
 const User = require('../models/user.model');
 const Submission = require('../models/submission.model');
-const Task = require('../models/task.model');
-const Project = require('../models/project.model');
 
 /**
  * Get user's portfolio data
  */
 async function getUserPortfolio(userId) {
-  const user = await User.findById(userId).select('username email avatar skills completedTasks');
+  const user = await User.findById(userId).select('username email avatar completedTasks');
   
   if (!user) {
     const err = new Error('User not found');
@@ -15,7 +13,6 @@ async function getUserPortfolio(userId) {
     throw err;
   }
 
-  // Get accepted submissions only
   const submissions = await Submission.find({
     user: userId,
     status: 'accepted',
@@ -32,11 +29,10 @@ async function getUserPortfolio(userId) {
       email: user.email,
       avatar: user.avatar,
       stats: {
-        completedTasks: user.completedTasks
+        completedTasks: user.completedTasks || 0,
       },
-      skills: user.skills
     },
-    projects: submissions.map(sub => ({
+    projects: submissions.filter((sub) => sub.task && sub.project).map((sub) => ({
       _id: sub._id,
       taskTitle: sub.task.title,
       taskDescription: sub.task.description,
@@ -77,14 +73,6 @@ async function exportPortfolioMarkdown(userId) {
   
   markdown += `## 📊 Stats\n`;
   markdown += `- **Tasks Completed:** ${profile.stats.completedTasks}\n\n`;
-
-  markdown += `## 🛠 Skills\n`;
-  Object.entries(profile.skills).forEach(([skill, data]) => {
-    if (data.level) {
-      markdown += `- **${skill}:** ${data.level} (${data.score}%)\n`;
-    }
-  });
-  markdown += `\n`;
 
   markdown += `## 🎯 Projects\n\n`;
   projects.forEach((project, idx) => {

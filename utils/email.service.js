@@ -50,4 +50,4 @@ function passwordChangedEmail(to) {
   return sendMail({ to, subject: 'Your password was changed', html, text: `Visit: ${url}` });
 }
 
-module.exports = { verificationEmail, passwordResetEmail, passwordChangedEmail };
+module.exports = { sendMail, verificationEmail, passwordResetEmail, passwordChangedEmail };

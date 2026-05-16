@@ -2,6 +2,7 @@ const asyncWrapper     = require('../utils/asyncWrapper');
 const { success }      = require('../utils/apiResponse');
 const AppError         = require('../utils/AppError');
 const User             = require('../models/user.model');
+const TokenBlacklist   = require('../models/tokenBlacklist.model');
 const emailService     = require('../utils/email.service');
 const crypto           = require('crypto');
 const jwt              = require('jsonwebtoken');
@@ -137,6 +138,17 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
 });
 
 exports.logout = asyncWrapper(async (req, res) => {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    const token = auth.slice(7);
+    const decoded = jwt.decode(token);
+    if (decoded?.exp) {
+      await TokenBlacklist.create({
+        token,
+        expiresAt: new Date(decoded.exp * 1000),
+      });
+    }
+  }
   return success(res, {}, 'Logged out');
 });
 

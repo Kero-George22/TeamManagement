@@ -29,8 +29,18 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
   if (!task) return null;
 
   const isAssignee = (task.assignedTo?._id || task.assignedTo) === userId;
+  const canChangeStatus = isOwner || isAssignee;
+  const canMarkDone = isOwner; // Only owner can mark as Done/Approved
 
   async function changeStatus(newStatus) {
+    if (!canChangeStatus) {
+      toast.error('Only project owner or assignee can change task status');
+      return;
+    }
+    if (!canMarkDone && (newStatus === 'Done' || newStatus === 'Approved')) {
+      toast.error('Only the project owner can mark tasks as Done or Approved');
+      return;
+    }
     setLoading(true);
     const oldStatus = task.status;
     // Optimistic update
@@ -48,6 +58,8 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
 
   function renderStatusAction() {
     const s = task.status;
+    const allStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+    const allowedStatuses = canMarkDone ? allStatuses : allStatuses.filter(st => st !== 'Done' && st !== 'Approved');
 
     // Owner actions on Done tasks
     if (isOwner && s === 'Done') {
@@ -63,11 +75,29 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
       );
     }
 
-    // Assignee actions
-    if (isAssignee) {
-      if (s === 'Todo') return <button className="btn btn--primary" disabled={loading} onClick={() => changeStatus('In-Progress')} style={{ width: '100%' }}><i className="fa-solid fa-play" /> Start Task</button>;
-      if (s === 'In-Progress') return <button className="btn btn--green" disabled={loading} onClick={() => changeStatus('Done')} style={{ width: '100%' }}><i className="fa-solid fa-check" /> Mark as Done</button>;
-      if (s === 'Done') return <button className="btn btn--ghost" disabled style={{ width: '100%', opacity: 0.6 }}><i className="fa-solid fa-hourglass-half" /> Waiting for Approval</button>;
+    // Status dropdown for assignee or owner
+    if (canChangeStatus) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <select
+            className="form-input"
+            value={s}
+            onChange={(e) => changeStatus(e.target.value)}
+            disabled={loading}
+            style={{ width: '100%' }}
+          >
+            {allowedStatuses.map(st => (
+              <option key={st} value={st}>{st}</option>
+            ))}
+          </select>
+          {!canMarkDone && (
+            <p style={{ fontSize: '.7rem', color: 'var(--text-muted)', margin: 0, textAlign: 'center' }}>
+              <i className="fa-solid fa-lock" style={{ marginRight: 4 }} />
+              Done/Approved requires owner approval
+            </p>
+          )}
+        </div>
+      );
     }
 
     if (s === 'Approved') return <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 600, padding: 10 }}><i className="fa-solid fa-circle-check" /> Task Approved</div>;

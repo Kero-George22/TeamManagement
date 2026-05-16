@@ -4,10 +4,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalProject } from '../../contexts/ProjectContext';
 
 const NAV = [
-  { icon: 'fa-house',       to: '/app/dashboard', label: 'Dashboard' },
-  { icon: 'fa-clipboard-list', to: '/app/tasks',  label: 'My Tasks'  },
-  { icon: 'fa-bullseye',    to: '/app/goals',    label: 'Goals'     },
-  { icon: 'fa-comment',     to: '/app/messages',  label: 'Messages'  },
+  { icon: 'fa-house',          to: '/app/dashboard', label: 'Dashboard' },
+  { icon: 'fa-compass',        to: '/app/explore',   label: 'Explore'   },
+  { icon: 'fa-clipboard-list', to: '/app/tasks',     label: 'My Tasks'  },
+  { icon: 'fa-bullseye',       to: '/app/goals',     label: 'Goals'     },
+  { icon: 'fa-comment',        to: '/app/messages',  label: 'Messages'  },
 ];
 
 export default function Sidebar() {
@@ -97,10 +98,10 @@ export default function Sidebar() {
                     </button>
                   )}
                   <button 
-                    onClick={() => { setShowProjects(false); navigate('/app/projects'); }}
+                    onClick={() => { setShowProjects(false); navigate('/app/explore'); }}
                     style={{ padding: '8px 12px', width: '100%', textAlign: 'left', borderRadius: 6, fontSize: '.8rem', color: 'var(--blue)', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
-                    <i className="fa-solid fa-compass" style={{ width: 14 }} /> Browse all
+                    <i className="fa-solid fa-compass" style={{ width: 14 }} /> Explore teams
                   </button>
                 </div>
               </div>

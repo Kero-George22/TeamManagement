@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import API from '../lib/api';
 import { useAuth } from './AuthContext';
 
@@ -17,6 +17,12 @@ export function ProjectProvider({ children }) {
     () => localStorage.getItem('tf_project_id') || localStorage.getItem('jxp_project_id') || null
   );
   const [loading, setLoading] = useState(true);
+  const selectedProjectIdRef = useRef(selectedProjectId);
+
+  // Keep ref in sync
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
 
   const loadProjects = useCallback(async () => {
     if (!isLoggedIn) {
@@ -30,7 +36,8 @@ export function ProjectProvider({ children }) {
       setProjects(list || []);
       
       // If the selected project is no longer in the list, clear it
-      if (selectedProjectId && list && !list.find(p => p._id === selectedProjectId)) {
+      const currentSelected = selectedProjectIdRef.current;
+      if (currentSelected && list && !list.find(p => p._id === currentSelected)) {
         setSelectedProjectId(null);
         localStorage.removeItem('tf_project_id');
         localStorage.removeItem('jxp_project_id');
@@ -40,7 +47,7 @@ export function ProjectProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [isLoggedIn, selectedProjectId]);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     loadProjects();
@@ -57,17 +64,22 @@ export function ProjectProvider({ children }) {
     setSelectedProjectId(id);
   }, []);
 
-  const selectedProject = projects.find(p => p._id === selectedProjectId) || null;
+  const selectedProject = useMemo(
+    () => projects.find(p => p._id === selectedProjectId) || null,
+    [projects, selectedProjectId]
+  );
+
+  const value = useMemo(() => ({
+    projects,
+    selectedProjectId,
+    selectedProject,
+    selectProject,
+    refreshProjects: loadProjects,
+    loadingProjects: loading
+  }), [projects, selectedProjectId, selectedProject, selectProject, loadProjects, loading]);
 
   return (
-    <ProjectContext.Provider value={{
-      projects,
-      selectedProjectId,
-      selectedProject,
-      selectProject,
-      refreshProjects: loadProjects,
-      loadingProjects: loading
-    }}>
+    <ProjectContext.Provider value={value}>
       {children}
     </ProjectContext.Provider>
   );

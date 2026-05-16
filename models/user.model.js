@@ -20,9 +20,17 @@ const UserSchema = new mongoose.Schema(
     avatar:   { type: String },
     bio:      { type: String, trim: true, maxlength: 500 },
     lastSeen: { type: Date, default: Date.now },
+
+    completedTasks: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );
+
+// Indexes for search performance
+UserSchema.index({ username: 1 });
+UserSchema.index({ email: 1 });
+// Collation-based index for case-insensitive regex searches
+UserSchema.index({ username: 1, email: 1 });
 
 UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

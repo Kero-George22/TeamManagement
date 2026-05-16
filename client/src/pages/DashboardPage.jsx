@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGlobalProject } from '../contexts/ProjectContext';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
+import DashboardGoalsWidget from '../components/DashboardGoalsWidget';
 import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/Primitives';
@@ -76,26 +77,8 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [profile, setProfile] = useState(null);
+  const profile = user; // fallback, or use state
   const [allTasks, setAllTasks] = useState(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const response = await API.profile.me();
-        if (isMounted) setProfile(response?.user || response || null);
-      } catch {
-        if (isMounted) setProfile(null);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   useEffect(() => {
     let isMounted = true;
     setAllTasks(null);
@@ -324,6 +307,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="dashboard-stack">
+          <DashboardGoalsWidget />
           <section className="dashboard-widget">
             <div className="dashboard-widget__header">
               <div>

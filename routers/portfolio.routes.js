@@ -4,10 +4,12 @@ const { requireAuth } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Protected routes - require authentication
+// Public portfolio (no auth)
+router.get('/public/:userId', portfolioController.getPublicPortfolio);
+
+// Protected routes
 router.use(requireAuth);
 
-// Get user's portfolio
 router.get('/me', portfolioController.getPortfolio);
 
 // Get portfolio statistics
@@ -17,8 +19,5 @@ router.get('/me/stats', portfolioController.getPortfolioStats);
 router.get('/export/json', portfolioController.exportPortfolioJSON);
 router.get('/export/markdown', portfolioController.exportPortfolioMarkdown);
 router.get('/export/csv', portfolioController.exportPortfolioCSV);
-
-// Public portfolio view (can be accessed without auth with link)
-router.get('/public/:userId', portfolioController.getPublicPortfolio);
 
 module.exports = router;

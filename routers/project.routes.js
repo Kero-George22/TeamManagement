@@ -7,6 +7,7 @@ const { requireAuth } = require('../middlewares/auth.middleware');
 // Discovery
 // ─────────────────────────────────────────
 router.get('/', requireAuth, projectController.getProjects);
+router.get('/explore', requireAuth, projectController.exploreProjects);
 
 // ─────────────────────────────────────────
 // Create

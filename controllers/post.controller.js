@@ -2,6 +2,7 @@ const Post = require('../models/post.model');
 const Comment = require('../models/comment.model');
 const AppError = require('../utils/AppError');
 const asyncWrapper = require('../utils/asyncWrapper');
+const { success } = require('../utils/apiResponse');
 
 const FEED_SORTS = {
   newest: { createdAt: -1 },
@@ -23,10 +24,7 @@ exports.createPost = asyncWrapper(async (req, res, next) => {
     author
   });
 
-  res.status(201).json({
-    status: 'success',
-    data: { post }
-  });
+  return success(res, { post }, 'Post created', 201);
 });
 
 exports.getFeed = asyncWrapper(async (req, res, next) => {
@@ -49,17 +47,7 @@ exports.getFeed = asyncWrapper(async (req, res, next) => {
     Post.countDocuments(filter),
   ]);
 
-  res.status(200).json({
-    status: 'success',
-    results: posts.length,
-    pagination: {
-      page: pageNum,
-      limit: limitNum,
-      total,
-      totalPages: Math.ceil(total / limitNum),
-    },
-    data: { posts }
-  });
+  return success(res, { posts, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } }, 'Feed retrieved');
 });
 
 exports.toggleUpvotePost = asyncWrapper(async (req, res, next) => {
@@ -85,13 +73,7 @@ exports.toggleUpvotePost = asyncWrapper(async (req, res, next) => {
 
   await post.save();
 
-  res.status(200).json({
-    status: 'success',
-    data: {
-      upvoteCount: post.upvoteCount,
-      isUpvoted: !isUpvoted
-    }
-  });
+  return success(res, { upvoteCount: post.upvoteCount, isUpvoted: !isUpvoted }, 'Upvote toggled');
 });
 
 // ======================= COMMENTS =======================
@@ -113,10 +95,7 @@ exports.addComment = asyncWrapper(async (req, res, next) => {
 
   await comment.populate({ path: 'author', select: 'name profilePic' });
 
-  res.status(201).json({
-    status: 'success',
-    data: { comment }
-  });
+  return success(res, { comment }, 'Comment added', 201);
 });
 
 exports.getPostComments = asyncWrapper(async (req, res, next) => {
@@ -135,15 +114,5 @@ exports.getPostComments = asyncWrapper(async (req, res, next) => {
     Comment.countDocuments({ post: postId }),
   ]);
 
-  res.status(200).json({
-    status: 'success',
-    results: comments.length,
-    pagination: {
-      page: pageNum,
-      limit: limitNum,
-      total,
-      totalPages: Math.ceil(total / limitNum),
-    },
-    data: { comments }
-  });
+  return success(res, { comments, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } }, 'Comments retrieved');
 });

@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-Bg_NI1en.js";var t=e();function n({variant:e=`gray`,children:n}){return(0,t.jsx)(`span`,{className:`badge badge--${e}`,children:n})}export{n as t};

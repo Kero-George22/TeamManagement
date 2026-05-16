@@ -5,15 +5,17 @@ const AppError = require('../utils/AppError');
 // Config — fail fast if key is missing
 // ─────────────────────────────────────────
 
-if (!process.env.GOOGLE_AI_KEY) throw new Error('GOOGLE_AI_KEY env variable is not set');
+const apiKey = process.env.GOOGLE_AI_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey) console.warn('GOOGLE_AI_KEY / GEMINI_API_KEY not set — AI features disabled');
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 // ─────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────
 
 function getModel(json = false) {
+  if (!genAI) throw new AppError('AI is not configured', 503);
   return genAI.getGenerativeModel({
     model: 'gemini-3-flash-preview',
     ...(json && { generationConfig: { responseMimeType: 'application/json' } }),

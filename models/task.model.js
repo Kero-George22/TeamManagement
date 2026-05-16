@@ -28,6 +28,10 @@ const taskSchema = new mongoose.Schema({
   aiReview: { type: String },
   aiRating: { type: Number, min: 0, max: 100 },
   feedback: { type: String },
+  dependsOn: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Task',
+  }],
   comments: [commentSchema],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
@@ -38,5 +42,8 @@ taskSchema.index({ project: 1, createdAt: -1 });
 taskSchema.index({ project: 1, assignedTo: 1, createdAt: -1 });
 taskSchema.index({ project: 1, assignedRole: 1, createdAt: -1 });
 taskSchema.index({ parentTask: 1 });
+taskSchema.index({ dependsOn: 1 });
+taskSchema.index({ assignedTo: 1, createdAt: -1 }); // Dashboard queries
+taskSchema.index({ assignedRole: 1, createdAt: -1 }); // Role-based filtering
 
 module.exports = mongoose.model('Task', taskSchema);

@@ -169,7 +169,20 @@ const uploadAttachment = asyncWrapper(async (req, res) => {
   task.attachment = `/uploads/${req.file.filename}`;
   await task.save();
 
-  return success(res, task, 'File uploaded', 200);
+  return success(res, { attachment: task.attachment }, 'File uploaded', 200);
+});
+
+// ─────────────────────────────────────────
+// GET BOARD VIEW — tasks grouped by status
+// ─────────────────────────────────────────
+
+const getBoardView = asyncWrapper(async (req, res) => {
+  const board = await taskService.getProjectBoard(
+    req.params.projectId,
+    req.user._id,
+    req.user.isAdmin
+  );
+  return success(res, board, 'Board view retrieved');
 });
 
 // ─────────────────────────────────────────
@@ -189,4 +202,5 @@ module.exports = {
   getComments,
   getSubtasks,
   uploadAttachment,
+  getBoardView,
 };

@@ -52,6 +52,44 @@ const getProjects = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// EXPLORE — team finder (recruiting projects + match %)
+// ─────────────────────────────────────────
+
+const exploreProjects = asyncWrapper(async (req, res) => {
+  const {
+    role,
+    category,
+    status,
+    sort,
+    q,
+    durationMin,
+    durationMax,
+    page = 1,
+    limit = 12,
+  } = req.query;
+
+  const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(30, parseInt(limit, 10) || 12);
+
+  const filters = {};
+  if (role)        filters.roleName   = String(role).trim();
+  if (category)    filters.category   = String(category).trim();
+  if (status)      filters.status     = String(status).trim();
+  if (sort)        filters.sort       = String(sort).trim();
+  if (q)           filters.q          = String(q).trim();
+  if (durationMin) filters.durationMin = durationMin;
+  if (durationMax) filters.durationMax = durationMax;
+
+  const result = await projectService.exploreProjects(
+    filters,
+    pageNum,
+    limitNum,
+    req.user._id
+  );
+  return success(res, result, 'Explore projects retrieved');
+});
+
+// ─────────────────────────────────────────
 // GET PROJECT BY ID
 // ─────────────────────────────────────────
 
@@ -181,6 +219,7 @@ const getProjectMembers = asyncWrapper(async (req, res) => {
 module.exports = {
   createProject,
   getProjects,
+  exploreProjects,
   getProjectById,
   getProjectByInviteToken,
   requestToJoin,

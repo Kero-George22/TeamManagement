@@ -72,11 +72,16 @@ export default function ProjectsPage() {
       <Topbar title="Projects" />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Discover Projects</h2>
-          <button className="btn btn--green btn--sm" onClick={() => setModalOpen(true)}>
-            <i className="fa-solid fa-plus" /> Create Project
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>My Projects</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn--outline btn--sm" onClick={() => navigate('/app/explore')}>
+              <i className="fa-solid fa-compass" /> Explore teams
+            </button>
+            <button type="button" className="btn btn--green btn--sm" onClick={() => setModalOpen(true)}>
+              <i className="fa-solid fa-plus" /> Create Project
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

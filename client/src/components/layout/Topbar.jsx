@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 
 const NAV = [
   { label: 'Dashboard', to: '/app/dashboard' },
+  { label: 'Explore',   to: '/app/explore'   },
   { label: 'Projects',  to: '/app/projects'  },
   { label: 'Messages',  to: '/app/messages'  },
   { label: 'Profile',   to: '/app/profile'   },
@@ -58,6 +59,11 @@ export default function Topbar({ title, backTo = null, onBack = null }) {
       </nav>
 
       <div className="topbar__actions">
+        {user?.isAdmin && (
+          <button className="icon-btn" onClick={() => navigate('/app/admin/analytics')} aria-label="Admin" title="Admin">
+            <i className="fa-solid fa-shield-halved" />
+          </button>
+        )}
         <button className="icon-btn" onClick={toggleDark} aria-label="Toggle dark mode">
           <i className={`fa-solid ${isDark ? 'fa-sun' : 'fa-moon'}`} />
         </button>
