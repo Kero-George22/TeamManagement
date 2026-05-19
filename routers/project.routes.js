@@ -39,4 +39,10 @@ router.post('/:projectId/join',                        requireAuth, projectContr
 router.get( '/:projectId/join-requests',               requireAuth, projectController.getJoinRequests);
 router.patch('/:projectId/join-requests/:requestId',   requireAuth, projectController.handleJoinRequest);
 
+// ─────────────────────────────────────────
+// Like & Bookmark
+// ─────────────────────────────────────────
+router.post('/:id/like',      requireAuth, projectController.toggleLike);
+router.post('/:id/bookmark',  requireAuth, projectController.toggleBookmark);
+
 module.exports = router;

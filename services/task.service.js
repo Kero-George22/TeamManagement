@@ -130,13 +130,8 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
   const query = { project: projectId };
 
   if (!isAdmin && !isOwner) {
-    const member = getMembership(project, userId);
-    if (!member?.roleName) return [];
-
-    query.$or = [
-      { assignedTo: userId },
-      { assignedRole: member.roleName },
-    ];
+    // Members only see tasks assigned to them
+    query.assignedTo = userId;
   }
 
   return Task.find(query)
@@ -168,7 +163,7 @@ async function getDashboardTasks(userId, isAdmin = false) {
     projects.map((p) => [String(p._id), { _id: p._id, title: p.title, isPrivate: p.isPrivate }])
   );
 
-  // 2) Build visibility filters per project (avoids JS loops in DB)
+  // 2) Build visibility filters — members only see their own tasks, owners see all
   const orClauses = [];
 
   if (isAdmin) {
@@ -177,32 +172,21 @@ async function getDashboardTasks(userId, isAdmin = false) {
     for (const project of projects) {
       const isOwner = String(project.owner) === String(userId);
       if (isOwner) {
+        // Owner sees all tasks in their project
         orClauses.push({ project: project._id });
         continue;
       }
-      const membership = (project.members || []).find(
-        (m) => String(m.userId) === String(userId)
-      );
-      if (membership?.roleName) {
-        orClauses.push({
-          project: project._id,
-          $or: [
-            { assignedTo: userIdObj },
-            { assignedRole: membership.roleName },
-          ],
-        });
-      } else {
-        orClauses.push({ project: project._id, assignedTo: userIdObj });
-      }
+      // Members only see tasks assigned to them
+      orClauses.push({ project: project._id, assignedTo: userIdObj });
     }
   }
 
-  // 3) Single query to get tasks (limited to 50 most recent for performance)
+  // 3) Single query to get tasks (limited to 100 most recent for performance)
   const taskQuery = orClauses.length === 1 ? orClauses[0] : { $or: orClauses };
   
   const tasks = await Task.find(taskQuery)
     .sort({ createdAt: -1 })
-    .limit(50)
+    .limit(100)
     .populate('assignedTo', 'email username avatar')
     .lean();
 
@@ -229,9 +213,10 @@ async function getTaskById(taskId, userId, isAdmin = false) {
     const isOwner = String(project.owner || '') === String(userId);
     if (isOwner) return task;
 
-    const member = getMembership(project, userId);
-    if (!isTaskVisibleToMember(task, userId, member?.roleName))
-      throw new AppError('This task is not assigned to your role', 403);
+    const isAssigned = String(task.assignedTo || '') === String(userId);
+
+    if (!isAssigned)
+      throw new AppError('You do not have permission to view this task', 403);
   }
 
   return task;
@@ -242,7 +227,7 @@ async function getTaskById(taskId, userId, isAdmin = false) {
 // Member بيحدث الـ status — owner بيعمل approve لما تبقى Done
 // ─────────────────────────────────────────
 
-const BLOCKED_FOR_MEMBERS = ['Done', 'Approved'];
+const BLOCKED_FOR_MEMBERS = ['Approved'];
 
 async function checkDependencies(task, targetStatus) {
   if (!task.dependsOn || task.dependsOn.length === 0) return;
@@ -294,10 +279,20 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
   // Admin أو Owner يقدر يعمل أي transition
   if (isAdmin || isOwner) {
     await checkDependencies(task, newStatus);
+    const oldStatus = task.status;
     task.status = newStatus;
     await task.save();
     if (newStatus === 'Approved' && task.assignedTo) {
       await _rewardUser(task);
+      try {
+        const { notifyTaskApproved } = require('./notification.service');
+        await notifyTaskApproved(task._id, task.assignedTo, userId, task.project);
+      } catch {}
+    } else if (task.assignedTo && String(task.assignedTo) !== String(userId)) {
+      try {
+        const { notifyStatusChanged } = require('./notification.service');
+        await notifyStatusChanged(task._id, userId, newStatus, task.project);
+      } catch {}
     }
     await _syncLinkedGoals(task._id, newStatus);
     return task;
@@ -313,7 +308,7 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 
   // Member ممنوع يحط task في Done أو Approved
   if (BLOCKED_FOR_MEMBERS.includes(newStatus))
-    throw new AppError('Only the project owner can mark tasks as Done or Approved', 403);
+    throw new AppError('Only the project owner or admin can mark tasks as Approved', 403);
 
   await checkDependencies(task, newStatus);
   task.status = newStatus;
@@ -380,6 +375,12 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
     resolvedAssignedTo = null;
   }
 
+  // Only owner/admin can assign tasks to others
+  const isOwner = String(project.owner || '') === String(userId);
+  if (!isAdmin && !isOwner && resolvedAssignedTo && String(resolvedAssignedTo) !== String(userId)) {
+    resolvedAssignedTo = userId; // Default to self if member tries to assign to others
+  }
+
   const task = new Task({
     project: projectId,
     title: taskData.title || taskData.name || 'Untitled Task',
@@ -389,6 +390,7 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
     assignedTo: resolvedAssignedTo,
     priority: taskData.priority || 'Medium',
     status: normalizedStatus,
+    visibility: taskData.visibility || 'team',
     dependsOn: Array.isArray(taskData.dependsOn)
       ? taskData.dependsOn.filter((id) => mongoose.Types.ObjectId.isValid(id))
       : [],
@@ -400,6 +402,15 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
 
   await task.save();
   await task.populate('assignedTo', 'email username avatar');
+
+  // Send notification if assigned to someone else
+  if (resolvedAssignedTo && String(resolvedAssignedTo) !== String(userId)) {
+    try {
+      const { notifyTaskAssigned } = require('./notification.service');
+      await notifyTaskAssigned(task._id, resolvedAssignedTo, userId, projectId);
+    } catch {}
+  }
+
   return task;
 }
 

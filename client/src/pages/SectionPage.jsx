@@ -543,16 +543,25 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     finally { setEditingTask(null); }
   }
 
-  async function handleDropStatus(e, targetStatus) {
-    e.preventDefault();
-    if (!draggedTaskId) return;
-    const t = tasks.find(x => x._id === draggedTaskId);
+  async function handleDropStatus(e, targetStatus, overrideTaskId = null) {
+    if (e && e.preventDefault) e.preventDefault();
+    const taskIdToUse = overrideTaskId || draggedTaskId;
+    if (!taskIdToUse) return;
+    const t = tasks.find(x => x._id === taskIdToUse);
     if (!t || t.status === targetStatus) return;
 
-    const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user._id));
-    const isAssignee = String(t.assignedTo?._id || t.assignedTo) === String(user._id);
-    const isAdmin = user?.isAdmin;
-    const isBlockedStatus = targetStatus === 'Done' || targetStatus === 'Approved';
+    const ownerId = activeProject?.owner?._id || activeProject?.owner;
+    
+    // Auth helpers to avoid "undefined" strings
+    const currentUserId = user ? String(user.id || user._id) : null;
+    const isOwner = activeProject && ownerId && currentUserId && (String(ownerId) === currentUserId);
+    
+    const assigneeStrId = t.assignedTo ? String(t.assignedTo._id || t.assignedTo) : null;
+    const isAssignee = assigneeStrId && currentUserId ? (assigneeStrId === currentUserId) : false;
+    
+    // Check local admin role (since user context might lag behind DB)
+    const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
+    const isBlockedStatus = targetStatus === 'Approved';
 
     // Admin أو Owner يقدر يحط أي task في أي حالة
     if (!isAdmin && !isOwner) {
@@ -562,16 +571,16 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         setDraggedTaskId(null);
         return;
       }
-      // Member ممنوع يحط task في Done أو Approved
+      // Member ممنوع يحط task في Approved (Done مسموح)
       if (isBlockedStatus) {
-        toast.error('Only the project owner can mark tasks as Done or Approved');
+        toast.error('Only the project admin or owner can mark tasks as Approved');
         setDraggedTaskId(null);
         return;
       }
     }
 
-    setTasks(ts => ts.map(x => x._id === draggedTaskId ? { ...x, status: targetStatus } : x));
-    try { await API.tasks.status(draggedTaskId, targetStatus); }
+    setTasks(ts => ts.map(x => x._id === taskIdToUse ? { ...x, status: targetStatus } : x));
+    try { await API.tasks.status(taskIdToUse, targetStatus); }
     catch (err) {
       toast.error(err.message || 'Failed to move task');
       loadTasks();
@@ -686,8 +695,6 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       if (filter.assignee === 'me') list = list.filter(t => t.assignedTo?._id === user._id || t.assignedTo === user._id);
       else if (filter.assignee === 'unassigned') list = list.filter(t => !t.assignedTo);
       else list = list.filter(t => (t.assignedTo?._id || t.assignedTo) === filter.assignee);
-    } else if (!filter.status && view !== 'calendar') {
-      list = list.filter(t => t.status !== 'Done' && t.status !== 'Approved');
     }
     list.sort((a, b) => {
       let valA, valB;
@@ -695,7 +702,20 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       else if (sort.field === 'priority') {
         const pMap = { High: 3, Medium: 2, Low: 1 };
         valA = pMap[a.priority] || 0; valB = pMap[b.priority] || 0;
-      } else {
+      }
+      else if (sort.field === 'status') {
+        const sM = { 'Todo':1, 'In-Progress':2, 'Review':3, 'Done':4, 'Approved':5 };
+        valA = sM[a.status] || 0; valB = sM[b.status] || 0;
+      }
+      else if (sort.field === 'project') {
+        valA = (a.projectRef?.title || a.project || '').toLowerCase();
+        valB = (b.projectRef?.title || b.project || '').toLowerCase();
+      }
+      else if (sort.field === 'assignee') {
+        valA = (a.assignedTo?.username || a.assignedTo?.email || '').toLowerCase();
+        valB = (b.assignedTo?.username || b.assignedTo?.email || '').toLowerCase();
+      }
+      else {
         valA = a.deadline ? new Date(a.deadline).getTime() : 9999999999999;
         valB = b.deadline ? new Date(b.deadline).getTime() : 9999999999999;
       }
@@ -963,18 +983,6 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
         {view !== 'calendar' && (
           <>
-            <select
-              className="tool-btn"
-              value={`${sort.field}-${sort.dir}`}
-              onChange={e => { const [f, d] = e.target.value.split('-'); setSort({ field: f, dir: d }); }}
-            >
-              <option value="date-asc">Due Date ↑</option>
-              <option value="date-desc">Due Date ↓</option>
-              <option value="name-asc">Name A–Z</option>
-              <option value="name-desc">Name Z–A</option>
-              <option value="priority-desc">Priority</option>
-            </select>
-
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg)', borderRadius: 8, padding: '4px 10px' }}>
               <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Group</span>
               <select
@@ -1061,12 +1069,12 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           <div style={{ background: 'var(--white)', borderRadius: 16, boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* Column Headers */}
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 14, padding: '10px 12px 10px 36px', borderBottom: '2px solid var(--border)' }}>
-              <div className="list-header-cell">Name</div>
-              <div className="list-header-cell">Due date</div>
-              {columns.priority     && <div className="list-header-cell">Priority</div>}
-              {columns.collaborators && <div className="list-header-cell">Assignee</div>}
-              {columns.projects      && <div className="list-header-cell">Project</div>}
-              {columns.status        && <div className="list-header-cell">Status</div>}
+              <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'name', dir: sort.field === 'name' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Name {sort.field === 'name' && (sort.dir === 'asc' ? '↑' : '↓')}</div>
+              <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'date', dir: sort.field === 'date' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Due date {sort.field === 'date' && (sort.dir === 'asc' ? '↑' : '↓')}</div>
+              {columns.priority     && <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'priority', dir: sort.field === 'priority' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Priority {sort.field === 'priority' && (sort.dir === 'asc' ? '↑' : '↓')}</div>}
+              {columns.collaborators && <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'assignee', dir: sort.field === 'assignee' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Assignee {sort.field === 'assignee' && (sort.dir === 'asc' ? '↑' : '↓')}</div>}
+              {columns.projects      && <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'project', dir: sort.field === 'project' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Project {sort.field === 'project' && (sort.dir === 'asc' ? '↑' : '↓')}</div>}
+              {columns.status        && <div className="list-header-cell" style={{ cursor: 'pointer' }} onClick={() => setSort({ field: 'status', dir: sort.field === 'status' && sort.dir === 'asc' ? 'desc' : 'asc' })}>Status {sort.field === 'status' && (sort.dir === 'asc' ? '↑' : '↓')}</div>}
             </div>
 
             <div style={{ overflowY: 'auto', padding: '8px 24px 16px' }}>
@@ -1159,14 +1167,24 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
                             {/* Status */}
                             {columns.status && (
-                              <div>
-                                <span style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                                  background: sCfg.bg, color: sCfg.color, borderRadius: 6,
-                                  padding: '3px 8px', fontSize: '.72rem', fontWeight: 700,
-                                }}>
-                                  {sCfg.label}
-                                </span>
+                              <div onClick={e => e.stopPropagation()}>
+                                <select
+                                  value={t.status}
+                                  onChange={e => {
+                                    const nextStatus = e.target.value;
+                                    handleDropStatus(null, nextStatus, t._id);
+                                  }}
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                    background: sCfg.bg, color: sCfg.color, borderRadius: 6,
+                                    padding: '3px 0', fontSize: '.72rem', fontWeight: 700,
+                                    border: 'none', cursor: 'pointer', outline: 'none'
+                                  }}
+                                >
+                                  {['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses].map(st => (
+                                    <option key={st} value={st} style={{ color: '#000' }}>{st}</option>
+                                  ))}
+                                </select>
                               </div>
                             )}
 

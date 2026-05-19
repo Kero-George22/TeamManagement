@@ -7,6 +7,7 @@ import Topbar from '../components/layout/Topbar';
 import DashboardGoalsWidget from '../components/DashboardGoalsWidget';
 import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
+import TaskSidePanel from '../components/ui/TaskSidePanel';
 import { ProgressBar } from '../components/ui/Primitives';
 import { daysLeft, fmtDate, projectProgress } from '../lib/utils';
 
@@ -79,6 +80,8 @@ export default function DashboardPage() {
 
   const profile = user; // fallback, or use state
   const [allTasks, setAllTasks] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
+  
   useEffect(() => {
     let isMounted = true;
     setAllTasks(null);
@@ -158,7 +161,7 @@ export default function DashboardPage() {
     const tasks = allTasks || [];
     const now = new Date();
     const done = tasks.filter(t => t.status === 'Done' || t.status === 'Approved').length;
-    const inProgress = tasks.filter(t => t.status === 'In Progress').length;
+    const inProgress = tasks.filter(t => t.status === 'In-Progress').length;
     const pending = tasks.filter(t => t.status === 'Todo' || t.status === 'To Do').length;
     const overdue = tasks.filter(t => t.deadline && new Date(t.deadline) < now && t.status !== 'Done' && t.status !== 'Approved').length;
     const total = tasks.length || 1;
@@ -183,9 +186,50 @@ export default function DashboardPage() {
     return { high, medium, low, highPct: (high / total) * 100, mediumPct: (medium / total) * 100, lowPct: (low / total) * 100 };
   }, [allTasks]);
 
+  const todayTasks = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return myTasks.filter(task => {
+      if (!task.deadline) return false;
+      const deadline = new Date(task.deadline);
+      deadline.setHours(0, 0, 0, 0);
+      return deadline.getTime() === now.getTime() && task.status !== 'Done' && task.status !== 'Approved';
+    }).slice(0, 5);
+  }, [myTasks]);
+
   return (
     <>
-      <Topbar title="All Projects" />
+      <Topbar title="Dashboard" />
+
+      {/* Today's Tasks */}
+      {todayTasks.length > 0 && (
+        <section className="card" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>⚡ Today's Tasks</h3>
+            <button className="btn btn--ghost btn--sm" onClick={() => navigate('/app/tasks')}>View all</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {todayTasks.map(task => {
+              const pCfg = { High: '#ef4444', Medium: '#f59e0b', Low: '#22c55e' };
+              const color = pCfg[task.priority] || pCfg.Medium;
+              return (
+                <div
+                  key={task._id}
+                  className="card"
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer', borderLeft: `3px solid ${color}` }}
+                  onClick={() => setSelectedTask(task)}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '.9rem' }}>{task.title}</div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{task.projectRef?.title || 'Project'}</div>
+                  </div>
+                  <Badge variant="gray" style={{ fontSize: '.7rem' }}>{task.priority}</Badge>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="dashboard-analytics">
         <div className="analytics-stat">
@@ -339,7 +383,7 @@ export default function DashboardPage() {
                   const isLate = task.deadline && new Date(task.deadline) < new Date();
 
                   return (
-                    <div key={task._id} className="dashboard-task-row" onClick={() => navigate(`/app/task/${task._id}`)} style={{ cursor: 'pointer' }}>
+                    <div key={task._id} className="dashboard-task-row" onClick={() => setSelectedTask(task)} style={{ cursor: 'pointer' }}>
                       <Avatar user={task.assignedTo || user} size="sm" />
                       <div className="dashboard-task-row__body">
                         <div className="dashboard-task-row__title">{task.title}</div>
@@ -384,7 +428,7 @@ export default function DashboardPage() {
                 {activityFeed.map(({ task, project, action }) => {
                   const color = getProjectColor(project?._id);
                   return (
-                    <div key={task._id} className="feed-item" onClick={() => navigate(`/app/task/${task._id}`)} style={{ cursor: 'pointer' }}>
+                    <div key={task._id} className="feed-item" onClick={() => setSelectedTask(task)} style={{ cursor: 'pointer' }}>
                       <span className="feed-item__dot" style={{ background: FILLS[color], boxShadow: `0 0 0 4px ${FILLS[color]}22` }} />
                       <div className="feed-item__body">
                         <div className="feed-item__title">{action} “{task.title}”</div>
@@ -426,6 +470,16 @@ export default function DashboardPage() {
           </section>
         </div>
       </div>
-    </>
+      {selectedTask && (
+        <TaskSidePanel
+          task={selectedTask}
+          onClose={() => { setSelectedTask(null); init(); }}
+          isOwner={(projects || []).find(p => p._id === (selectedTask.projectRef?._id || selectedTask.project))?.owner === user?._id}
+          isMember={true}
+          userId={user?._id}
+          projectId={selectedTask.projectRef?._id || selectedTask.project}
+          onTaskUpdate={t => setAllTasks(curr => (curr || []).map(task => task._id === t._id ? { ...task, ...t } : task))}
+        />
+      )}    </>
   );
 }

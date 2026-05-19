@@ -1,16 +1,18 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useState, useEffect } from 'react';
+import NotificationBell from '../NotificationBell';
 
 const NAV = [
   { label: 'Dashboard', to: '/app/dashboard' },
+  { label: 'My Tasks',  to: '/app/tasks'     },
   { label: 'Explore',   to: '/app/explore'   },
   { label: 'Projects',  to: '/app/projects'  },
   { label: 'Messages',  to: '/app/messages'  },
   { label: 'Profile',   to: '/app/profile'   },
 ];
 
-export default function Topbar({ title, backTo = null, onBack = null }) {
+export default function Topbar({ title, backTo = null, onBack = null, action = null }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isDark, setIsDark] = useState(
@@ -44,6 +46,7 @@ export default function Topbar({ title, backTo = null, onBack = null }) {
           <i className="fa-solid fa-arrow-left" />
         </button>
         <h1 className="topbar__title">{title}</h1>
+        {action}
       </div>
 
       <nav className="topbar__nav" aria-label="Page navigation">
@@ -70,9 +73,7 @@ export default function Topbar({ title, backTo = null, onBack = null }) {
         <button className="icon-btn" onClick={() => navigate('/app/messages')} aria-label="Messages">
           <i className="fa-regular fa-envelope" />
         </button>
-        <button className="icon-btn" aria-label="Notifications">
-          <i className="fa-regular fa-bell" />
-        </button>
+        <NotificationBell />
         {user?.avatar
           ? <img src={user.avatar} alt="Profile" className="topbar__user-avatar" onClick={() => navigate('/app/profile')} />
           : <div

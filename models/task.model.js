@@ -15,6 +15,7 @@ const taskSchema = new mongoose.Schema({
   taskType: { type: String, default: 'Task' },
   assignedRole: { type: String, required: true },
   status: { type: String, default: 'Todo' },
+  visibility: { type: String, enum: ['private', 'team', 'public'], default: 'team' },
   startDate: { type: Date },
   deadline: { type: Date },
   priority: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
@@ -45,5 +46,6 @@ taskSchema.index({ parentTask: 1 });
 taskSchema.index({ dependsOn: 1 });
 taskSchema.index({ assignedTo: 1, createdAt: -1 }); // Dashboard queries
 taskSchema.index({ assignedRole: 1, createdAt: -1 }); // Role-based filtering
+taskSchema.index({ visibility: 1, assignedTo: 1 }); // Visibility queries
 
 module.exports = mongoose.model('Task', taskSchema);

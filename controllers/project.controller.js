@@ -8,7 +8,7 @@ const AppError = require('../utils/AppError');
 // ─────────────────────────────────────────
 
 const createProject = asyncWrapper(async (req, res) => {
-  const { title, description, startDate, duration, status, rolesRequired, isPrivate } = req.body;
+  const { title, description, startDate, duration, status, rolesRequired, isPrivate, category, language } = req.body;
 
   if (!title?.trim())       throw new AppError('Title is required', 400);
   if (!description?.trim()) throw new AppError('Description is required', 400);
@@ -26,7 +26,7 @@ const createProject = asyncWrapper(async (req, res) => {
   }
 
   const project = await projectService.createProject(
-    { title: title.trim(), description: description.trim(), startDate, duration, status, rolesRequired, isPrivate },
+    { title: title.trim(), description: description.trim(), startDate, duration, status, rolesRequired, isPrivate, category, language },
     req.user._id
   );
 
@@ -213,6 +213,24 @@ const getProjectMembers = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// TOGGLE LIKE
+// ─────────────────────────────────────────
+
+const toggleLike = asyncWrapper(async (req, res) => {
+  const result = await projectService.toggleLike(req.params.id, req.user._id);
+  return success(res, result, result.liked ? 'Project liked' : 'Like removed');
+});
+
+// ─────────────────────────────────────────
+// TOGGLE BOOKMARK
+// ─────────────────────────────────────────
+
+const toggleBookmark = asyncWrapper(async (req, res) => {
+  const result = await projectService.toggleBookmark(req.params.id, req.user._id);
+  return success(res, result, result.bookmarked ? 'Project bookmarked' : 'Bookmark removed');
+});
+
+// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
@@ -229,4 +247,6 @@ module.exports = {
   updateProject,
   deleteProject,
   getProjectMembers,
+  toggleLike,
+  toggleBookmark,
 };

@@ -32,6 +32,26 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
   const canChangeStatus = isOwner || isAssignee;
   const canMarkDone = isOwner; // Only owner can mark as Done/Approved
 
+  async function changeField(field, value) {
+    if (!canChangeStatus) {
+      toast.error('Only project owner or assignee can edit task');
+      return;
+    }
+    setLoading(true);
+    const oldTask = { ...task };
+    const updated = { ...task, [field]: value };
+    onTaskUpdate?.(updated);
+    try {
+      await API.tasks.update(task._id, { [field]: value });
+      toast.success('Task updated');
+    } catch (e) {
+      toast.error(e.message);
+      onTaskUpdate?.(oldTask);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function changeStatus(newStatus) {
     if (!canChangeStatus) {
       toast.error('Only project owner or assignee can change task status');
@@ -154,14 +174,39 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
           </div>
           <div className="task-panel__field">
             <span className="task-panel__label">Due date</span>
-            <span style={{ fontWeight: 500, fontSize: '.875rem', color: task.deadline && new Date(task.deadline) < new Date() ? '#ef4444' : 'inherit' }}>{task.deadline ? fmtDate(task.deadline) : 'No deadline'}</span>
+            {canChangeStatus ? (
+              <input 
+                type="date" 
+                className="form-input" 
+                style={{ padding: '2px 6px', fontSize: '.85rem' }} 
+                value={task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : ''} 
+                onChange={e => changeField('deadline', e.target.value)} 
+                disabled={loading} 
+              />
+            ) : (
+              <span style={{ fontWeight: 500, fontSize: '.875rem', color: task.deadline && new Date(task.deadline) < new Date() ? '#ef4444' : 'inherit' }}>{task.deadline ? fmtDate(task.deadline) : 'No deadline'}</span>
+            )}
           </div>
           <div className="task-panel__field">
             <span className="task-panel__label">Priority</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: PDOT[task.priority] || '#9ca3af' }} />
-              <span style={{ fontWeight: 500, fontSize: '.875rem' }}>{task.priority}</span>
-            </div>
+            {canChangeStatus ? (
+              <select 
+                className="form-input" 
+                style={{ padding: '2px 6px', fontSize: '.85rem' }} 
+                value={task.priority} 
+                onChange={e => changeField('priority', e.target.value)} 
+                disabled={loading}
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: PDOT[task.priority] || '#9ca3af' }} />
+                <span style={{ fontWeight: 500, fontSize: '.875rem' }}>{task.priority}</span>
+              </div>
+            )}
           </div>
           <div className="task-panel__field">
             <span className="task-panel__label">Status</span>

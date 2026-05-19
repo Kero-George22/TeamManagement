@@ -87,7 +87,7 @@ exports.login = asyncWrapper(async (req, res) => {
   if (!match) throw new AppError('Invalid credentials', 401);
 
   const token = generateJwt(user);
-  return success(res, { token, user: { id: user._id, email: user.email } }, 'Logged in');
+  return success(res, { token, user: { id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin } }, 'Logged in');
 });
 
 exports.googleLogin = asyncWrapper(async (req, res) => {
@@ -133,7 +133,7 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
   const token = generateJwt(user);
   return success(res, {
     token,
-    user: { id: user._id, email: user.email, username: user.username, avatar: user.avatar },
+    user: { id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin },
   }, 'Logged in with Google');
 });
 

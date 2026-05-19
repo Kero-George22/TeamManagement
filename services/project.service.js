@@ -55,7 +55,7 @@ async function _checkAndActivate(project) {
 // ─────────────────────────────────────────
 
 async function createProject(data, ownerId) {
-  const { title, description, startDate, duration, status, rolesRequired, isPrivate, taskStatuses } = data;
+  const { title, description, startDate, duration, status, rolesRequired, isPrivate, taskStatuses, category, language } = data;
 
   checkDuplicateRoles(rolesRequired);
 
@@ -75,6 +75,8 @@ async function createProject(data, ownerId) {
     taskStatuses:  normalizeTaskStatuses(taskStatuses) || ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'],
     rolesRequired: prepareRoles(rolesRequired),
     isPrivate:     !!isPrivate,
+    category:      category || 'Other',
+    language:      language || 'Other',
     inviteToken,
     members:       [],
     joinRequests:  [],
@@ -119,6 +121,10 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
     query.category = filters.category;
   }
 
+  if (filters.language && filters.language !== 'all') {
+    query.language = filters.language;
+  }
+
   if (filters.roleName)
     query['rolesRequired.roleName'] = { $regex: filters.roleName, $options: 'i' };
 
@@ -155,6 +161,8 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
       openSlots: countOpenSlots(p),
       endDate: end,
       likesCount: (p.likes || []).length,
+      bookmarksCount: (p.bookmarks || []).length,
+      membersCount: (p.members || []).length + 1,
       collaboratorsCount: (p.collaborators || []).length,
     };
   });
@@ -548,6 +556,58 @@ async function deleteProject(projectId, userId) {
 }
 
 // ─────────────────────────────────────────
+// TOGGLE LIKE
+// ─────────────────────────────────────────
+
+async function toggleLike(projectId, userId) {
+  validateObjectId(projectId, 'project ID');
+  validateObjectId(userId, 'user ID');
+
+  const project = await Project.findById(projectId);
+  if (!project) throw new AppError('Project not found', 404);
+
+  const uid = String(userId);
+  const likes = project.likes || [];
+  const idx = likes.findIndex((id) => String(id) === uid);
+
+  if (idx === -1) {
+    likes.push(userId);
+  } else {
+    likes.splice(idx, 1);
+  }
+
+  project.likes = likes;
+  await project.save();
+  return { liked: idx === -1, likesCount: likes.length };
+}
+
+// ─────────────────────────────────────────
+// TOGGLE BOOKMARK
+// ─────────────────────────────────────────
+
+async function toggleBookmark(projectId, userId) {
+  validateObjectId(projectId, 'project ID');
+  validateObjectId(userId, 'user ID');
+
+  const project = await Project.findById(projectId);
+  if (!project) throw new AppError('Project not found', 404);
+
+  const uid = String(userId);
+  const bookmarks = project.bookmarks || [];
+  const idx = bookmarks.findIndex((id) => String(id) === uid);
+
+  if (idx === -1) {
+    bookmarks.push(userId);
+  } else {
+    bookmarks.splice(idx, 1);
+  }
+
+  project.bookmarks = bookmarks;
+  await project.save();
+  return { bookmarked: idx === -1, bookmarksCount: bookmarks.length };
+}
+
+// ─────────────────────────────────────────
 // GET PROJECT MEMBERS
 // ─────────────────────────────────────────
 
@@ -584,4 +644,6 @@ module.exports = {
   updateProject,
   deleteProject,
   getProjectMembers,
+  toggleLike,
+  toggleBookmark,
 };

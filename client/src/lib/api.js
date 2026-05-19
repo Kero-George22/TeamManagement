@@ -104,6 +104,8 @@ const projects = {
   joinRequests:  (id)           => get(`/projects/${id}/join-requests`),
   handleRequest: (pid, rid, st) => patch(`/projects/${pid}/join-requests/${rid}`, { status: st }),
   joinViaInvite: (token)        => post(`/projects/invite/${token}/join`),
+  like:          (id)           => post(`/projects/${id}/like`),
+  bookmark:      (id)           => post(`/projects/${id}/bookmark`),
 };
 
 /* Tasks */

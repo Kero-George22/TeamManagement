@@ -22,6 +22,12 @@ const PROJECT_CATEGORIES = [
   'Other',
 ];
 
+const PROJECT_LANGUAGES = [
+  'JavaScript', 'TypeScript', 'Python', 'Java', 'C#', 'C++', 'Go', 'Rust',
+  'Swift', 'Kotlin', 'Ruby', 'PHP', 'Dart', 'R', 'MATLAB', 'Scala',
+  'HTML/CSS', 'SQL', 'Shell', 'No-Code', 'Other',
+];
+
 const ProjectSchema = new mongoose.Schema(
   {
     title:       { type: String, required: true, trim: true },
@@ -31,6 +37,7 @@ const ProjectSchema = new mongoose.Schema(
     duration:    { type: Number, required: true }, // in days
 
     category:    { type: String, enum: PROJECT_CATEGORIES, default: 'Other' },
+    language:    { type: String, enum: PROJECT_LANGUAGES, default: 'Other' },
 
     status: {
       type:    String,
@@ -77,6 +84,7 @@ const ProjectSchema = new mongoose.Schema(
 
     // ─── Community Features ───────────────
     likes:        [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    bookmarks:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     lookingFor:   { type: String, default: '' }, // e.g., "Frontend developer, UI designer"
   },
@@ -89,8 +97,10 @@ ProjectSchema.index({ 'members.userId': 1 });               // "projects I joine
 ProjectSchema.index({ owner: 1 });                          // "projects I own"
 ProjectSchema.index({ inviteToken: 1 }, { sparse: true });  // invite link lookup
 ProjectSchema.index({ category: 1 });                       // category filtering
+ProjectSchema.index({ language: 1 });                       // language filtering
 ProjectSchema.index({ owner: 1, createdAt: -1 });           // User's projects list
 ProjectSchema.index({ 'members.userId': 1, createdAt: -1 }); // Joined projects list
 
 module.exports = mongoose.model('Project', ProjectSchema);
 module.exports.PROJECT_CATEGORIES = PROJECT_CATEGORIES;
+module.exports.PROJECT_LANGUAGES = PROJECT_LANGUAGES;

@@ -19,6 +19,7 @@ const MessagesPage = lazy(() => import('./pages/MessagesPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const OfficePage = lazy(() => import('./pages/OfficePage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
+const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
 const BoardPage = lazy(() => import('./pages/BoardPage'));
 const GoalsPage = lazy(() => import('./pages/GoalsPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));

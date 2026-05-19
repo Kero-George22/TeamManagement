@@ -12,6 +12,20 @@ import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
 const STATUS_COLORS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'pink' };
 
+const CATEGORY_OPTIONS = [
+  'Web Development', 'Mobile Development', 'Software Development',
+  'Data Science & AI', 'DevOps & Cloud', 'Cybersecurity',
+  'Blockchain', 'IoT & Hardware', 'Game Development',
+  'UI/UX Design', 'Business & Marketing', 'Finance & Accounting',
+  'Engineering', 'Education & Training', 'Healthcare',
+  'E-commerce', 'Social Impact', 'Research & Development', 'Other',
+];
+
+const LANGUAGE_OPTIONS = [
+  'JavaScript', 'TypeScript', 'Python', 'Java', 'C#', 'C++', 'Go', 'Rust',
+  'Swift', 'Kotlin', 'Ruby', 'PHP', 'Dart', 'R', 'HTML/CSS', 'SQL', 'No-Code', 'Other',
+];
+
 export default function ProjectsPage() {
   const { user } = useAuth();
   const { refreshProjects } = useGlobalProject();
@@ -54,6 +68,8 @@ export default function ProjectsPage() {
         description: fd.get('description'),
         startDate: fd.get('startDate'),
         duration: Number(fd.get('duration')),
+        category: fd.get('category') || 'Other',
+        language: fd.get('language') || 'Other',
         isPrivate: fd.get('isPrivate') === 'on',
         rolesRequired: roles.filter(r => r.roleName.trim()),
       });
@@ -170,6 +186,20 @@ export default function ProjectsPage() {
           <div className="grid-2">
             <div className="form-group"><label className="form-label">Start Date *</label><input name="startDate" type="date" className="form-input" required defaultValue={new Date().toISOString().split('T')[0]} /></div>
             <div className="form-group"><label className="form-label">Duration (days) *</label><input name="duration" type="number" className="form-input" min="1" required placeholder="30" /></div>
+          </div>
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <select name="category" className="form-input" defaultValue="Other">
+                {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Language</label>
+              <select name="language" className="form-input" defaultValue="Other">
+                {LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
