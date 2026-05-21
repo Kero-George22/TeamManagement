@@ -79,10 +79,22 @@ const auth = {
 
 /* Profile */
 const profile = {
-  me:     ()         => get('/profile/me'),
-  update: (data)     => put('/profile/me', data),
-  user:   (userId)   => get(`/profile/${userId}`),
-  public: (userId)   => fetch(BASE + `/profile/public/${userId}`).then(r => r.json()),
+  me:           ()         => get('/profile/me'),
+  update:       (data)     => put('/profile/me', data),
+  user:         (userId)   => get(`/profile/${userId}`),
+  public:       (userId)   => fetch(BASE + `/profile/public/${userId}`).then(r => r.json()),
+  uploadAvatar: async (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const token = getToken();
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(BASE + '/profile/me/avatar', { method: 'POST', headers, body: formData });
+    if (res.status === 401) { clearAuth(); onUnauthorized(); return; }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || `Request failed (${res.status})`);
+    return json?.data ?? json;
+  },
 };
 
 /* Projects */

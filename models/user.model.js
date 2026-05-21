@@ -18,8 +18,20 @@ const UserSchema = new mongoose.Schema(
     // ─── Profile ───────────────────────────
     username: { type: String, trim: true },
     avatar:   { type: String },
-    bio:      { type: String, trim: true, maxlength: 500 },
+    bio:      { type: String, trim: true, maxlength: 1000 },
+    headline: { type: String, trim: true, maxlength: 120 },
+    location: { type: String, trim: true, maxlength: 100 },
     lastSeen: { type: Date, default: Date.now },
+
+    skills: [{ type: String, trim: true, maxlength: 50 }],
+
+    socials: {
+      whatsapp: { type: String, trim: true, maxlength: 300 },
+      facebook: { type: String, trim: true, maxlength: 300 },
+      linkedin: { type: String, trim: true, maxlength: 300 },
+      twitter:  { type: String, trim: true, maxlength: 300 },
+      github:   { type: String, trim: true, maxlength: 300 },
+    },
 
     completedTasks: { type: Number, default: 0, min: 0 },
   },

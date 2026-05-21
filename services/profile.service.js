@@ -27,14 +27,18 @@ async function getUserProfile(userId) {
   if (!user) throw new AppError('User not found', 404);
 
   return {
-    id:        user._id,
-    email:     user.email,
+    id:          user._id,
+    email:       user.email,
     pendingEmail: user.pendingEmail || null,
-    username:  user.username || user.email.split('@')[0],
-    avatar:    user.avatar   || null,
-    bio:       user.bio      || null,
-    isAdmin:   user.isAdmin,
-    createdAt: user.createdAt,
+    username:    user.username || user.email.split('@')[0],
+    avatar:      user.avatar   || null,
+    bio:         user.bio      || null,
+    headline:    user.headline || null,
+    location:    user.location || null,
+    skills:      user.skills   || [],
+    socials:     user.socials  || {},
+    isAdmin:     user.isAdmin,
+    createdAt:   user.createdAt,
   };
 }
 
@@ -42,18 +46,23 @@ async function getUserPublicProfile(userId) {
   validateObjectId(userId, 'user ID');
 
   const user = await User.findById(userId)
-    .select('username avatar bio lastSeen createdAt')
+    .select('username avatar bio headline location skills socials lastSeen createdAt completedTasks')
     .lean();
 
   if (!user) throw new AppError('User not found', 404);
 
   return {
-    id:        user._id,
-    username:  user.username || `user_${String(user._id).slice(-6)}`,
-    avatar:    user.avatar   || null,
-    bio:       user.bio      || null,
-    lastSeen:  user.lastSeen || null,
-    createdAt: user.createdAt,
+    id:         user._id,
+    username:   user.username || `user_${String(user._id).slice(-6)}`,
+    avatar:     user.avatar   || null,
+    bio:        user.bio      || null,
+    headline:   user.headline || null,
+    location:   user.location || null,
+    skills:     user.skills   || [],
+    socials:    user.socials  || {},
+    lastSeen:   user.lastSeen || null,
+    createdAt:  user.createdAt,
+    completedTasks: user.completedTasks || 0,
   };
 }
 
@@ -114,7 +123,46 @@ async function updateProfile(userId, updates = {}) {
       payload.avatar = avatar;
     }
   }
-  if (updates.bio    !== undefined) payload.bio    = updates.bio;
+  if (updates.bio      !== undefined) payload.bio      = String(updates.bio || '').slice(0, 1000);
+  if (updates.headline !== undefined) payload.headline = String(updates.headline || '').slice(0, 120);
+  if (updates.location !== undefined) payload.location = String(updates.location || '').slice(0, 100);
+  if (updates.skills   !== undefined) {
+    if (!Array.isArray(updates.skills)) throw new AppError('Skills must be an array', 400);
+    payload.skills = updates.skills.map(s => String(s).trim()).filter(Boolean).slice(0, 30);
+  }
+  if (updates.socials !== undefined) {
+    if (typeof updates.socials !== 'object') throw new AppError('Socials must be an object', 400);
+    
+    const validatedSocials = {};
+    const rules = {
+      whatsapp: /(wa\.me|whatsapp\.com)/i,
+      facebook: /(facebook\.com|fb\.com|fb\.me)/i,
+      linkedin: /linkedin\.com/i,
+      twitter: /(twitter\.com|x\.com)/i,
+      github: /github\.com/i,
+    };
+
+    for (const [key, regex] of Object.entries(rules)) {
+      if (updates.socials[key]) {
+        const url = String(updates.socials[key]).trim();
+        if (url !== '' && !regex.test(url)) {
+          throw new AppError(`Invalid ${key} link. Make sure it's a real profile link.`, 400);
+        }
+        if (url !== '') {
+          validatedSocials[key] = url.startsWith('http') ? url : `https://${url}`;
+        } else {
+          validatedSocials[key] = ''; // allow clearing
+        }
+      } else if (updates.socials[key] === '') {
+        validatedSocials[key] = '';
+      }
+    }
+    
+    // Only update if there are keys
+    if (Object.keys(validatedSocials).length > 0) {
+      payload.socials = validatedSocials;
+    }
+  }
 
   if (Object.keys(payload).length === 0)
     throw new AppError('No valid fields to update', 400);

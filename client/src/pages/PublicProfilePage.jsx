@@ -130,6 +130,46 @@ export default function PublicProfilePage() {
             </div>
           )}
 
+          {/* Skills Section */}
+          {profile.skills?.length > 0 && (
+            <div
+              style={{
+                marginBottom: 28,
+                padding: 20,
+                background: 'var(--bg)',
+                borderRadius: 'var(--sm-radius)',
+              }}
+            >
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Skills</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {profile.skills.map(s => (
+                  <Badge key={s} variant="green" style={{ background: 'var(--green-bg)', color: 'var(--green)' }}>{s}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Social Links */}
+          {(profile.socials?.whatsapp || profile.socials?.facebook || profile.socials?.linkedin || profile.socials?.twitter || profile.socials?.github) && (
+            <div
+              style={{
+                marginBottom: 28,
+                padding: 20,
+                background: 'var(--bg)',
+                borderRadius: 'var(--sm-radius)',
+              }}
+            >
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 12 }}>Socials</h3>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {profile.socials?.whatsapp && <a href={profile.socials.whatsapp} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#25D366', color: 'white' }}><i className="fa-brands fa-whatsapp" /></a>}
+                {profile.socials?.facebook && <a href={profile.socials.facebook} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#1877F2', color: 'white' }}><i className="fa-brands fa-facebook-f" /></a>}
+                {profile.socials?.linkedin && <a href={profile.socials.linkedin} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#0A66C2', color: 'white' }}><i className="fa-brands fa-linkedin-in" /></a>}
+                {profile.socials?.twitter  && <a href={profile.socials.twitter} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#1DA1F2', color: 'white' }}><i className="fa-brands fa-twitter" /></a>}
+                {profile.socials?.github   && <a href={profile.socials.github} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#333', color: 'white' }}><i className="fa-brands fa-github" /></a>}
+              </div>
+            </div>
+          )}
+
           {/* Send Message Button */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <button

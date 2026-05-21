@@ -7,6 +7,7 @@ import Topbar from '../components/layout/Topbar';
 import Avatar from '../components/ui/Avatar';
 import Badge from '../components/ui/Badge';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
+import Cropper from 'react-easy-crop';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -22,7 +23,15 @@ export default function ProfilePage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [form, setForm] = useState({ username: '', email: '', bio: '' });
+  const [form, setForm] = useState({ username: '', email: '', bio: '', skills: [], socials: { whatsapp: '', facebook: '', linkedin: '', twitter: '', github: '' } });
+  
+  // Crop state
+  const [cropFileUrl, setCropFileUrl] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+
   const authUserId = authUser?._id || authUser?.id;
 
   useEffect(() => {
@@ -42,6 +51,8 @@ export default function ProfilePage() {
             username: currentProfile.username || '',
             email: currentProfile.email || '',
             bio: currentProfile.bio || '',
+            skills: currentProfile.skills || [],
+            socials: currentProfile.socials || { whatsapp: '', facebook: '', linkedin: '', twitter: '', github: '' },
           });
         }
 
@@ -62,20 +73,59 @@ export default function ProfilePage() {
   const handleAvatarUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64 = ev.target.result;
-      try {
-        const updated = await API.profile.update({ avatar: base64 });
-        const u = updated?.user || updated;
-        setProfile(u);
-        updateUser(u);
-        toast.success("Avatar updated!");
-      } catch (err) {
-        toast.error("Failed to update avatar");
-      }
-    };
-    reader.readAsDataURL(file);
+    const url = URL.createObjectURL(file);
+    setCropFileUrl(url);
+    setZoom(1);
+    setCrop({ x: 0, y: 0 });
+    setCropModalOpen(true);
+    e.target.value = null;
+  };
+
+  const onCropComplete = (croppedArea, croppedAreaPixels) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  };
+
+  const getCroppedImg = async (imageSrc, pixelCrop) => {
+    const image = new Image();
+    image.src = imageSrc;
+    await new Promise(resolve => (image.onload = resolve));
+    const canvas = document.createElement('canvas');
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      pixelCrop.width,
+      pixelCrop.height
+    );
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        resolve(new File([blob], 'avatar.jpg', { type: 'image/jpeg' }));
+      }, 'image/jpeg');
+    });
+  };
+
+  const handleCropSave = async () => {
+    try {
+      const croppedFile = await getCroppedImg(cropFileUrl, croppedAreaPixels);
+      setCropModalOpen(false);
+      toast.success("Uploading avatar...");
+      const updated = await API.profile.uploadAvatar(croppedFile);
+      const u = updated?.user || updated;
+      setProfile(u);
+      updateUser(u);
+      toast.success("Avatar updated!");
+    } catch (err) {
+      toast.error(err.message || "Failed to update avatar");
+    }
   };
 
   async function handleSaveProfile() {
@@ -84,6 +134,8 @@ export default function ProfilePage() {
         username: form.username,
         email: form.email,
         bio: form.bio,
+        skills: form.skills,
+        socials: form.socials,
       });
       const normalized = updated?.user || updated;
       setProfile(normalized);
@@ -132,12 +184,76 @@ export default function ProfilePage() {
     return cells;
   }, [calendarDate, allTasks]);
 
-  if (!profile) return <><Topbar title="My Profile" /><div className="skeleton" style={{ height: 400, borderRadius: 'var(--card-radius)' }} /></>;
+  if (!profile) return (
+    <>
+      <Topbar title="My Profile" />
+
+      {cropModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 400, padding: 24, background: 'var(--bg)' }}>
+            <h3 style={{ marginBottom: 16, fontSize: '1.2rem', fontWeight: 800 }}>Position and size</h3>
+            <div style={{ position: 'relative', width: '100%', height: 300, background: '#111', borderRadius: 8, overflow: 'hidden' }}>
+              <Cropper
+                image={cropFileUrl}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <i className="fa-solid fa-image" style={{ fontSize: '.9rem', color: 'var(--text-muted)' }} />
+              <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={(e) => setZoom(e.target.value)} style={{ flex: 1, accentColor: 'var(--primary)' }} />
+              <i className="fa-solid fa-image" style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              <button className="btn btn--outline" onClick={() => setCropModalOpen(false)}>Cancel</button>
+              <button className="btn btn--primary" onClick={handleCropSave}>Save Photo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="profile-bento" style={{ marginTop: 16 }}><div className="skeleton" style={{ height: 400, borderRadius: 'var(--card-radius)' }} /></div>
+    </>);
 
   const inboxItems = conversations.slice(0, 3);
 
   return (
     <>
+      {cropModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 400, padding: 24, background: 'var(--bg)' }}>
+            <h3 style={{ marginBottom: 16, fontSize: '1.2rem', fontWeight: 800 }}>Position and size</h3>
+            <div style={{ position: 'relative', width: '100%', height: 300, background: '#111', borderRadius: 8, overflow: 'hidden' }}>
+              <Cropper
+                image={cropFileUrl}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onCropComplete={onCropComplete}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <i className="fa-solid fa-image" style={{ fontSize: '.9rem', color: 'var(--text-muted)' }} />
+              <input type="range" min={1} max={3} step={0.1} value={zoom} onChange={(e) => setZoom(e.target.value)} style={{ flex: 1, accentColor: 'var(--primary)' }} />
+              <i className="fa-solid fa-image" style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              <button className="btn btn--outline" onClick={() => setCropModalOpen(false)}>Cancel</button>
+              <button className="btn btn--primary" onClick={handleCropSave}>Save Photo</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <Topbar title="My Profile" />
         <div style={{ display: 'flex', gap: 10 }}>
@@ -148,6 +264,8 @@ export default function ProfilePage() {
               username: profile.username || '',
               email: profile.email || '',
               bio: profile.bio || '',
+              skills: profile.skills || [],
+              socials: profile.socials || { whatsapp: '', facebook: '', linkedin: '', twitter: '', github: '' },
             });
           }}><i className="fa-solid fa-pen" /></button>
         </div>
@@ -168,13 +286,26 @@ export default function ProfilePage() {
             </div>
 
             <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{profile.username || profile.email.split('@')[0]}</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '.9rem', fontWeight: 500, marginBottom: 24 }}>{profile.bio || 'No bio yet'}</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '.9rem', fontWeight: 500, marginBottom: profile.skills?.length ? 16 : 24 }}>{profile.bio || 'No bio yet'}</p>
+
+            {profile.skills?.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 24 }}>
+                {profile.skills.map(s => (
+                  <Badge key={s} variant="green" style={{ background: 'var(--green-bg)', color: 'var(--green)' }}>{s}</Badge>
+                ))}
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 32 }}>
-              <button className="icon-btn" style={{ background: 'var(--sidebar-bg)', color: 'var(--white)' }}><i className="fa-regular fa-envelope" /></button>
-              <button className="icon-btn"><i className="fa-solid fa-phone" /></button>
-              <button className="icon-btn"><i className="fa-brands fa-whatsapp" /></button>
-              <button className="icon-btn"><i className="fa-solid fa-video" /></button>
+              {profile.socials?.whatsapp && <a href={profile.socials.whatsapp} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#25D366', color: 'white' }}><i className="fa-brands fa-whatsapp" /></a>}
+              {profile.socials?.facebook && <a href={profile.socials.facebook} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#1877F2', color: 'white' }}><i className="fa-brands fa-facebook-f" /></a>}
+              {profile.socials?.linkedin && <a href={profile.socials.linkedin} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#0A66C2', color: 'white' }}><i className="fa-brands fa-linkedin-in" /></a>}
+              {profile.socials?.twitter  && <a href={profile.socials.twitter} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#1DA1F2', color: 'white' }}><i className="fa-brands fa-twitter" /></a>}
+              {profile.socials?.github   && <a href={profile.socials.github} target="_blank" rel="noreferrer" className="icon-btn" style={{ background: '#333', color: 'white' }}><i className="fa-brands fa-github" /></a>}
+              
+              {!profile.socials?.whatsapp && !profile.socials?.facebook && !profile.socials?.linkedin && !profile.socials?.twitter && !profile.socials?.github && (
+                <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>No social links added</div>
+              )}
             </div>
 
             <div style={{ textAlign: 'left' }}>
@@ -250,6 +381,53 @@ export default function ProfilePage() {
                 <i className="fa-solid fa-circle-info" style={{ color: 'var(--text-muted)' }} />
               </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Skills</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {form.skills.map(skill => (
+                          <span key={skill} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--green-bg)', color: 'var(--green)', padding: '4px 10px', borderRadius: 100, fontSize: '.75rem', fontWeight: 600 }}>
+                            {skill}
+                            <button className="icon-btn" style={{ width: 16, height: 16, padding: 0, color: 'var(--green)' }} onClick={() => setForm(prev => ({ ...prev, skills: prev.skills.filter(s => s !== skill) }))}>
+                              <i className="fa-solid fa-times" style={{ fontSize: '.6rem' }} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ paddingLeft: 22 }}>
+                    <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginBottom: 6 }}>Suggestions:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['React', 'Node.js', 'UI/UX Design', 'Project Management', 'Marketing', 'Python', 'DevOps'].filter(s => !form.skills.includes(s)).map(skill => (
+                        <button key={skill} className="btn btn--outline btn--sm" style={{ padding: '2px 8px', fontSize: '.7rem', borderRadius: 100 }} onClick={() => setForm(prev => ({ ...prev, skills: [...prev.skills, skill] }))}>
+                          + {skill}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 14, width: '100%' }}>
+                  <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)', marginTop: 8 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>Social Links</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input className="form-input" placeholder="WhatsApp (wa.me/...)" value={form.socials?.whatsapp || ''} onChange={e => setForm(f => ({ ...f, socials: { ...f.socials, whatsapp: e.target.value } }))} />
+                      <input className="form-input" placeholder="Facebook Profile" value={form.socials?.facebook || ''} onChange={e => setForm(f => ({ ...f, socials: { ...f.socials, facebook: e.target.value } }))} />
+                      <input className="form-input" placeholder="LinkedIn Profile" value={form.socials?.linkedin || ''} onChange={e => setForm(f => ({ ...f, socials: { ...f.socials, linkedin: e.target.value } }))} />
+                      <input className="form-input" placeholder="Twitter / X" value={form.socials?.twitter || ''} onChange={e => setForm(f => ({ ...f, socials: { ...f.socials, twitter: e.target.value } }))} />
+                      <input className="form-input" placeholder="GitHub Profile" value={form.socials?.github || ''} onChange={e => setForm(f => ({ ...f, socials: { ...f.socials, github: e.target.value } }))} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <i className="fa-regular fa-circle-dot" style={{ fontSize: '.5rem', color: 'var(--text-muted)' }} />
@@ -268,6 +446,8 @@ export default function ProfilePage() {
                     username: profile.username || '',
                     email: profile.email || '',
                     bio: profile.bio || '',
+                    skills: profile.skills || [],
+                    socials: profile.socials || { whatsapp: '', facebook: '', linkedin: '', twitter: '', github: '' },
                   });
                 }}>Reset</button>
               </div>
