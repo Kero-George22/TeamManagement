@@ -332,7 +332,7 @@ export default function ProjectPage() {
     return (
       <>
         <Topbar title={project.title} onBack={() => navigate(-1)} />
-        <SectionPage embedded forcedProjectId={id} forcedProjectMembers={members || []} />
+        <SectionPage embedded forcedProjectId={id} forcedProject={project} forcedProjectMembers={members || []} />
       </>
     );
   }

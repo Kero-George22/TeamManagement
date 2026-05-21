@@ -18,11 +18,20 @@ function getProjectColor(projectId) {
   return CARD_COLORS[sum % CARD_COLORS.length];
 }
 
+function isSectionGroup(value) {
+  return value === 'sections' || value === 'date';
+}
+
+function isStatusGroup(value) {
+  return value === 'status';
+}
+
 const DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CAL_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const GROUP_OPTIONS = [
+  { value: 'sections', label: 'Sections',   icon: 'fa-bars-staggered' },
   { value: 'date',     label: 'Due Date',   icon: 'fa-calendar' },
   { value: 'status',   label: 'Status',     icon: 'fa-circle-check' },
   { value: 'priority', label: 'Priority',   icon: 'fa-flag' },
@@ -31,6 +40,7 @@ const GROUP_OPTIONS = [
 ];
 
 const GROUP_LABELS = {
+  sections: 'Sections',
   date: 'Due Date',
   status: 'Status',
   priority: 'Priority',
@@ -103,6 +113,8 @@ const STATUS_CONFIG = {
   'Done':        { color: '#22c55e', bg: 'rgba(34,197,94,.12)',  label: 'Done' },
   'Approved':    { color: '#14b8a6', bg: 'rgba(20,184,166,.12)', label: 'Approved' },
 };
+
+const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
 /* ─── Date Picker Popover ────────────────────────────────── */
 // Uses position:fixed to escape parent overflow:hidden clipping.
@@ -507,18 +519,19 @@ function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStat
 /* ═══════════════════════════════════════════════════════════
    SECTION PAGE
    ═══════════════════════════════════════════════════════════ */
-export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProjectMembers = [] }) {
+export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProject = null, forcedProjectMembers = [] }) {
   const { user } = useAuth();
   const { projects, selectedProject } = useGlobalProject();
   const toast = useToast();
   const navigate = useNavigate();
 
   const activeProject = useMemo(() => {
+    if (forcedProject) return forcedProject;
     if (forcedProjectId) {
       return projects.find(p => p._id === forcedProjectId) || { _id: forcedProjectId, title: 'Project' };
     }
     return selectedProject;
-  }, [forcedProjectId, projects, selectedProject]);
+  }, [forcedProject, forcedProjectId, projects, selectedProject]);
 
   const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id));
 
@@ -529,7 +542,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   const [view, setView] = useState('list');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ field: 'date', dir: 'asc' });
-  const [group, setGroup] = useState(embedded ? 'status' : 'date');
+  const [group, setGroup] = useState(embedded ? 'status' : 'sections');
   const [filter, setFilter] = useState({ status: '', project: '', assignee: '' });
   const [columns, setColumns] = useState({ collaborators: true, projects: true, priority: true, status: true });
   const [showMineOnly, setShowMineOnly] = useState(false);
@@ -548,6 +561,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     const saved = localStorage.getItem('custom_task_statuses');
     return saved ? JSON.parse(saved) : [];
   });
+  const [projectStatuses, setProjectStatuses] = useState(() => (
+    embedded && activeProject?.taskStatuses?.length ? activeProject.taskStatuses : DEFAULT_WORKFLOW_STATUSES
+  ));
   const [addingCustomStatus, setAddingCustomStatus] = useState(false);
   const [newStatusName, setNewStatusName] = useState('');
 
@@ -563,9 +579,12 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     const saved = localStorage.getItem('custom_date_sections');
     return saved ? JSON.parse(saved) : [...DEFAULT_DATE_SECTIONS];
   });
+  const [taskSectionMap, setTaskSectionMap] = useState(() => {
+    const saved = localStorage.getItem('task_section_map');
+    return saved ? JSON.parse(saved) : {};
+  });
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [editingSectionLabel, setEditingSectionLabel] = useState('');
-  const [showSectionEditor, setShowSectionEditor] = useState(false);
 
   // Inline editing
   const [editingTask, setEditingTask] = useState(null);
@@ -576,6 +595,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
   // Drag
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [draggedSectionId, setDraggedSectionId] = useState(null);
   const draggedTaskIdRef = useRef(null);
   useEffect(() => { draggedTaskIdRef.current = draggedTaskId; }, [draggedTaskId]);
 
@@ -618,6 +638,19 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       } catch { setProjectMembers([]); }
     })();
   }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!embedded) return;
+    setProjectStatuses(activeProject?.taskStatuses?.length ? activeProject.taskStatuses : DEFAULT_WORKFLOW_STATUSES);
+  }, [embedded, activeProject?.taskStatuses]);
+
+  const availableStatuses = embedded
+    ? projectStatuses
+    : [...DEFAULT_WORKFLOW_STATUSES, ...customStatuses];
+
+  function isCustomizableGroup(value = group) {
+    return isSectionGroup(value) || (embedded && isStatusGroup(value));
+  }
 
   function openInlineComposer(sectionId) {
     // Pre-fill status if grouping by status
@@ -732,22 +765,72 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     toast.success('Status removed');
   }
 
+  async function saveProjectStatuses(nextStatuses) {
+    const cleanStatuses = nextStatuses.map(s => String(s || '').trim()).filter(Boolean);
+    if (!embedded) {
+      setCustomStatuses(cleanStatuses.filter(s => !DEFAULT_WORKFLOW_STATUSES.includes(s)));
+      localStorage.setItem('custom_task_statuses', JSON.stringify(cleanStatuses.filter(s => !DEFAULT_WORKFLOW_STATUSES.includes(s))));
+      return;
+    }
+    setProjectStatuses(cleanStatuses);
+    try {
+      await API.projects.update(activeProjectIdRef.current, { taskStatuses: cleanStatuses });
+    } catch (error) {
+      toast.error(error.message || 'Failed to update sections');
+      setProjectStatuses(activeProject?.taskStatuses?.length ? activeProject.taskStatuses : DEFAULT_WORKFLOW_STATUSES);
+    }
+  }
+
   // Custom Date Sections Management
   function saveCustomSections(sections) {
     setCustomDateSections(sections);
     localStorage.setItem('custom_date_sections', JSON.stringify(sections));
   }
 
-  function addCustomSection() {
+  function saveTaskSectionMap(nextMap) {
+    setTaskSectionMap(nextMap);
+    localStorage.setItem('task_section_map', JSON.stringify(nextMap));
+  }
+
+  function addCustomSection(afterSectionId = null) {
+    if (embedded && group === 'status') {
+      const newStatus = `New Status ${Date.now().toString().slice(-4)}`;
+      const insertIndex = afterSectionId
+        ? projectStatuses.findIndex(s => s === afterSectionId) + 1
+        : projectStatuses.length;
+      const nextStatuses = [...projectStatuses];
+      nextStatuses.splice(insertIndex <= 0 ? projectStatuses.length : insertIndex, 0, newStatus);
+      saveProjectStatuses(nextStatuses);
+      setEditingSectionId(newStatus);
+      setEditingSectionLabel(newStatus);
+      return;
+    }
     const newId = `custom_${Date.now()}`;
     const newSection = { id: newId, label: 'New Section', type: 'custom' };
-    saveCustomSections([...customDateSections, newSection]);
+    const insertIndex = afterSectionId
+      ? customDateSections.findIndex(s => s.id === afterSectionId) + 1
+      : customDateSections.length;
+    const nextSections = [...customDateSections];
+    nextSections.splice(insertIndex <= 0 ? customDateSections.length : insertIndex, 0, newSection);
+    saveCustomSections(nextSections);
     setEditingSectionId(newId);
     setEditingSectionLabel('New Section');
-    toast.success('Section added');
   }
 
   function updateSectionLabel(sectionId, newLabel) {
+    if (embedded && group === 'status') {
+      if (projectStatuses.some(s => s !== sectionId && s.toLowerCase() === newLabel.toLowerCase())) {
+        toast.error('This status already exists');
+        return;
+      }
+      const updated = projectStatuses.map(s => s === sectionId ? newLabel : s);
+      saveProjectStatuses(updated);
+      const affectedTasks = (tasks || []).filter(t => t.status === sectionId);
+      setTasks(ts => (ts || []).map(t => t.status === sectionId ? { ...t, status: newLabel } : t));
+      Promise.all(affectedTasks.map(t => API.tasks.update(t._id, { status: newLabel })))
+        .catch(() => { toast.error('Some tasks could not be moved to the renamed section'); loadTasks(); });
+      return;
+    }
     const updated = customDateSections.map(s =>
       s.id === sectionId ? { ...s, label: newLabel } : s
     );
@@ -755,12 +838,35 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }
 
   function removeCustomSection(sectionId) {
-    if (DEFAULT_DATE_SECTIONS.find(s => s.id === sectionId)) {
-      toast.error('Cannot remove default sections');
+    if (embedded && group === 'status') {
+      if (projectStatuses.length <= 1) {
+        toast.error('Keep at least one section');
+        return;
+      }
+      const updated = projectStatuses.filter(s => s !== sectionId);
+      const fallbackStatus = updated[0];
+      saveProjectStatuses(updated);
+      const affectedTasks = (tasks || []).filter(t => t.status === sectionId);
+      setTasks(ts => (ts || []).map(t => t.status === sectionId ? { ...t, status: fallbackStatus } : t));
+      Promise.all(affectedTasks.map(t => API.tasks.update(t._id, { status: fallbackStatus })))
+        .catch(() => { toast.error('Some tasks could not be moved out of the removed section'); loadTasks(); });
+      toast.success('Section removed');
+      return;
+    }
+    if (customDateSections.length <= 1) {
+      toast.error('Keep at least one section');
       return;
     }
     const updated = customDateSections.filter(s => s.id !== sectionId);
     saveCustomSections(updated);
+    const fallbackId = updated[0]?.id;
+    if (fallbackId) {
+      const nextMap = { ...taskSectionMap };
+      Object.entries(nextMap).forEach(([taskId, mappedSectionId]) => {
+        if (mappedSectionId === sectionId) nextMap[taskId] = fallbackId;
+      });
+      saveTaskSectionMap(nextMap);
+    }
     setEditingSectionId(null);
     toast.success('Section removed');
   }
@@ -779,9 +885,45 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }
 
   function resetSectionsToDefault() {
+    if (embedded && group === 'status') {
+      saveProjectStatuses(DEFAULT_WORKFLOW_STATUSES);
+      setEditingSectionId(null);
+      toast.success('Sections reset to default');
+      return;
+    }
     saveCustomSections([...DEFAULT_DATE_SECTIONS]);
     setEditingSectionId(null);
     toast.success('Sections reset to default');
+  }
+
+  function moveSection(sourceId, targetId) {
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    if (embedded && group === 'status') {
+      const sourceIndex = projectStatuses.findIndex(s => s === sourceId);
+      const targetIndex = projectStatuses.findIndex(s => s === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      const updated = [...projectStatuses];
+      const [moved] = updated.splice(sourceIndex, 1);
+      updated.splice(targetIndex, 0, moved);
+      saveProjectStatuses(updated);
+      return;
+    }
+    const sourceIndex = customDateSections.findIndex(s => s.id === sourceId);
+    const targetIndex = customDateSections.findIndex(s => s.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const updated = [...customDateSections];
+    const [moved] = updated.splice(sourceIndex, 1);
+    updated.splice(targetIndex, 0, moved);
+    saveCustomSections(updated);
+  }
+
+  function moveTaskToSection(taskId, sectionId) {
+    if (!taskId || !sectionId) return;
+    if (embedded && group === 'status') {
+      handleDropStatus(null, sectionId, taskId);
+      return;
+    }
+    saveTaskSectionMap({ ...taskSectionMap, [taskId]: sectionId });
   }
 
   async function handleAddTask(sectionKey) {
@@ -800,7 +942,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       status: newTaskInput.status || 'Todo',
     };
 
-    if (activeGroup === 'date') {
+    if (isSectionGroup(activeGroup)) {
       const section = customDateSections.find(s => s.id === sectionKey);
       if (section) {
         if (section.type === 'today') payload.deadline = new Date().toISOString();
@@ -817,7 +959,11 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
     try {
       if (newTaskInput.deadline) payload.deadline = new Date(newTaskInput.deadline + 'T00:00:00').toISOString();
-      await API.tasks.create(p._id, payload);
+      const createdTask = await API.tasks.create(p._id, payload);
+      if (isSectionGroup(activeGroup) && sectionKey) {
+        const createdTaskId = createdTask?._id || createdTask?.id;
+        if (createdTaskId) saveTaskSectionMap({ ...taskSectionMap, [createdTaskId]: sectionKey });
+      }
       toast.success('Task added');
       setNewTaskInput(emptyComposer);
       loadTasks();
@@ -892,11 +1038,11 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }, [tasks, search, filter, sort, user, view, showMineOnly]);
 
   const processedGroups = useMemo(() => {
-    const activeGroup = view === 'board' ? 'status' : group; // Board always groups by status for DnD
+    const activeGroup = group;
     const list = processedList;
     const result = [];
 
-    if (activeGroup === 'date') {
+    if (isSectionGroup(activeGroup)) {
       const now = new Date(); now.setHours(0,0,0,0);
       const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
       const nw = new Date(now); nw.setDate(nw.getDate()+7);
@@ -909,7 +1055,11 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
       list.forEach(t => {
         let assigned = false;
-        if (!t.deadline) {
+        const mappedSection = taskSectionMap[t._id || t.id];
+        if (mappedSection && sectionsMap[mappedSection]) {
+          sectionsMap[mappedSection].push(t);
+          assigned = true;
+        } else if (!t.deadline) {
           if (sectionsMap.recently) { sectionsMap.recently.push(t); assigned = true; }
         } else {
           const d = new Date(t.deadline); d.setHours(0,0,0,0);
@@ -937,12 +1087,10 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
     } else if (activeGroup === 'status') {
       // Use project's custom taskStatuses when embedded, otherwise use defaults + customStatuses
-      const projectStatuses = embedded && activeProject?.taskStatuses?.length
-        ? activeProject.taskStatuses
-        : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses];
-      const map = {}; projectStatuses.forEach(s => map[s] = []);
-      list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map[projectStatuses[0]].push(t); });
-      projectStatuses.forEach(s => result.push({ id: s, label: STATUS_CONFIG[s]?.label || s, tasks: map[s] }));
+      const statuses = embedded ? projectStatuses : availableStatuses;
+      const map = {}; statuses.forEach(s => map[s] = []);
+      list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map[statuses[0]].push(t); });
+      statuses.forEach(s => result.push({ id: s, label: embedded ? s : (STATUS_CONFIG[s]?.label || s), tasks: map[s] }));
 
     } else if (activeGroup === 'priority') {
       const map = { High: [], Medium: [], Low: [], 'No Priority': [] };
@@ -975,7 +1123,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       result.push(...Object.values(map));
     }
     return result;
-  }, [processedList, group, customStatuses, view, customDateSections, embedded, activeProject?.taskStatuses]);
+  }, [processedList, group, customStatuses, view, customDateSections, taskSectionMap, embedded, projectStatuses]);
 
   // Calendar cells
   const calendarCells = useMemo(() => {
@@ -1056,6 +1204,14 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           font-size: .72rem; font-weight: 800; letter-spacing: .07em;
           color: var(--text-secondary); text-transform: uppercase; padding: 0 2px; margin-bottom: 2px;
         }
+        .jira-col-header .section-actions { margin-left: 8px; }
+        .jira-col-header:hover .section-actions, .jira-col-header:focus-within .section-actions { opacity: 1; }
+        .jira-col-title-inline {
+          border: 1px solid transparent; border-radius: 6px; padding: 2px 4px;
+          cursor: text; color: var(--text-secondary);
+        }
+        .jira-col-title-inline:hover { border-color: var(--border); background: rgba(255,255,255,.5); }
+        body.dark .jira-col-title-inline:hover { background: rgba(255,255,255,.05); }
         .jira-col-count {
           background: #f3f4f6; color: var(--text-muted); border-radius: 999px;
           padding: 2px 8px; font-size: .65rem; font-weight: 700;
@@ -1091,6 +1247,13 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         .jira-inline-add:hover { border-color: var(--green); color: var(--green); background: rgba(34,197,94,.04); }
         body.dark .jira-inline-add { color: rgba(255,255,255,.4); }
         body.dark .jira-inline-add:hover { background: rgba(34,197,94,.08); }
+        .jira-add-section-col {
+          border: 1.5px dashed var(--border); border-radius: 14px; min-width: 280px; max-width: 280px;
+          height: 72px; padding: 14px; display: flex; align-items: center; justify-content: center;
+          color: var(--text-muted); font-size: .82rem; font-weight: 700; cursor: pointer;
+          background: var(--bg); transition: all .15s;
+        }
+        .jira-add-section-col:hover { border-color: var(--green); color: var(--green); background: rgba(34,197,94,.05); }
 
         /* Priority section accent line */
         .priority-section-bar {
@@ -1100,6 +1263,33 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         /* List view */
         .list-header-cell { font-size: .7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
         .list-row { position: relative; display: grid; gap: 14px; padding: 9px 10px; border-bottom: 1px solid var(--border); align-items: center; cursor: pointer; }
+        .section-row {
+          display: flex; align-items: center; gap: 10px; cursor: pointer;
+          padding: 8px 0; border-bottom: 2px solid var(--border); margin-bottom: 4px;
+        }
+        .section-row.drag-over { background: rgba(34,197,94,.06); border-color: var(--green) !important; }
+        .section-title-inline {
+          margin: 0; font-size: .85rem; font-weight: 700; color: var(--text-primary);
+          border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; cursor: text;
+        }
+        .section-title-inline:hover { border-color: var(--border); background: var(--bg); }
+        .section-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity .15s; }
+        .section-row:hover .section-actions, .section-row:focus-within .section-actions { opacity: 1; }
+        .section-icon-btn {
+          width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+          border: none; border-radius: 7px; background: transparent; color: var(--text-muted);
+          cursor: pointer; transition: background .15s, color .15s;
+        }
+        .section-icon-btn:hover { background: var(--bg); color: var(--text-primary); }
+        .section-icon-btn.danger:hover { color: #ef4444; }
+        .section-drag-handle { cursor: grab; }
+        .section-drag-handle:active { cursor: grabbing; }
+        .inline-add-section {
+          display: inline-flex; align-items: center; gap: 8px; border: none; background: transparent;
+          color: var(--text-muted); font-size: .8rem; font-weight: 600; cursor: pointer;
+          padding: 8px 4px; border-radius: 8px; margin-left: 22px;
+        }
+        .inline-add-section:hover { color: var(--green); background: rgba(34,197,94,.06); }
 
         /* Delete button hover */
         .del-btn { opacity: 0; transition: opacity .2s; }
@@ -1181,30 +1371,14 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         {/* Asana-style Grouping Pills */}
         {view !== 'calendar' && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0 }}>
-            {view === 'board' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: '.72rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
-                <i className="fa-solid fa-circle-check" style={{ fontSize: '.65rem', opacity: .7 }} />
-                <span>Status</span>
-              </div>
-            ) : (
-              <GroupPill
-                icon="fa-layer-group"
-                label="Group"
-                value={GROUP_LABELS[group] || group}
-                options={GROUP_OPTIONS.map(o => ({ value: o.value, label: o.label, icon: o.icon }))}
-                current={group}
-                onChange={setGroup}
-              />
-            )}
-            {!embedded && group === 'date' && (
-              <button
-                className="tool-btn"
-                onClick={() => setShowSectionEditor(!showSectionEditor)}
-                style={{ fontSize: '.72rem', padding: '5px 10px', flexShrink: 0 }}
-              >
-                <i className="fa-solid fa-pen-to-square" /> Sections
-              </button>
-            )}
+            <GroupPill
+              icon="fa-layer-group"
+              label="Group"
+              value={GROUP_LABELS[group] || group}
+              options={GROUP_OPTIONS.map(o => ({ value: o.value, label: o.label, icon: o.icon }))}
+              current={group}
+              onChange={setGroup}
+            />
           </div>
         )}
 
@@ -1268,59 +1442,6 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         </button>
       </div>
 
-      {/*  Section Editor ─────────────────────────────────── */}
-      {showSectionEditor && group === 'date' && !embedded && (
-        <div style={{ background: 'var(--white)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, boxShadow: 'var(--shadow)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <h4 style={{ margin: 0, fontSize: '.85rem', fontWeight: 700 }}>Manage Sections</h4>
-            <button className="btn btn--green btn--sm" onClick={addCustomSection} style={{ borderRadius: 8, fontSize: '.72rem' }}>
-              <i className="fa-solid fa-plus" /> Add Section
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {customDateSections.map((section, index) => (
-              <div key={section.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, background: 'var(--bg)' }}>
-                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 20 }}>{index + 1}.</span>
-                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 16 }}>
-                  {section.type === 'custom' ? <i className="fa-solid fa-pen" /> : <i className="fa-solid fa-lock" style={{ fontSize: '.6rem' }} />}
-                </span>
-                {editingSectionId === section.id ? (
-                  <input
-                    autoFocus
-                    className="form-input"
-                    value={editingSectionLabel}
-                    onChange={e => setEditingSectionLabel(e.target.value)}
-                    onBlur={finishEditingSection}
-                    onKeyDown={e => { if (e.key === 'Enter') finishEditingSection(); if (e.key === 'Escape') setEditingSectionId(null); }}
-                    style={{ flex: 1, padding: '4px 8px', fontSize: '.8rem' }}
-                  />
-                ) : (
-                  <span
-                    style={{ flex: 1, fontSize: '.8rem', cursor: section.type !== 'custom' ? 'default' : 'pointer' }}
-                    onClick={() => section.type === 'custom' && startEditingSection(section.id, section.label)}
-                  >
-                    {section.label}
-                  </span>
-                )}
-                {section.type === 'custom' && (
-                  <button
-                    onClick={() => removeCustomSection(section.id)}
-                    style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.8rem' }}
-                  >
-                    <i className="fa-solid fa-trash" />
-                  </button>
-                )}
-                <i className="fa-solid fa-grip-vertical" style={{ color: 'var(--text-muted)', fontSize: '.7rem', cursor: 'grab' }} />
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, fontSize: '.7rem', color: 'var(--text-muted)' }}>
-            <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
-            Click on custom section names to edit. Default sections cannot be removed.
-          </div>
-        </div>
-      )}
-
       {/* ── Main content ─────────────────────────────────── */}
       <div style={{ padding: '20px 28px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {tasks === null ? (
@@ -1344,12 +1465,26 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                 <div key={g.id} style={{ marginBottom: 24 }}>
                   {/* Group header */}
                   <div
+                    className="section-row"
                     onClick={() => setCollapsed(prev => ({ ...prev, [g.id]: !prev[g.id] }))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 0', borderBottom: `2px solid ${g.accentColor || 'var(--border)'}`, marginBottom: 4 }}
+                    onDragOver={e => { if (isCustomizableGroup(group) && (draggedSectionId || draggedTaskId)) e.preventDefault(); }}
+                    onDragEnter={e => { if (isCustomizableGroup(group) && (draggedSectionId || draggedTaskId)) e.currentTarget.classList.add('drag-over'); }}
+                    onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                    onDrop={e => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('drag-over');
+                      if (isCustomizableGroup(group)) {
+                        if (draggedSectionId) moveSection(draggedSectionId, g.id);
+                        else if (draggedTaskId) moveTaskToSection(draggedTaskId, g.id);
+                      }
+                      setDraggedSectionId(null);
+                      setDraggedTaskId(null);
+                    }}
+                    style={{ borderBottomColor: g.accentColor || 'var(--border)' }}
                   >
                     <i className={`fa-solid fa-chevron-${collapsed[g.id] ? 'right' : 'down'}`} style={{ color: g.accentColor || 'var(--text-muted)', fontSize: '.7rem', width: 12 }} />
                     {g.accentColor && <span className="priority-section-bar" style={{ background: g.accentColor }} />}
-                    {editingSectionId === g.id ? (
+                    {editingSectionId === g.id && isCustomizableGroup(group) ? (
                       <input
                         autoFocus
                         className="form-input"
@@ -1361,19 +1496,52 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                         style={{ flex: 1, padding: '4px 8px', fontSize: '.85rem', maxWidth: 200 }}
                       />
                     ) : (
-                      <h4 style={{ margin: 0, fontSize: '.85rem', fontWeight: 700, color: g.accentColor || 'var(--text-primary)' }}>
+                      <h4
+                        className="section-title-inline"
+                        onClick={e => {
+                          if (!isCustomizableGroup(group)) return;
+                          e.stopPropagation();
+                          startEditingSection(g.id, g.label);
+                        }}
+                        style={{ color: g.accentColor || 'var(--text-primary)', cursor: isCustomizableGroup(group) ? 'text' : 'pointer' }}
+                      >
                         {g.label}
                       </h4>
                     )}
                     <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 500, background: 'var(--bg)', borderRadius: 99, padding: '1px 8px' }}>{g.tasks.length}</span>
-                    {g.isCustom && editingSectionId !== g.id && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); startEditingSection(g.id, g.label); }}
-                        style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.75rem', marginLeft: 'auto' }}
-                        title="Edit section name"
-                      >
-                        <i className="fa-solid fa-pen" />
-                      </button>
+                    {isCustomizableGroup(group) && editingSectionId !== g.id && (
+                      <div className="section-actions">
+                        <button
+                          type="button"
+                          className="section-icon-btn"
+                          onClick={(e) => { e.stopPropagation(); addCustomSection(g.id); }}
+                          aria-label="Add section below"
+                          title="Add section below"
+                        >
+                          <i className="fa-solid fa-plus" />
+                        </button>
+                        <button
+                          type="button"
+                          className="section-icon-btn danger"
+                          onClick={(e) => { e.stopPropagation(); removeCustomSection(g.id); }}
+                          aria-label="Remove section"
+                          title="Remove section"
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
+                        <span
+                          className="section-icon-btn section-drag-handle"
+                          draggable
+                          onClick={e => e.stopPropagation()}
+                          onDragStart={e => { e.stopPropagation(); setDraggedSectionId(g.id); e.dataTransfer.effectAllowed = 'move'; }}
+                          onDragEnd={() => setDraggedSectionId(null)}
+                          role="button"
+                          aria-label="Drag section"
+                          title="Drag section"
+                        >
+                          <i className="fa-solid fa-grip-vertical" />
+                        </span>
+                      </div>
                     )}
                   </div>
 
@@ -1388,6 +1556,15 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                           <div
                             key={t._id}
                             className="list-row hover-row"
+                            draggable={isCustomizableGroup(group)}
+                            onDragStart={e => {
+                              if (!isCustomizableGroup(group)) return;
+                              setDraggedTaskId(t._id);
+                              draggedTaskIdRef.current = t._id;
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', t._id);
+                            }}
+                            onDragEnd={() => { setDraggedTaskId(null); draggedTaskIdRef.current = null; }}
                             style={{ gridTemplateColumns: gridCols }}
                             onClick={() => setSelectedTask(t)}
                           >
@@ -1465,10 +1642,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                                     border: 'none', cursor: 'pointer', outline: 'none'
                                   }}
                                 >
-                                  {(embedded && activeProject?.taskStatuses?.length
-                                    ? activeProject.taskStatuses
-                                    : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]
-                                  ).map(st => (
+                                  {availableStatuses.map(st => (
                                     <option key={st} value={st} style={{ color: '#000' }}>{st}</option>
                                   ))}
                                 </select>
@@ -1499,9 +1673,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                             onCancel={() => setNewTaskInput(emptyComposer)}
                             projectMembers={projectMembers}
                             user={user}
-                            availableStatuses={embedded && activeProject?.taskStatuses?.length
-                              ? activeProject.taskStatuses
-                              : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]}
+                            availableStatuses={availableStatuses}
                           />
                         </div>
                       ) : (
@@ -1518,6 +1690,16 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                   )}
                 </div>
               ))}
+              {isCustomizableGroup(group) && (
+                <button
+                  type="button"
+                  className="inline-add-section"
+                  onClick={() => addCustomSection()}
+                >
+                  <i className="fa-solid fa-plus" />
+                  Add section
+                </button>
+              )}
             </div>
           </div>
 
@@ -1530,16 +1712,88 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                 key={g.id}
                 className="jira-col"
                 onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.currentTarget.classList.remove('drag-over'); const dtId = e.dataTransfer.getData('text/plain'); if (dtId) { handleDropStatus(e, g.id, dtId); } else { handleDropStatus(e, g.id); } }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('drag-over');
+                  if (isCustomizableGroup(group)) {
+                    if (draggedSectionId) moveSection(draggedSectionId, g.id);
+                    else {
+                      const dtId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+                      if (dtId) moveTaskToSection(dtId, g.id);
+                    }
+                    setDraggedSectionId(null);
+                    setDraggedTaskId(null);
+                    return;
+                  }
+                  const dtId = e.dataTransfer.getData('text/plain');
+                  if (dtId) { handleDropStatus(e, g.id, dtId); } else { handleDropStatus(e, g.id); }
+                }}
                 onDragEnter={e => e.currentTarget.classList.add('drag-over')}
                 onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
               >
                 <div className="jira-col-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flex: 1 }}>
                     {g.accentColor && (
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: g.accentColor, display: 'inline-block' }} />
                     )}
-                    {g.label}
+                    {editingSectionId === g.id && isCustomizableGroup(group) ? (
+                      <input
+                        autoFocus
+                        className="form-input"
+                        value={editingSectionLabel}
+                        onChange={e => setEditingSectionLabel(e.target.value)}
+                        onBlur={finishEditingSection}
+                        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') finishEditingSection(); if (e.key === 'Escape') setEditingSectionId(null); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ flex: 1, padding: '4px 8px', fontSize: '.78rem', textTransform: 'none', letterSpacing: 0 }}
+                      />
+                    ) : (
+                      <span
+                        className="jira-col-title-inline"
+                        onClick={e => {
+                          if (!isCustomizableGroup(group)) return;
+                          e.stopPropagation();
+                          startEditingSection(g.id, g.label);
+                        }}
+                        style={{ cursor: isCustomizableGroup(group) ? 'text' : 'default' }}
+                      >
+                        {g.label}
+                      </span>
+                    )}
+                    {isCustomizableGroup(group) && editingSectionId !== g.id && (
+                      <div className="section-actions">
+                        <button
+                          type="button"
+                          className="section-icon-btn"
+                          onClick={(e) => { e.stopPropagation(); addCustomSection(g.id); }}
+                          aria-label="Add section after"
+                          title="Add section after"
+                        >
+                          <i className="fa-solid fa-plus" />
+                        </button>
+                        <button
+                          type="button"
+                          className="section-icon-btn danger"
+                          onClick={(e) => { e.stopPropagation(); removeCustomSection(g.id); }}
+                          aria-label="Remove section"
+                          title="Remove section"
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
+                        <span
+                          className="section-icon-btn section-drag-handle"
+                          draggable
+                          onClick={e => e.stopPropagation()}
+                          onDragStart={e => { e.stopPropagation(); setDraggedSectionId(g.id); e.dataTransfer.effectAllowed = 'move'; }}
+                          onDragEnd={() => setDraggedSectionId(null)}
+                          role="button"
+                          aria-label="Drag section"
+                          title="Drag section"
+                        >
+                          <i className="fa-solid fa-grip-vertical" />
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <span className="jira-col-count">{g.tasks.length}</span>
                 </div>
@@ -1601,9 +1855,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                     onCancel={() => setNewTaskInput(emptyComposer)}
                     projectMembers={projectMembers}
                     user={user}
-                    availableStatuses={embedded && activeProject?.taskStatuses?.length
-                      ? activeProject.taskStatuses
-                      : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]}
+                    availableStatuses={availableStatuses}
                   />
                 ) : (
                   <div className="jira-inline-add" onClick={() => openInlineComposer(g.id)}>
@@ -1613,8 +1865,15 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
               </div>
             ))}
 
+            {isCustomizableGroup(group) && (
+              <button type="button" className="jira-add-section-col" onClick={() => addCustomSection()}>
+                <i className="fa-solid fa-plus" style={{ marginRight: 8 }} />
+                Add section
+              </button>
+            )}
+
             {/* Add custom status column (only for global My Tasks page) */}
-            {!embedded && (
+            {!embedded && !isCustomizableGroup(group) && (
             <div style={{
               background: 'var(--bg)', border: '2px dashed var(--border)', borderRadius: 14,
               minWidth: 280, maxWidth: 280, padding: 14,
@@ -1746,10 +2005,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
             <div className="form-group">
               <label className="form-label">Status</label>
               <select name="status" className="form-input">
-                <option value="Todo">To Do</option>
-                <option value="In-Progress">In Progress</option>
-                <option value="Review">Review</option>
-                <option value="Done">Done</option>
+                {availableStatuses.map(status => (
+                  <option key={status} value={status}>{STATUS_CONFIG[status]?.label || status}</option>
+                ))}
               </select>
             </div>
           </div>
