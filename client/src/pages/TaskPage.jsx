@@ -8,7 +8,7 @@ import Badge from '../components/ui/Badge';
 import { fmtDate } from '../lib/utils';
 
 const PCOL = { Low: 'green', Medium: 'blue', High: 'pink' };
-const SCOL = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green' };
+const SCOL = { 'Recently assigned': 'gray', 'Do today': 'blue', 'Do next week': 'yellow', 'Do later': 'orange', 'Approved': 'purple', 'Todo': 'gray', 'In-Progress': 'blue', 'Review': 'yellow', 'Done': 'green' };
 
 export default function TaskPage() {
   const { id: taskId } = useParams();
@@ -109,7 +109,7 @@ export default function TaskPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <select value={task.status} onChange={e => updateStatus(e.target.value)}
                   style={{ appearance: 'none', padding: '7px 14px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.82rem', fontWeight: 600, cursor: 'pointer', background: 'var(--white)', fontFamily: 'inherit' }}>
-                  {['Todo', 'In-Progress', 'Review', 'Done'].map(s => <option key={s} value={s}>{s}</option>)}
+                  {['Todo', 'In-Progress', 'Review', 'Done', 'Approved'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>

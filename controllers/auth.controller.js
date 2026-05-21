@@ -14,6 +14,10 @@ function generateToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString('hex');
 }
 
+function generateVerificationCode() {
+  return crypto.randomInt(100000, 999999).toString();
+}
+
 function expiresIn(hours) {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
@@ -32,11 +36,24 @@ exports.signup = asyncWrapper(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new AppError('Valid email required', 400);
   if (password.length < 8) throw new AppError('Password min length 8', 400);
 
-  const existing = await User.findOne({ email }).lean();
-  if (existing) throw new AppError('Email already in use', 409);
+  let user = await User.findOne({ email });
+  if (user) {
+    if (user.isVerified) {
+      throw new AppError('Email already in use', 409);
+    }
+    // If user exists but is not verified, we allow them to restart the signup process
+    // This updates their password to the new one and sends a fresh OTP
+    user.password = password;
+    user.verificationToken = generateVerificationCode();
+    user.verificationTokenExpires = expiresIn(Number(process.env.VERIFICATION_HOURS) || 24);
+    await user.save();
 
-  const token = generateToken(32);
-  const user = await User.create({
+    await emailService.verificationEmail(email, user.verificationToken);
+    return success(res, { id: user._id, email: user.email }, 'Verification email resent.', 200);
+  }
+
+  const token = generateVerificationCode();
+  user = await User.create({
     email,
     password,
     verificationToken: token,
@@ -79,7 +96,7 @@ exports.login = asyncWrapper(async (req, res) => {
   if (!email || !password) throw new AppError('Email and password required', 400);
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new AppError('Valid email required', 400);
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select('+password');
   if (!user) throw new AppError('Invalid credentials', 401);
   if (!user.isVerified) throw new AppError('Email not verified', 403);
 
@@ -193,7 +210,7 @@ exports.changePassword = asyncWrapper(async (req, res) => {
   if (!oldPassword || !newPassword) throw new AppError('Old and new passwords required', 400);
   if (newPassword.length < 8) throw new AppError('Password min length 8', 400);
 
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id).select('+password');
   if (!user) throw new AppError('User not found', 404);
 
   const match = await user.comparePassword(oldPassword);

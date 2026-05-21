@@ -18,6 +18,7 @@ export function ProjectProvider({ children }) {
   );
   const [loading, setLoading] = useState(true);
   const selectedProjectIdRef = useRef(selectedProjectId);
+  const loadingRef = useRef(false);
 
   // Keep ref in sync
   useEffect(() => {
@@ -30,12 +31,14 @@ export function ProjectProvider({ children }) {
       setLoading(false);
       return;
     }
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    
     try {
       setLoading(true);
       const list = await API.projects.list();
       setProjects(list || []);
       
-      // If the selected project is no longer in the list, clear it
       const currentSelected = selectedProjectIdRef.current;
       if (currentSelected && list && !list.find(p => p._id === currentSelected)) {
         setSelectedProjectId(null);
@@ -46,6 +49,7 @@ export function ProjectProvider({ children }) {
       console.error('Failed to load global projects:', e);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }, [isLoggedIn]);
 

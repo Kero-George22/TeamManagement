@@ -66,10 +66,18 @@ export default function NotificationBell() {
   function handleNotificationClick(notif) {
     setOpen(false);
     handleMarkRead(notif._id);
-    if (notif.task) {
-      navigate(`/app/task/${notif.task._id || notif.task}`);
+    if (notif.type.startsWith('task_') || notif.type === 'comment_added' || notif.type === 'mention' || notif.type === 'deadline_reminder' || notif.type === 'overdue_alert') {
+      if (notif.project && notif.task) {
+        navigate(`/app/project/${typeof notif.project === 'object' ? notif.project._id : notif.project}?task=${typeof notif.task === 'object' ? notif.task._id : notif.task}`);
+      } else if (notif.task) {
+        navigate(`/app/task/${typeof notif.task === 'object' ? notif.task._id : notif.task}`);
+      }
+    } else if (notif.type === 'dm') {
+      navigate(`/app/messages`);
+    } else if (notif.type === 'join_request' || notif.type === 'join_request_accepted' || notif.type === 'join_request_rejected') {
+      navigate(`/app/project/${typeof notif.project === 'object' ? notif.project._id : notif.project}?tab=team`);
     } else if (notif.project) {
-      navigate(`/app/project/${notif.project._id || notif.project}`);
+      navigate(`/app/project/${typeof notif.project === 'object' ? notif.project._id : notif.project}`);
     }
   }
 

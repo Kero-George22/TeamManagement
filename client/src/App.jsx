@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
@@ -19,13 +19,46 @@ const MessagesPage = lazy(() => import('./pages/MessagesPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const OfficePage = lazy(() => import('./pages/OfficePage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
-const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
+const MyTasksPageWrapper = lazy(() => import('./pages/MyTasksPageWrapper'));
 const BoardPage = lazy(() => import('./pages/BoardPage'));
 const GoalsPage = lazy(() => import('./pages/GoalsPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'));
 const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
+const InvitePage = lazy(() => import('./pages/InvitePage'));
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Lazy load error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
+          <div className="card" style={{ padding: '24px 32px', textAlign: 'center' }}>
+            <h3 style={{ marginBottom: 8 }}>Failed to load page</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>{this.state.error?.message || 'Unknown error'}</p>
+            <button className="btn btn--green" onClick={() => { this.setState({ hasError: false }); window.location.reload(); }}>
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function RouteLoader() {
   return (
@@ -49,38 +82,41 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <Suspense fallback={<RouteLoader />}>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/app"                 element={<LandingPage />} />
-              <Route path="/app/"                element={<LandingPage />} />
-              <Route path="/"                    element={<LandingPage />} />
-              <Route path="/app/login"           element={<LoginPage />} />
-              <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/app/profile/:userId" element={<PublicProfilePage />} />
+          <ErrorBoundary>
+            <Suspense fallback={<RouteLoader />}>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/app"                 element={<LandingPage />} />
+                <Route path="/app/"                element={<LandingPage />} />
+                <Route path="/"                    element={<LandingPage />} />
+                <Route path="/app/login"           element={<LoginPage />} />
+                <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/app/profile/:userId" element={<PublicProfilePage />} />
+                <Route path="/app/invite/:token"   element={<InvitePage />} />
 
-              {/* Protected routes with layout shell */}
-              <Route element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>
-                <Route path="/app/dashboard"      element={<DashboardPage />} />
-                <Route path="/app/projects"       element={<ProjectsPage />} />
-                <Route path="/app/explore"       element={<ExplorePage />} />
-                <Route path="/app/project/:id"    element={<ProjectPage />} />
-                <Route path="/app/task/:id"       element={<TaskPage />} />
-                <Route path="/app/tasks"          element={<SectionPage />} />
-                <Route path="/app/board/:id"      element={<BoardPage />} />
-                <Route path="/app/goals"          element={<GoalsPage />} />
-                <Route path="/app/messages"       element={<MessagesPage />} />
-                <Route path="/app/profile"        element={<ProfilePage />} />
-                <Route path="/app/office/:id"     element={<OfficePage />} />
-                <Route path="/app/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
-                <Route path="/app/admin/reviews"   element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
-              </Route>
+                {/* Protected routes with layout shell */}
+                <Route element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>
+                  <Route path="/app/dashboard"      element={<DashboardPage />} />
+                  <Route path="/app/projects"       element={<ProjectsPage />} />
+                  <Route path="/app/explore"       element={<ExplorePage />} />
+                  <Route path="/app/project/:id"    element={<ProjectPage />} />
+                  <Route path="/app/task/:id"       element={<TaskPage />} />
+                  <Route path="/app/tasks"          element={<MyTasksPageWrapper />} />
+                  <Route path="/app/board/:id"      element={<BoardPage />} />
+                  <Route path="/app/goals"          element={<GoalsPage />} />
+                  <Route path="/app/messages"       element={<MessagesPage />} />
+                  <Route path="/app/profile"        element={<ProfilePage />} />
+                  <Route path="/app/office/:id"     element={<OfficePage />} />
+                  <Route path="/app/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
+                  <Route path="/app/admin/reviews"   element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
+                </Route>
 
-              {/* Catch-all */}
-              <Route path="/app/*" element={<Navigate to="/app/dashboard" replace />} />
-              <Route path="*"      element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
+                {/* Catch-all */}
+                <Route path="/app/*" element={<Navigate to="/app/dashboard" replace />} />
+                <Route path="*"      element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

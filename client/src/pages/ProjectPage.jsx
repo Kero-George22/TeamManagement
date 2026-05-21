@@ -62,8 +62,8 @@ export default function ProjectPage() {
   const [editTitle, setEditTitle] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
 
-  const isOwner = !!project && (project.owner?._id === user?._id || project.owner === user?._id);
-  const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === user?._id);
+  const isOwner = !!project && (project.owner?._id === (user?.id || user?._id) || project.owner === (user?.id || user?._id));
+  const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === (user?.id || user?._id));
   const workflowStatuses = project?.taskStatuses?.length ? project.taskStatuses : DEFAULT_WORKFLOW_STATUSES;
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export default function ProjectPage() {
       setRequests([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOwner]);
+  }, [isOwner, tab]);
 
   async function init() {
     try {
@@ -118,7 +118,7 @@ export default function ProjectPage() {
   const filteredTasks = useMemo(() => {
     const list = tasks || [];
     if (!myTasksOnly) return list;
-    return list.filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+    return list.filter(task => (task.assignedTo?._id || task.assignedTo) === (user?.id || user?._id));
   }, [tasks, myTasksOnly, user]);
 
   const groupedTasks = useMemo(() => {
@@ -134,7 +134,6 @@ export default function ProjectPage() {
         groups.Todo.push(task);
       }
     });
-
     return groups;
   }, [filteredTasks, workflowStatuses]);
 
@@ -232,10 +231,10 @@ export default function ProjectPage() {
     }
   }
 
-  async function handleReq(requestId, status) {
+  async function handleReq(requestId, action) {
     try {
-      await API.projects.handleRequest(id, requestId, status);
-      toast.success(`Request ${status}`);
+      await API.projects.handleRequest(id, requestId, action);
+      toast.success(`Request ${action}ed`);
       loadRequests();
       loadMembers();
       init();
@@ -512,6 +511,38 @@ export default function ProjectPage() {
                 )}
               </div>
             </section>
+          </aside>
+
+          <aside className="workspace-sidebar">
+            {isOwner && project?.inviteToken && (
+              <section className="workspace-panel" style={{ marginBottom: '24px' }}>
+                <div className="workspace-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
+                  <div>
+                    <h3 className="section-title" style={{ marginBottom: 4 }}>Invite Link</h3>
+                    <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Share this link to invite members directly.</div>
+                  </div>
+                </div>
+                <div style={{ padding: '0 20px 20px 20px', display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    className="form-input" 
+                    value={`${window.location.origin}/app/invite/${project.inviteToken}`}
+                    style={{ flex: 1, fontSize: '0.85rem' }} 
+                    onClick={(e) => e.target.select()}
+                  />
+                  <button 
+                    className="btn btn--primary" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/app/invite/${project.inviteToken}`);
+                      toast.success('Copied to clipboard!');
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </section>
+            )}
 
             {isOwner && (
               <section className="workspace-panel">
@@ -528,18 +559,22 @@ export default function ProjectPage() {
                     <h4>No pending requests</h4>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {requests.map(request => (
-                      <div key={request._id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--white)', borderRadius: 18, padding: 14, border: '1px solid var(--border)' }}>
-                        <Avatar user={request.user} size="md" />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{request.user?.username || request.user?.email || 'User'}</div>
-                          <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Requested: <strong>{request.roleName}</strong></div>
+                      <div key={request._id} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Avatar user={request.user} size="md" />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: '.9rem' }}>{request.user?.username || request.user?.email || 'User'}</div>
+                            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>wants to join as <strong style={{ color: 'var(--text)' }}>{request.roleName}</strong></div>
+                          </div>
+                        </div>
+                        <div>
                           {request.requestedAt && <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 2 }}>Sent: {fmtDate(request.requestedAt)}</div>}
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="btn btn--danger btn--sm" onClick={() => handleReq(request._id, 'rejected')}>Reject</button>
-                          <button className="btn btn--green btn--sm" onClick={() => handleReq(request._id, 'accepted')}>Accept</button>
+                          <button className="btn btn--danger btn--sm" onClick={() => handleReq(request._id, 'reject')}>Reject</button>
+                          <button className="btn btn--green btn--sm" onClick={() => handleReq(request._id, 'accept')}>Accept</button>
                         </div>
                       </div>
                     ))}
@@ -701,7 +736,7 @@ export default function ProjectPage() {
           }}
           isOwner={isOwner}
           isMember={isMember}
-          userId={user?._id}
+          userId={user?.id || user?._id}
           projectId={id}
           onTaskUpdate={handleTaskUpdate}
         />

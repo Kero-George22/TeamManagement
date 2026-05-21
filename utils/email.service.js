@@ -33,9 +33,15 @@ async function sendMail(opts) {
 }
 
 function verificationEmail(to, token) {
-  const verificationUrl = (process.env.VERIFICATION_URL || `https://example.com/verify`) + `?token=${token}`;
-  const html = `<p>Please verify your email by clicking <a href="${verificationUrl}">this link</a>.</p>`;
-  return sendMail({ to, subject: 'Verify your email', html, text: `Verify: ${verificationUrl}` });
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>Verify your email</h2>
+      <p>Your verification code is:</p>
+      <h1 style="background: #f4f4f5; padding: 10px 20px; letter-spacing: 5px; text-align: center; border-radius: 8px;">${token}</h1>
+      <p>Please enter this code on the verification page to complete your registration.</p>
+    </div>
+  `;
+  return sendMail({ to, subject: 'Your Verification Code', html, text: `Your verification code is: ${token}` });
 }
 
 function passwordResetEmail(to, token) {

@@ -67,13 +67,14 @@ const del    = (path)       => request('DELETE', path);
 
 /* Auth */
 const auth = {
-  signup:   (email, password)    => post('/auth/signup',  { email, password }),
-  verify:   (token)              => post('/auth/verify',  { token }),
-  login:    (email, password)    => post('/auth/login',   { email, password }),
-  logout:   ()                   => post('/auth/logout'),
-  forgotPw: (email)              => post('/auth/forgot-password', { email }),
-  resetPw:  (token, newPassword) => post('/auth/reset-password',  { token, newPassword }),
-  changePw: (oldPassword, newPw) => post('/auth/change-password', { oldPassword, newPassword: newPw }),
+  signup:      (email, password)    => post('/auth/signup',  { email, password }),
+  verify:      (token)              => post('/auth/verify',  { token }),
+  login:       (email, password)    => post('/auth/login',   { email, password }),
+  googleLogin: (idToken)            => post('/auth/google',  { idToken }),
+  logout:      ()                   => post('/auth/logout'),
+  forgotPw:    (email)              => post('/auth/forgot-password', { email }),
+  resetPw:     (token, newPassword) => post('/auth/reset-password',  { token, newPassword }),
+  changePw:    (oldPassword, newPw) => post('/auth/change-password', { oldPassword, newPassword: newPw }),
 };
 
 /* Profile */
@@ -85,8 +86,27 @@ const profile = {
 };
 
 /* Projects */
+const PROJECTS_CACHE_KEY = 'projects_list';
+const PROJECTS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const PROJECTS_STALE_TTL = 60 * 60 * 1000; // 1 hour - serve stale data while refreshing
+
 const projects = {
-  list:          ()             => get('/projects').then(res => res?.projects || []),
+  list:          ()             => {
+    const cached = getCache(PROJECTS_CACHE_KEY);
+    if (cached) {
+      // Stale-while-revalidate: return cached data immediately, refresh in background
+      get('/projects').then(res => {
+        const data = res?.projects || [];
+        setCache(PROJECTS_CACHE_KEY, data, PROJECTS_CACHE_TTL);
+      }).catch(() => {});
+      return Promise.resolve(cached);
+    }
+    return get('/projects').then(res => {
+      const data = res?.projects || [];
+      setCache(PROJECTS_CACHE_KEY, data, PROJECTS_CACHE_TTL);
+      return data;
+    });
+  },
   explore:       (params = {})  => {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
@@ -95,40 +115,48 @@ const projects = {
     const q = qs.toString();
     return get(`/projects/explore${q ? `?${q}` : ''}`);
   },
-  create:        (data)         => post('/projects', data),
+  create:        (data)         => post('/projects', data).then((r) => { invalidateCachePrefix('projects'); return r; }),
   get:           (id)           => get(`/projects/${id}`),
-  update:        (id, data)     => put(`/projects/${id}`, data),
-  remove:        (id)           => del(`/projects/${id}`),
+  update:        (id, data)     => put(`/projects/${id}`, data).then((r) => { invalidateCachePrefix('projects'); return r; }),
+  remove:        (id)           => del(`/projects/${id}`).then((r) => { invalidateCachePrefix('projects'); return r; }),
   members:       (id)           => get(`/projects/${id}/members`),
   requestJoin:   (id, roleName) => post(`/projects/${id}/join`, { roleName }),
   joinRequests:  (id)           => get(`/projects/${id}/join-requests`),
-  handleRequest: (pid, rid, st) => patch(`/projects/${pid}/join-requests/${rid}`, { status: st }),
-  joinViaInvite: (token)        => post(`/projects/invite/${token}/join`),
+  handleRequest: (pid, rid, action) => patch(`/projects/${pid}/join-requests/${rid}`, { action }),
+  getProjectByInviteToken: (token) => get(`/projects/invite/${token}`),
+  joinViaInvite: (token, roleName) => post(`/projects/invite/${token}/join`, { roleName }),
   like:          (id)           => post(`/projects/${id}/like`),
   bookmark:      (id)           => post(`/projects/${id}/bookmark`),
 };
 
 /* Tasks */
-const TASKS_CACHE_KEY = 'tasks_dashboard_overview';
-const TASKS_CACHE_TTL = 30 * 1000; // 30 seconds
+const TASKS_CACHE_KEY = 'tasks_dashboard';
+const TASKS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const TASKS_STALE_TTL = 15 * 60 * 1000; // 15 minutes - serve stale data while refreshing
 
 const tasks = {
-  list:     (projectId)       => get(`/tasks/${projectId}`).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
+  list:     (projectId)       => get(`/tasks/${projectId}`).then((r) => { invalidateCachePrefix('tasks'); return r; }),
   board:    (projectId)       => get(`/tasks/${projectId}/board`),
   dashboardOverview: ()       => {
     const cached = getCache(TASKS_CACHE_KEY);
-    if (cached) return Promise.resolve(cached);
+    if (cached) {
+      // Stale-while-revalidate: return cached data immediately, refresh in background
+      get('/tasks/dashboard/overview').then((r) => {
+        setCache(TASKS_CACHE_KEY, r, TASKS_CACHE_TTL);
+      }).catch(() => {});
+      return Promise.resolve(cached);
+    }
     return get('/tasks/dashboard/overview').then((r) => {
       setCache(TASKS_CACHE_KEY, r, TASKS_CACHE_TTL);
       return r;
     });
   },
-  create:   (projectId, data) => post(`/tasks/${projectId}`, data).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
-  generate: (projectId)       => post(`/tasks/${projectId}/generate`).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
+  create:   (projectId, data) => post(`/tasks/${projectId}`, data).then((r) => { invalidateCachePrefix('tasks'); return r; }),
+  generate: (projectId)       => post(`/tasks/${projectId}/generate`).then((r) => { invalidateCachePrefix('tasks'); return r; }),
   get:      (taskId)          => get(`/tasks/task/${taskId}`),
-  update:   (taskId, data)    => put(`/tasks/task/${taskId}`, data).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
-  status:   (taskId, status)  => patch(`/tasks/task/${taskId}/status`, { status }).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
-  remove:   (taskId)          => del(`/tasks/task/${taskId}`).then((r) => { invalidateCachePrefix('tasks_'); return r; }),
+  update:   (taskId, data)    => put(`/tasks/task/${taskId}`, data).then((r) => { invalidateCachePrefix('tasks'); return r; }),
+  status:   (taskId, status)  => patch(`/tasks/task/${taskId}/status`, { status }).then((r) => { invalidateCachePrefix('tasks'); return r; }),
+  remove:   (taskId)          => del(`/tasks/task/${taskId}`).then((r) => { invalidateCachePrefix('tasks'); return r; }),
   comments: (taskId)          => get(`/tasks/task/${taskId}/comments`),
   addComment:(taskId, text)   => post(`/tasks/task/${taskId}/comments`, { text }),
   subtasks: (taskId)          => get(`/tasks/task/${taskId}/subtasks`),
@@ -220,12 +248,31 @@ const submissions = {
 };
 
 /* Goals */
+const GOALS_CACHE_KEY = 'goals_list';
+const GOALS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const GOALS_STALE_TTL = 15 * 60 * 1000; // 15 minutes - serve stale data while refreshing
+
 const goals = {
-  list:         () => get('/goals').then((r) => r?.goals || []),
-  create:       (data) => post('/goals', data),
-  update:       (id, data) => patch(`/goals/${id}`, data),
-  remove:       (id) => del(`/goals/${id}`),
-  importLocal:  (goalsList) => post('/goals/import-local', { goals: goalsList }),
+  list:         () => {
+    const cached = getCache(GOALS_CACHE_KEY);
+    if (cached) {
+      // Stale-while-revalidate: return cached data immediately, refresh in background
+      get('/goals').then((r) => {
+        const data = r?.goals || [];
+        setCache(GOALS_CACHE_KEY, data, GOALS_CACHE_TTL);
+      }).catch(() => {});
+      return Promise.resolve(cached);
+    }
+    return get('/goals').then((r) => {
+      const data = r?.goals || [];
+      setCache(GOALS_CACHE_KEY, data, GOALS_CACHE_TTL);
+      return data;
+    });
+  },
+  create:       (data) => post('/goals', data).then((r) => { invalidateCachePrefix('goals'); return r; }),
+  update:       (id, data) => patch(`/goals/${id}`, data).then((r) => { invalidateCachePrefix('goals'); return r; }),
+  remove:       (id) => del(`/goals/${id}`).then((r) => { invalidateCachePrefix('goals'); return r; }),
+  importLocal:  (goalsList) => post('/goals/import-local', { goals: goalsList }).then((r) => { invalidateCachePrefix('goals'); return r; }),
 };
 
 const API = {

@@ -1,6 +1,7 @@
 const profileService = require('../services/profile.service');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
+const AppError = require('../utils/AppError');
 
 // GET /profile/me
 const getMyProfile = asyncWrapper(async (req, res) => {
@@ -13,6 +14,16 @@ const updateMyProfile = asyncWrapper(async (req, res) => {
   const { username, avatar, bio, email } = req.body;
   const updated = await profileService.updateProfile(req.user._id, { username, avatar, bio, email });
   return success(res, updated, 'Profile updated successfully');
+});
+
+// POST /profile/me/avatar  (multipart/form-data, field: "avatar")
+const uploadAvatar = asyncWrapper(async (req, res) => {
+  if (!req.file) throw new AppError('No image file provided', 400);
+
+  // req.file.path = Cloudinary secure URL set by multer-storage-cloudinary
+  const avatarUrl = req.file.path;
+  const updated = await profileService.updateProfile(req.user._id, { avatar: avatarUrl });
+  return success(res, { avatar: avatarUrl, user: updated }, 'Avatar updated successfully');
 });
 
 // GET /profile/:userId
@@ -34,4 +45,4 @@ const getPublicProfile = asyncWrapper(async (req, res) => {
   return success(res, profile, 'Public profile retrieved successfully');
 });
 
-module.exports = { getMyProfile, updateMyProfile, getUserProfile, getPublicProfile };
+module.exports = { getMyProfile, updateMyProfile, uploadAvatar, getUserProfile, getPublicProfile };

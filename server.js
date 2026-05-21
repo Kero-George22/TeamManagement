@@ -1,9 +1,9 @@
-// test
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
 const helmet = require('helmet');
+const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const errorHandler = require('./middlewares/error.handler');
@@ -24,20 +24,28 @@ const io = new Server(server, {
 app.use(helmet());
 
 // ─────────────────────────────────────────
-// Middleware
+// CORS — must come before routes
+// ─────────────────────────────────────────
+
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
+  : true; // true = allow all in dev
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
+
+// ─────────────────────────────────────────
+// Body parsers
 // ─────────────────────────────────────────
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// CORS — في production استبدل * بـ domain بتاعك
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.CLIENT_URL || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
 
 // ─────────────────────────────────────────
 // API Routes — MUST be before static pages!

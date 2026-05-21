@@ -22,6 +22,74 @@ const DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const CAL_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const GROUP_OPTIONS = [
+  { value: 'date',     label: 'Due Date',   icon: 'fa-calendar' },
+  { value: 'status',   label: 'Status',     icon: 'fa-circle-check' },
+  { value: 'priority', label: 'Priority',   icon: 'fa-flag' },
+  { value: 'assignee', label: 'Assignee',   icon: 'fa-user' },
+  { value: 'project',  label: 'Project',    icon: 'fa-folder' },
+];
+
+const GROUP_LABELS = {
+  date: 'Due Date',
+  status: 'Status',
+  priority: 'Priority',
+  assignee: 'Assignee',
+  project: 'Project',
+};
+
+/* ─── Asana-style Grouping Pill ─────────────────────────── */
+function GroupPill({ icon, label, value, options, current, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        className="tool-btn"
+        onClick={() => setOpen(!open)}
+        style={{ fontSize: '.72rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 5 }}
+      >
+        <i className={`fa-solid ${icon}`} style={{ fontSize: '.65rem', opacity: .7 }} />
+        <span>{value}</span>
+        <i className={`fa-solid fa-chevron-down`} style={{ fontSize: '.55rem', opacity: .5, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }} />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 1000,
+          background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 4, minWidth: 170,
+        }}>
+          <div style={{ padding: '4px 8px 2px', fontSize: '.65rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 10px',
+                border: 'none', borderRadius: 7, background: current === opt.value ? 'rgba(59,130,246,.08)' : 'transparent',
+                color: current === opt.value ? '#3b82f6' : 'var(--text)', fontSize: '.78rem', cursor: 'pointer',
+                fontWeight: current === opt.value ? 600 : 400,
+              }}
+            >
+              <i className={`fa-solid ${opt.icon}`} style={{ fontSize: '.7rem', width: 16, textAlign: 'center', opacity: .6 }} />
+              {opt.label}
+              {current === opt.value && <i className="fa-solid fa-check" style={{ marginLeft: 'auto', fontSize: '.65rem', opacity: .7 }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PRIORITY_CONFIG = {
   High:   { color: '#ef4444', bg: 'rgba(239,68,68,.12)',   label: 'High',   icon: '↑' },
   Medium: { color: '#f59e0b', bg: 'rgba(245,158,11,.12)',  label: 'Medium', icon: '→' },
@@ -275,7 +343,7 @@ function PillDropdown({ label, icon, options, value, onChange, accentColor, acce
 }
 
 /* ─── Inline Task Composer ─────────────────────────────── */
-function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStatus, newTaskInput, setNewTaskInput, onSubmit, onCancel, projectMembers, user }) {
+function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStatus, newTaskInput, setNewTaskInput, onSubmit, onCancel, projectMembers, user, availableStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'] }) {
   const dateBtnRef = useRef(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [datePos, setDatePos] = useState({ top: 0, left: 0 });
@@ -302,8 +370,8 @@ function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStat
     { value: 'Low',    label: 'Low',    color: '#22c55e', dot: true },
   ];
 
-  const statusOpts = Object.entries(STATUS_CONFIG).map(([k, v]) => ({
-    value: k, label: v.label, color: v.color, dot: true,
+  const statusOpts = availableStatuses.map(s => ({
+    value: s, label: STATUS_CONFIG[s]?.label || s, color: STATUS_CONFIG[s]?.color || '#6b7280', dot: true,
   }));
 
   const assigneeOpts = [
@@ -461,7 +529,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   const [view, setView] = useState('list');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState({ field: 'date', dir: 'asc' });
-  const [group, setGroup] = useState('date');
+  const [group, setGroup] = useState(embedded ? 'status' : 'date');
   const [filter, setFilter] = useState({ status: '', project: '', assignee: '' });
   const [columns, setColumns] = useState({ collaborators: true, projects: true, priority: true, status: true });
   const [showMineOnly, setShowMineOnly] = useState(false);
@@ -483,6 +551,22 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   const [addingCustomStatus, setAddingCustomStatus] = useState(false);
   const [newStatusName, setNewStatusName] = useState('');
 
+  // Custom Date Sections
+  const DEFAULT_DATE_SECTIONS = [
+    { id: 'recently', label: 'Recently assigned', type: 'recently' },
+    { id: 'today', label: 'Do today', type: 'today' },
+    { id: 'nextWeek', label: 'Do next week', type: 'nextWeek' },
+    { id: 'later', label: 'Do later', type: 'later' },
+  ];
+
+  const [customDateSections, setCustomDateSections] = useState(() => {
+    const saved = localStorage.getItem('custom_date_sections');
+    return saved ? JSON.parse(saved) : [...DEFAULT_DATE_SECTIONS];
+  });
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingSectionLabel, setEditingSectionLabel] = useState('');
+  const [showSectionEditor, setShowSectionEditor] = useState(false);
+
   // Inline editing
   const [editingTask, setEditingTask] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -492,28 +576,52 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
   // Drag
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const draggedTaskIdRef = useRef(null);
+  useEffect(() => { draggedTaskIdRef.current = draggedTaskId; }, [draggedTaskId]);
 
   // Calendar view state
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d;
   });
 
-  useEffect(() => { loadTasks(); }, [projects, selectedProject, forcedProjectId]);
+  const activeProjectId = activeProject?._id || null;
+  const activeProjectIdRef = useRef(activeProjectId);
+  const prevProjectIdRef = useRef(null);
+  const forcedProjectMembersRef = useRef(forcedProjectMembers);
+  forcedProjectMembersRef.current = forcedProjectMembers;
 
   useEffect(() => {
-    if (forcedProjectMembers?.length) { setProjectMembers(forcedProjectMembers); return; }
-    if (!activeProject?._id) { setProjectMembers([]); return; }
+    activeProjectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
+
+  const loadTasksRef = useRef(loadTasks);
+  loadTasksRef.current = loadTasks;
+
+  useEffect(() => {
+    const currentId = activeProjectIdRef.current;
+    const prevId = prevProjectIdRef.current;
+    if (currentId !== prevId || prevId === null) {
+      prevProjectIdRef.current = currentId;
+      loadTasksRef.current();
+    }
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    const members = forcedProjectMembersRef.current;
+    if (members?.length) { setProjectMembers(members); return; }
+    const pid = activeProjectIdRef.current;
+    if (!pid) { setProjectMembers([]); return; }
     (async () => {
       try {
-        const members = await API.projects.members(activeProject._id);
-        setProjectMembers(members || []);
+        const fetchedMembers = await API.projects.members(pid);
+        setProjectMembers(fetchedMembers || []);
       } catch { setProjectMembers([]); }
     })();
-  }, [activeProject?._id, forcedProjectMembers]);
+  }, [activeProjectId]);
 
   function openInlineComposer(sectionId) {
     // Pre-fill status if grouping by status
-    const activeGroup = view === 'board' ? 'status' : group;
+    const activeGroup = group;
     const statusValue = activeGroup === 'status' ? sectionId : 'Todo';
     // Pre-fill priority if grouping by priority
     const priorityValue = activeGroup === 'priority' && ['High','Medium','Low'].includes(sectionId) ? sectionId : 'Medium';
@@ -545,7 +653,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
   async function handleDropStatus(e, targetStatus, overrideTaskId = null) {
     if (e && e.preventDefault) e.preventDefault();
-    const taskIdToUse = overrideTaskId || draggedTaskId;
+    const taskIdToUse = overrideTaskId || draggedTaskIdRef.current;
     if (!taskIdToUse) return;
     const t = tasks.find(x => x._id === taskIdToUse);
     if (!t || t.status === targetStatus) return;
@@ -624,26 +732,83 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     toast.success('Status removed');
   }
 
+  // Custom Date Sections Management
+  function saveCustomSections(sections) {
+    setCustomDateSections(sections);
+    localStorage.setItem('custom_date_sections', JSON.stringify(sections));
+  }
+
+  function addCustomSection() {
+    const newId = `custom_${Date.now()}`;
+    const newSection = { id: newId, label: 'New Section', type: 'custom' };
+    saveCustomSections([...customDateSections, newSection]);
+    setEditingSectionId(newId);
+    setEditingSectionLabel('New Section');
+    toast.success('Section added');
+  }
+
+  function updateSectionLabel(sectionId, newLabel) {
+    const updated = customDateSections.map(s =>
+      s.id === sectionId ? { ...s, label: newLabel } : s
+    );
+    saveCustomSections(updated);
+  }
+
+  function removeCustomSection(sectionId) {
+    if (DEFAULT_DATE_SECTIONS.find(s => s.id === sectionId)) {
+      toast.error('Cannot remove default sections');
+      return;
+    }
+    const updated = customDateSections.filter(s => s.id !== sectionId);
+    saveCustomSections(updated);
+    setEditingSectionId(null);
+    toast.success('Section removed');
+  }
+
+  function startEditingSection(sectionId, currentLabel) {
+    setEditingSectionId(sectionId);
+    setEditingSectionLabel(currentLabel);
+  }
+
+  function finishEditingSection() {
+    if (editingSectionId && editingSectionLabel.trim()) {
+      updateSectionLabel(editingSectionId, editingSectionLabel.trim());
+    }
+    setEditingSectionId(null);
+    setEditingSectionLabel('');
+  }
+
+  function resetSectionsToDefault() {
+    saveCustomSections([...DEFAULT_DATE_SECTIONS]);
+    setEditingSectionId(null);
+    toast.success('Sections reset to default');
+  }
+
   async function handleAddTask(sectionKey) {
     if (!newTaskInput.title.trim()) return;
     const p = activeProject || projects[0];
     if (!p) { toast.error('Join a project first'); return; }
 
-    const activeGroup = view === 'board' ? 'status' : group;
+    const activeGroup = group;
 
     let payload = {
       title: newTaskInput.title.trim(),
       description: newTaskInput.requirements.trim() || 'Added from My Tasks',
       assignedRole: 'Developer',
-      assignedTo: newTaskInput.assignee === 'unassigned' ? null : (newTaskInput.assignee === 'me' ? user._id : newTaskInput.assignee),
+      assignedTo: newTaskInput.assignee === 'unassigned' ? null : (newTaskInput.assignee === 'me' ? 'me' : newTaskInput.assignee),
       priority: newTaskInput.priority || 'Medium',
       status: newTaskInput.status || 'Todo',
     };
 
     if (activeGroup === 'date') {
-      if (sectionKey === 'today') payload.deadline = new Date().toISOString();
-      else if (sectionKey === 'nextWeek') { const d = new Date(); d.setDate(d.getDate()+3); payload.deadline = d.toISOString(); }
-      else if (sectionKey === 'later') { const d = new Date(); d.setDate(d.getDate()+14); payload.deadline = d.toISOString(); }
+      const section = customDateSections.find(s => s.id === sectionKey);
+      if (section) {
+        if (section.type === 'today') payload.deadline = new Date().toISOString();
+        else if (section.type === 'nextWeek') { const d = new Date(); d.setDate(d.getDate()+3); payload.deadline = d.toISOString(); }
+        else if (section.type === 'later') { const d = new Date(); d.setDate(d.getDate()+14); payload.deadline = d.toISOString(); }
+        else if (section.type === 'recently') { /* no deadline */ }
+        else if (section.type === 'custom') { /* custom section - no automatic deadline */ }
+      }
     } else if (activeGroup === 'status') {
       payload.status = sectionKey;
     } else if (activeGroup === 'priority') {
@@ -674,7 +839,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         priority: fd.get('priority') || 'Medium',
         status: fd.get('status') || 'Todo',
         deadline: fd.get('deadline') || undefined,
-        assignedTo: assignedTo === 'unassigned' ? null : (assignedTo || user._id)
+        assignedTo: assignedTo === 'unassigned' ? null : (assignedTo === 'me' ? 'me' : assignedTo)
       });
       toast.success('Task created!');
       setTaskModal(false);
@@ -727,7 +892,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }, [tasks, search, filter, sort, user, view, showMineOnly]);
 
   const processedGroups = useMemo(() => {
-    const activeGroup = view === 'board' ? 'status' : group;
+    const activeGroup = view === 'board' ? 'status' : group; // Board always groups by status for DnD
     const list = processedList;
     const result = [];
 
@@ -735,27 +900,49 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       const now = new Date(); now.setHours(0,0,0,0);
       const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
       const nw = new Date(now); nw.setDate(nw.getDate()+7);
-      const sections = { recently: [], today: [], nextWeek: [], later: [] };
+
+      // Build sections map based on custom date sections
+      const sectionsMap = {};
+      customDateSections.forEach(section => {
+        sectionsMap[section.id] = [];
+      });
+
       list.forEach(t => {
-        if (!t.deadline) sections.recently.push(t);
-        else {
+        let assigned = false;
+        if (!t.deadline) {
+          if (sectionsMap.recently) { sectionsMap.recently.push(t); assigned = true; }
+        } else {
           const d = new Date(t.deadline); d.setHours(0,0,0,0);
-          if (d < tomorrow) sections.today.push(t);
-          else if (d < nw) sections.nextWeek.push(t);
-          else sections.later.push(t);
+          if (d < tomorrow && sectionsMap.today) { sectionsMap.today.push(t); assigned = true; }
+          else if (d < nw && sectionsMap.nextWeek) { sectionsMap.nextWeek.push(t); assigned = true; }
+        }
+        // If not assigned to any section, put in 'later' or first available custom section
+        if (!assigned) {
+          if (sectionsMap.later) sectionsMap.later.push(t);
+          else if (customDateSections.length > 0) {
+            sectionsMap[customDateSections[customDateSections.length - 1].id].push(t);
+          }
         }
       });
-      result.push({ id: 'recently', label: 'Recently assigned', tasks: sections.recently });
-      result.push({ id: 'today', label: 'Do today', tasks: sections.today });
-      result.push({ id: 'nextWeek', label: 'Do next week', tasks: sections.nextWeek });
-      result.push({ id: 'later', label: 'Do later', tasks: sections.later });
+
+      // Build result from custom sections
+      customDateSections.forEach(section => {
+        result.push({
+          id: section.id,
+          label: section.label,
+          tasks: sectionsMap[section.id] || [],
+          isCustom: section.type === 'custom',
+        });
+      });
 
     } else if (activeGroup === 'status') {
-      const defaultStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
-      const allStatuses = [...defaultStatuses, ...customStatuses];
-      const map = {}; allStatuses.forEach(s => map[s] = []);
-      list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map['Todo'].push(t); });
-      allStatuses.forEach(s => result.push({ id: s, label: STATUS_CONFIG[s]?.label || s, tasks: map[s] }));
+      // Use project's custom taskStatuses when embedded, otherwise use defaults + customStatuses
+      const projectStatuses = embedded && activeProject?.taskStatuses?.length
+        ? activeProject.taskStatuses
+        : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses];
+      const map = {}; projectStatuses.forEach(s => map[s] = []);
+      list.forEach(t => { if(map[t.status]) map[t.status].push(t); else map[projectStatuses[0]].push(t); });
+      projectStatuses.forEach(s => result.push({ id: s, label: STATUS_CONFIG[s]?.label || s, tasks: map[s] }));
 
     } else if (activeGroup === 'priority') {
       const map = { High: [], Medium: [], Low: [], 'No Priority': [] };
@@ -768,6 +955,16 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       result.push({ id: 'Low',         label: '↓ Low Priority',     tasks: map.Low,          accentColor: '#22c55e' });
       result.push({ id: 'No Priority', label: '— No Priority',      tasks: map['No Priority'], accentColor: '#9ca3af' });
 
+    } else if (activeGroup === 'assignee') {
+      const map = {};
+      list.forEach(t => {
+        const a = t.assignedTo;
+        const key = a?._id || 'unassigned';
+        if (!map[key]) map[key] = { id: key, label: a?.username || a?.email || 'Unassigned', tasks: [], avatar: a };
+        map[key].tasks.push(t);
+      });
+      result.push(...Object.values(map));
+
     } else if (activeGroup === 'project') {
       const map = {};
       list.forEach(t => {
@@ -778,7 +975,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       result.push(...Object.values(map));
     }
     return result;
-  }, [processedList, group, customStatuses, view]);
+  }, [processedList, group, customStatuses, view, customDateSections, embedded, activeProject?.taskStatuses]);
 
   // Calendar cells
   const calendarCells = useMemo(() => {
@@ -962,9 +1159,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       {!embedded && <Topbar title="My Tasks" />}
 
       {/* ── Toolbar ─────────────────────────────────────── */}
-      <div className="toolbar">
+      <div className="toolbar" style={{ flexWrap: 'nowrap', overflowX: 'auto', gap: 8 }}>
         {/* View switcher */}
-        <div style={{ display: 'flex', gap: 2, background: 'var(--bg)', borderRadius: 10, padding: 3 }}>
+        <div style={{ display: 'flex', gap: 2, background: 'var(--bg)', borderRadius: 10, padding: 3, flexShrink: 0 }}>
           {[['list','fa-list','List'],['board','fa-trello','Board'],['calendar','fa-calendar','Calendar']].map(([v, icon, lbl]) => (
             <button
               key={v}
@@ -979,28 +1176,39 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           ))}
         </div>
 
-        <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 2px' }} />
+        <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 2px', flexShrink: 0 }} />
 
+        {/* Asana-style Grouping Pills */}
         {view !== 'calendar' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg)', borderRadius: 8, padding: '4px 10px' }}>
-              <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Group</span>
-              <select
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0 }}>
+            {view === 'board' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: '.72rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
+                <i className="fa-solid fa-circle-check" style={{ fontSize: '.65rem', opacity: .7 }} />
+                <span>Status</span>
+              </div>
+            ) : (
+              <GroupPill
+                icon="fa-layer-group"
+                label="Group"
+                value={GROUP_LABELS[group] || group}
+                options={GROUP_OPTIONS.map(o => ({ value: o.value, label: o.label, icon: o.icon }))}
+                current={group}
+                onChange={setGroup}
+              />
+            )}
+            {!embedded && group === 'date' && (
+              <button
                 className="tool-btn"
-                value={group}
-                onChange={e => setGroup(e.target.value)}
-                style={{ border: 'none', background: 'transparent', padding: '4px 6px' }}
+                onClick={() => setShowSectionEditor(!showSectionEditor)}
+                style={{ fontSize: '.72rem', padding: '5px 10px', flexShrink: 0 }}
               >
-                <option value="date">Due Date</option>
-                <option value="status">Status</option>
-                <option value="priority">Priority</option>
-                <option value="project">Project</option>
-              </select>
-            </div>
-          </>
+                <i className="fa-solid fa-pen-to-square" /> Sections
+              </button>
+            )}
+          </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>Assignee</span>
           <select className="tool-btn" value={filter.assignee} onChange={e => setFilter(f => ({ ...f, assignee: e.target.value }))}>
             <option value="">Everyone</option>
@@ -1018,6 +1226,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         <button
           className={`tool-btn ${showMineOnly ? 'active' : ''}`}
           onClick={() => setShowMineOnly(v => !v)}
+          style={{ flexShrink: 0 }}
         >
           <i className="fa-solid fa-user" style={{ fontSize: '.72rem' }} />
           {showMineOnly ? 'My tasks only' : 'All tasks'}
@@ -1026,7 +1235,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         <div style={{ flex: 1 }} />
 
         {/* Search */}
-        <div style={{ position: 'relative', width: 200 }}>
+        <div style={{ position: 'relative', width: 200, flexShrink: 0 }}>
           <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.75rem' }} />
           <input
             type="text"
@@ -1040,7 +1249,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
         {/* Column toggles */}
         {view === 'list' && (
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
             {[['collaborators','Team'],['priority','Priority'],['status','Status'],['projects','Project']].map(([key, label]) => (
               <button
                 key={key}
@@ -1054,10 +1263,63 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           </div>
         )}
 
-        <button className="btn btn--green btn--sm" onClick={() => setTaskModal(true)} style={{ borderRadius: 10 }}>
+        <button className="btn btn--green btn--sm" onClick={() => setTaskModal(true)} style={{ borderRadius: 10, flexShrink: 0 }}>
           <i className="fa-solid fa-plus" style={{ fontSize: '.75rem' }} /> Add Task
         </button>
       </div>
+
+      {/*  Section Editor ─────────────────────────────────── */}
+      {showSectionEditor && group === 'date' && !embedded && (
+        <div style={{ background: 'var(--white)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, boxShadow: 'var(--shadow)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <h4 style={{ margin: 0, fontSize: '.85rem', fontWeight: 700 }}>Manage Sections</h4>
+            <button className="btn btn--green btn--sm" onClick={addCustomSection} style={{ borderRadius: 8, fontSize: '.72rem' }}>
+              <i className="fa-solid fa-plus" /> Add Section
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {customDateSections.map((section, index) => (
+              <div key={section.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, background: 'var(--bg)' }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 20 }}>{index + 1}.</span>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 16 }}>
+                  {section.type === 'custom' ? <i className="fa-solid fa-pen" /> : <i className="fa-solid fa-lock" style={{ fontSize: '.6rem' }} />}
+                </span>
+                {editingSectionId === section.id ? (
+                  <input
+                    autoFocus
+                    className="form-input"
+                    value={editingSectionLabel}
+                    onChange={e => setEditingSectionLabel(e.target.value)}
+                    onBlur={finishEditingSection}
+                    onKeyDown={e => { if (e.key === 'Enter') finishEditingSection(); if (e.key === 'Escape') setEditingSectionId(null); }}
+                    style={{ flex: 1, padding: '4px 8px', fontSize: '.8rem' }}
+                  />
+                ) : (
+                  <span
+                    style={{ flex: 1, fontSize: '.8rem', cursor: section.type !== 'custom' ? 'default' : 'pointer' }}
+                    onClick={() => section.type === 'custom' && startEditingSection(section.id, section.label)}
+                  >
+                    {section.label}
+                  </span>
+                )}
+                {section.type === 'custom' && (
+                  <button
+                    onClick={() => removeCustomSection(section.id)}
+                    style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.8rem' }}
+                  >
+                    <i className="fa-solid fa-trash" />
+                  </button>
+                )}
+                <i className="fa-solid fa-grip-vertical" style={{ color: 'var(--text-muted)', fontSize: '.7rem', cursor: 'grab' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: '.7rem', color: 'var(--text-muted)' }}>
+            <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
+            Click on custom section names to edit. Default sections cannot be removed.
+          </div>
+        </div>
+      )}
 
       {/* ── Main content ─────────────────────────────────── */}
       <div style={{ padding: '20px 28px', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -1087,10 +1349,32 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                   >
                     <i className={`fa-solid fa-chevron-${collapsed[g.id] ? 'right' : 'down'}`} style={{ color: g.accentColor || 'var(--text-muted)', fontSize: '.7rem', width: 12 }} />
                     {g.accentColor && <span className="priority-section-bar" style={{ background: g.accentColor }} />}
-                    <h4 style={{ margin: 0, fontSize: '.85rem', fontWeight: 700, color: g.accentColor || 'var(--text-primary)' }}>
-                      {g.label}
-                    </h4>
+                    {editingSectionId === g.id ? (
+                      <input
+                        autoFocus
+                        className="form-input"
+                        value={editingSectionLabel}
+                        onChange={e => setEditingSectionLabel(e.target.value)}
+                        onBlur={finishEditingSection}
+                        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') finishEditingSection(); if (e.key === 'Escape') setEditingSectionId(null); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ flex: 1, padding: '4px 8px', fontSize: '.85rem', maxWidth: 200 }}
+                      />
+                    ) : (
+                      <h4 style={{ margin: 0, fontSize: '.85rem', fontWeight: 700, color: g.accentColor || 'var(--text-primary)' }}>
+                        {g.label}
+                      </h4>
+                    )}
                     <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 500, background: 'var(--bg)', borderRadius: 99, padding: '1px 8px' }}>{g.tasks.length}</span>
+                    {g.isCustom && editingSectionId !== g.id && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); startEditingSection(g.id, g.label); }}
+                        style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.75rem', marginLeft: 'auto' }}
+                        title="Edit section name"
+                      >
+                        <i className="fa-solid fa-pen" />
+                      </button>
+                    )}
                   </div>
 
                   {!collapsed[g.id] && (
@@ -1181,7 +1465,10 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                                     border: 'none', cursor: 'pointer', outline: 'none'
                                   }}
                                 >
-                                  {['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses].map(st => (
+                                  {(embedded && activeProject?.taskStatuses?.length
+                                    ? activeProject.taskStatuses
+                                    : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]
+                                  ).map(st => (
                                     <option key={st} value={st} style={{ color: '#000' }}>{st}</option>
                                   ))}
                                 </select>
@@ -1212,6 +1499,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                             onCancel={() => setNewTaskInput(emptyComposer)}
                             projectMembers={projectMembers}
                             user={user}
+                            availableStatuses={embedded && activeProject?.taskStatuses?.length
+                              ? activeProject.taskStatuses
+                              : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]}
                           />
                         </div>
                       ) : (
@@ -1240,7 +1530,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                 key={g.id}
                 className="jira-col"
                 onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.currentTarget.classList.remove('drag-over'); handleDropStatus(e, g.id); }}
+                onDrop={e => { e.currentTarget.classList.remove('drag-over'); const dtId = e.dataTransfer.getData('text/plain'); if (dtId) { handleDropStatus(e, g.id, dtId); } else { handleDropStatus(e, g.id); } }}
                 onDragEnter={e => e.currentTarget.classList.add('drag-over')}
                 onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
               >
@@ -1263,8 +1553,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                       key={t._id}
                       className="jira-card"
                       draggable
-                      onDragStart={e => { setDraggedTaskId(t._id); e.dataTransfer.effectAllowed = 'move'; }}
-                      onDragEnd={() => setDraggedTaskId(null)}
+                      onDragStart={e => { setDraggedTaskId(t._id); draggedTaskIdRef.current = t._id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t._id); }}
+                      onDragEnd={() => { setDraggedTaskId(null); draggedTaskIdRef.current = null; }}
                       onClick={() => setSelectedTask(t)}
                       style={{ position: 'relative', borderLeftColor: cardColor }}
                     >
@@ -1311,6 +1601,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                     onCancel={() => setNewTaskInput(emptyComposer)}
                     projectMembers={projectMembers}
                     user={user}
+                    availableStatuses={embedded && activeProject?.taskStatuses?.length
+                      ? activeProject.taskStatuses
+                      : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved', ...customStatuses]}
                   />
                 ) : (
                   <div className="jira-inline-add" onClick={() => openInlineComposer(g.id)}>
@@ -1320,7 +1613,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
               </div>
             ))}
 
-            {/* Add custom status column */}
+            {/* Add custom status column (only for global My Tasks page) */}
+            {!embedded && (
             <div style={{
               background: 'var(--bg)', border: '2px dashed var(--border)', borderRadius: 14,
               minWidth: 280, maxWidth: 280, padding: 14,
@@ -1367,6 +1661,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                 </div>
               )}
             </div>
+            )}
           </div>
 
         ) : (

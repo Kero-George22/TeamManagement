@@ -79,12 +79,14 @@ export default function DashboardPage() {
   const location = useLocation();
 
   const profile = user; // fallback, or use state
-  const [allTasks, setAllTasks] = useState(null);
+  const [allTasks, setAllTasks] = useState(() => {
+    const cached = API.tasks.dashboardOverview ? null : null;
+    return null;
+  });
   const [selectedTask, setSelectedTask] = useState(null);
   
   useEffect(() => {
     let isMounted = true;
-    setAllTasks(null);
 
     (async () => {
       try {
@@ -92,7 +94,7 @@ export default function DashboardPage() {
         const tasks = response?.tasks || [];
         if (isMounted) setAllTasks(tasks);
       } catch {
-        if (isMounted) setAllTasks([]);
+        if (isMounted && allTasks === null) setAllTasks([]);
       }
     })();
 

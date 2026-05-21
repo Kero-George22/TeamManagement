@@ -192,18 +192,14 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
 }
 
 // ─────────────────────────────────────────
-// GET ALL PROJECTS — public discovery
+// GET MY PROJECTS — user's own/joined projects
 // ─────────────────────────────────────────
 
 async function getAllProjects(filters = {}, page = 1, limit = 10, userId = null) {
-  // Base condition: public projects OR user's own/joined projects
-  const orConditions = [{ isPrivate: false }];
-  if (userId) {
-    const uid = new mongoose.Types.ObjectId(String(userId));
-    orConditions.push({ owner: uid });
-    orConditions.push({ 'members.userId': uid });
-  }
-  const query = { $or: orConditions };
+  if (!userId) throw new AppError('User ID is required', 400);
+  
+  const uid = new mongoose.Types.ObjectId(String(userId));
+  const query = { $or: [{ owner: uid }, { 'members.userId': uid }] };
 
   if (filters.status) {
     const valid = ['Recruiting', 'In-Progress', 'Completed'];
@@ -301,6 +297,15 @@ async function requestToJoin(projectId, userId, roleName) {
   if (project.status !== 'Recruiting')
     throw new AppError(`Cannot join a project with status: ${project.status}`, 400);
 
+  if (String(project.owner) === String(userId))
+    throw new AppError('You are the owner of this project', 400);
+
+  const isAlreadyMember = (project.members || []).some(
+    (m) => String(m.userId) === String(userId)
+  );
+  if (isAlreadyMember)
+    throw new AppError('You are already a member of this project', 400);
+
   const alreadyRequested = (project.joinRequests || []).some(
     (r) => String(r.userId) === String(userId) && r.status === 'pending'
   );
@@ -323,6 +328,27 @@ async function requestToJoin(projectId, userId, roleName) {
     requestedAt: new Date(),
   });
   await project.save();
+
+  // Notify the owner
+  const notificationService = require('./notification.service');
+  const socketService = require('./socket.service');
+  const userObj = await require('../models/user.model').findById(userId).select('username');
+
+  try {
+    const notification = await notificationService.createNotification({
+      recipient: project.owner,
+      sender: userId,
+      type: 'join_request',
+      title: 'New Join Request',
+      message: `${userObj?.username || 'Someone'} requested to join "${project.title}" as ${roleName}`,
+      project: project._id,
+    });
+    if (notification) {
+      socketService.sendNotificationToUser(project.owner, notification);
+    }
+  } catch (err) {
+    console.error('Failed to send join request notification:', err);
+  }
 
   return { ok: true, message: 'Join request sent — waiting for owner approval' };
 }
@@ -357,7 +383,7 @@ async function joinViaInvite(token, userId, roleName) {
       rolesRequired: {
         $elemMatch: {
           roleName: { $regex: new RegExp(`^${roleName}$`, 'i') },
-          $expr:    { $lt: ['$filledSlots', '$totalSlots'] },
+          filledSlots: { $lt: role.totalSlots },
         },
       },
     },
@@ -406,9 +432,27 @@ async function handleJoinRequest(projectId, requestId, action, ownerId) {
   );
   if (!request) throw new AppError('Join request not found or already handled', 404);
 
+  const notificationService = require('./notification.service');
+  const socketService = require('./socket.service');
+
   if (action === 'reject') {
     request.status = 'rejected';
     await project.save();
+    
+    try {
+      const notification = await notificationService.createNotification({
+        recipient: request.userId,
+        sender: ownerId,
+        type: 'join_request_rejected',
+        title: 'Join Request Declined',
+        message: `Your request to join "${project.title}" was declined.`,
+        project: project._id,
+      });
+      if (notification) socketService.sendNotificationToUser(request.userId, notification);
+    } catch (err) {
+      console.error('Failed to notify rejection:', err);
+    }
+
     return { ok: true, message: 'Request rejected' };
   }
 
@@ -425,6 +469,20 @@ async function handleJoinRequest(projectId, requestId, action, ownerId) {
 
   await project.save();
   await _checkAndActivate(project);
+
+  try {
+    const notification = await notificationService.createNotification({
+      recipient: request.userId,
+      sender: ownerId,
+      type: 'join_request_accepted',
+      title: 'Join Request Accepted!',
+      message: `You are now a member of "${project.title}"!`,
+      project: project._id,
+    });
+    if (notification) socketService.sendNotificationToUser(request.userId, notification);
+  } catch (err) {
+    console.error('Failed to notify acceptance:', err);
+  }
 
   await project.populate([
     { path: 'owner',          select: 'email username avatar' },
@@ -464,7 +522,7 @@ async function getJoinRequests(projectId, ownerId) {
     {
       $project: {
         _id: '$joinRequests._id',
-        userId: {
+        user: {
           _id: '$requestUser._id',
           email: '$requestUser.email',
           username: '$requestUser.username',

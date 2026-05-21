@@ -1,22 +1,62 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
 
+const GOOGLE_CLIENT_ID = '934607695812-n0omi6fdbfn8rb2v3503n9t1jp89e7fe.apps.googleusercontent.com';
+
 export default function LoginPage() {
   const [tab, setTab]       = useState('login');
   const [showVerify, setShowVerify] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const { login, isLoggedIn } = useAuth();
   const toast    = useToast();
   const navigate = useNavigate();
+  const [showPw, setShowPw] = useState({});
+  const togglePw = (id) => setShowPw(p => ({ ...p, [id]: !p[id] }));
 
   useEffect(() => {
     if (isLoggedIn) {
       navigate('/app/dashboard', { replace: true });
     }
   }, [isLoggedIn, navigate]);
+
+  const handleGoogleCredential = useCallback(async (response) => {
+    const idToken = response.credential;
+    if (!idToken) return;
+    setGoogleLoading(true);
+    try {
+      const data = await API.auth.googleLogin(idToken);
+      login(data);
+      toast.success('Signed in with Google!');
+      setTimeout(() => navigate('/app/dashboard'), 600);
+    } catch (err) {
+      toast.error(err.message || 'Google sign-in failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [login, navigate, toast]);
+
+  useEffect(() => {
+    if (!window.google) return;
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+    });
+    
+    // Render the official Google button
+    const btnContainer = document.getElementById('google-btn-container');
+    if (btnContainer) {
+      window.google.accounts.id.renderButton(btnContainer, {
+        theme: 'outline',
+        size: 'large',
+        text: tab === 'signup' ? 'signup_with' : 'signin_with',
+        width: 320 // matches our typical form width
+      });
+    }
+  }, [handleGoogleCredential, tab]);
 
   if (isLoggedIn) return null;
 
@@ -56,8 +96,6 @@ export default function LoginPage() {
     } catch (err) { toast.error(err.message); }
   }
 
-  const [showPw, setShowPw] = useState({});
-  const togglePw = (id) => setShowPw(p => ({ ...p, [id]: !p[id] }));
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
@@ -87,10 +125,7 @@ export default function LoginPage() {
           {tab === 'login' && !showVerify && (
             <form className="auth-form" onSubmit={handleLogin}>
               <div><h2 className="auth-title">Welcome back</h2><p className="auth-sub">Sign in to your TeamForge account</p></div>
-              <button type="button" className="btn btn--outline" style={{ width: '100%', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--sidebar-bg)', color: 'var(--white)', borderColor: 'var(--border)' }}>
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: 18 }} />
-                Sign in with Google
-              </button>
+              <div id="google-btn-container" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', opacity: googleLoading ? 0.7 : 1, pointerEvents: googleLoading ? 'none' : 'auto' }}></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
                 <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Or continue with email</span>
@@ -122,10 +157,7 @@ export default function LoginPage() {
           {tab === 'signup' && !showVerify && (
             <form className="auth-form" onSubmit={handleSignup}>
               <div><h2 className="auth-title">Create account</h2><p className="auth-sub">Join TeamForge — it's free</p></div>
-              <button type="button" className="btn btn--outline" style={{ width: '100%', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--sidebar-bg)', color: 'var(--white)', borderColor: 'var(--border)' }}>
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{ width: 18 }} />
-                Sign up with Google
-              </button>
+              <div id="google-btn-container" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', opacity: googleLoading ? 0.7 : 1, pointerEvents: googleLoading ? 'none' : 'auto' }}></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
                 <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Or continue with email</span>
@@ -155,10 +187,10 @@ export default function LoginPage() {
             <form className="auth-form" onSubmit={handleVerify} style={{ textAlign: 'center', padding: '20px 0' }}>
               <i className="fa-regular fa-envelope-open" style={{ fontSize: '3rem', color: 'var(--green)', marginBottom: 16, display: 'block' }} />
               <h3 style={{ fontWeight: 700, marginBottom: 8 }}>Check your inbox</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '.875rem', marginBottom: 24 }}>Paste your verification token below.</p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '.875rem', marginBottom: 24 }}>Enter the 6-digit verification code we sent you.</p>
               <div className="form-group" style={{ textAlign: 'left' }}>
-                <label className="form-label">Verification Token</label>
-                <input name="token" className="form-input" placeholder="Paste token here" required />
+                <label className="form-label">Verification Code</label>
+                <input name="token" className="form-input" placeholder="123456" required style={{ letterSpacing: '5px', textAlign: 'center', fontSize: '1.25rem', fontWeight: 600 }} maxLength={6} />
               </div>
               <button className="btn btn--green" style={{ width: '100%', marginTop: 12 }}>Verify Email</button>
             </form>

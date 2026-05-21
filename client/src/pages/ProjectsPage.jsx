@@ -12,6 +12,8 @@ import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
 const STATUS_COLORS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'pink' };
 
+const DEFAULT_TASK_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+
 const CATEGORY_OPTIONS = [
   'Web Development', 'Mobile Development', 'Software Development',
   'Data Science & AI', 'DevOps & Cloud', 'Cybersecurity',
@@ -38,6 +40,8 @@ export default function ProjectsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [roles, setRoles]         = useState([{ roleName: '', totalSlots: 1 }]);
+  const [taskStatuses, setTaskStatuses] = useState([...DEFAULT_TASK_STATUSES]);
+  const [showStatusEditor, setShowStatusEditor] = useState(false);
 
   useEffect(() => { loadProjects(); }, []);
 
@@ -72,15 +76,43 @@ export default function ProjectsPage() {
         language: fd.get('language') || 'Other',
         isPrivate: fd.get('isPrivate') === 'on',
         rolesRequired: roles.filter(r => r.roleName.trim()),
+        taskStatuses: taskStatuses.length > 0 ? taskStatuses : DEFAULT_TASK_STATUSES,
       });
       toast.success('Project created!');
       setModalOpen(false);
       setRoles([{ roleName: '', totalSlots: 1 }]);
+      setTaskStatuses([...DEFAULT_TASK_STATUSES]);
+      setShowStatusEditor(false);
       loadProjects();
       refreshProjects();
       navigate(`/app/project/${proj._id || proj.project?._id}`, { state: { from: location.pathname + location.search } });
     } catch (err) { toast.error(err.message); }
     finally { setCreating(false); }
+  }
+
+  function handleModalClose() {
+    setModalOpen(false);
+    setRoles([{ roleName: '', totalSlots: 1 }]);
+    setTaskStatuses([...DEFAULT_TASK_STATUSES]);
+    setShowStatusEditor(false);
+  }
+
+  function addTaskStatus() {
+    setTaskStatuses([...taskStatuses, '']);
+  }
+
+  function updateTaskStatus(index, value) {
+    const updated = [...taskStatuses];
+    updated[index] = value;
+    setTaskStatuses(updated);
+  }
+
+  function removeTaskStatus(index) {
+    setTaskStatuses(taskStatuses.filter((_, i) => i !== index));
+  }
+
+  function resetToDefaultStatuses() {
+    setTaskStatuses([...DEFAULT_TASK_STATUSES]);
   }
 
   return (
@@ -179,7 +211,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Create Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Project" maxWidth={560}>
+      <Modal open={modalOpen} onClose={handleModalClose} title="New Project" maxWidth={560}>
         <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-group"><label className="form-label">Title *</label><input name="title" className="form-input" required placeholder="e.g. E-commerce Platform" /></div>
           <div className="form-group"><label className="form-label">Description *</label><textarea name="description" className="form-input" rows={3} required placeholder="What's this project about?" /></div>
@@ -214,6 +246,40 @@ export default function ProjectsPage() {
               </div>
             ))}
           </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Task Statuses <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '.75rem' }}>(optional, defaults to standard)</span></span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => setShowStatusEditor(!showStatusEditor)} style={{ color: 'var(--green)', fontWeight: 600, fontSize: '.78rem', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  {showStatusEditor ? 'Hide' : 'Customize'}
+                </button>
+                {showStatusEditor && (
+                  <button type="button" onClick={resetToDefaultStatuses} style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '.78rem', background: 'none', border: 'none', cursor: 'pointer' }}>Reset</button>
+                )}
+              </div>
+            </label>
+            
+            {!showStatusEditor ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                {taskStatuses.map((s, i) => (
+                  <span key={i} className="chip" style={{ fontSize: '.75rem' }}>{s}</span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: 6 }}>
+                {taskStatuses.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                    <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', width: 20 }}>{i + 1}.</span>
+                    <input className="form-input" placeholder="Status name" value={s} onChange={e => updateTaskStatus(i, e.target.value)} style={{ flex: 1 }} />
+                    <button type="button" onClick={() => removeTaskStatus(i)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.85rem' }}><i className="fa-solid fa-trash" /></button>
+                  </div>
+                ))}
+                <button type="button" onClick={addTaskStatus} style={{ marginTop: 8, color: 'var(--green)', fontWeight: 600, fontSize: '.78rem', background: 'none', border: 'none', cursor: 'pointer' }}>+ Add Status</button>
+              </div>
+            )}
+          </div>
+
           <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <input type="checkbox" name="isPrivate" style={{ width: 18, height: 18, accentColor: 'var(--green)', cursor: 'pointer' }} />
             <label style={{ fontSize: '.875rem', cursor: 'pointer' }}>Private project</label>
