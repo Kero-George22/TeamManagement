@@ -30,7 +30,10 @@ export function SocketProvider({ children }) {
       transports: ['websocket', 'polling'],
     });
 
-    socket.on('connect', () => setConnected(true));
+    socket.on('connect', () => {
+      setConnected(true);
+      socket.emit('join:dms');
+    });
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', () => setConnected(false));
 

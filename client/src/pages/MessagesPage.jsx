@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useSocket } from '../contexts/SocketContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
@@ -8,6 +9,7 @@ import Avatar from '../components/ui/Avatar';
 
 export default function MessagesPage() {
   const { user: me } = useAuth();
+  const { emitDMMessage } = useSocket();
   const toast = useToast();
   const [params] = useSearchParams();
 
@@ -25,28 +27,64 @@ export default function MessagesPage() {
 
   useEffect(() => { if (activeId) loadMessages(activeId); }, [activeId]);
 
+  useEffect(() => {
+    const handleNewMessage = (e) => {
+      const msg = e.detail;
+      const senderId = msg.sender?._id || msg.sender;
+      
+      setConvs(prev => {
+        if (!prev) return prev;
+        const exist = prev.find(c => c.user?._id === senderId);
+        const next = exist ? prev.filter(c => c.user?._id !== senderId) : [...prev];
+        const updatedConv = exist ? { ...exist, lastMessage: msg } : { user: msg.sender, lastMessage: msg };
+        return [updatedConv, ...next];
+      });
+
+      if (activeId === senderId) {
+        setMsgs(prev => {
+          if (prev && prev.some(m => m._id === msg._id)) return prev;
+          return [...(prev || []), msg];
+        });
+        setTimeout(() => msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+      }
+    };
+
+    window.addEventListener('dm:message', handleNewMessage);
+    return () => window.removeEventListener('dm:message', handleNewMessage);
+  }, [activeId]);
+
   async function loadConversations() {
     try {
       const c = await API.dms.conversations();
       setConvs(c || []);
-      if (activeId && !activeUser) openChat(activeId, null);
+      
+      // If we loaded the page with a ?user= ID but don't have the user details yet
+      if (activeId && !activeUser) {
+        const exist = c?.find(conv => conv.user?._id === activeId);
+        if (exist) {
+          setActiveUser(exist.user);
+        } else {
+          try {
+            const u = await API.profile.user(activeId);
+            if (u) setActiveUser(u);
+          } catch {
+            // fallback if user not found
+            setActiveUser({ _id: activeId });
+          }
+        }
+      }
     } catch { toast.error('Failed to load conversations'); }
   }
 
   async function openChat(userId, userObj) {
     setActiveId(userId);
     setActiveUser(userObj);
-    loadMessages(userId);
   }
 
   async function loadMessages(userId) {
     try {
       const m = await API.dms.messages(userId);
       setMsgs(m || []);
-      if (!activeUser && m?.length) {
-        const other = (m[0]?.sender?._id || m[0]?.sender) !== me?._id ? m[0]?.sender : m[0]?.recipient;
-        setActiveUser(other || { _id: userId });
-      }
       setTimeout(() => msgsEndRef.current?.scrollIntoView(), 100);
     } catch { toast.error('Failed to load messages'); }
   }
@@ -56,8 +94,20 @@ export default function MessagesPage() {
     const content = input.trim();
     setInput('');
     try {
-      await API.dms.send(activeId, content);
-      setMsgs(prev => [...(prev || []), { sender: { _id: me?._id }, content, createdAt: new Date().toISOString() }]);
+      const res = await API.dms.send(activeId, content);
+      const newMsg = res || { _id: Date.now().toString(), sender: { _id: me?._id }, content, createdAt: new Date().toISOString() };
+      
+      // Emit the socket event to notify the receiver
+      emitDMMessage(activeId, newMsg);
+
+      setMsgs(prev => [...(prev || []), newMsg]);
+      setConvs(prev => {
+        if (!prev) return prev;
+        const exist = prev.find(c => c.user?._id === activeId);
+        const next = exist ? prev.filter(c => c.user?._id !== activeId) : [...prev];
+        const updatedConv = exist ? { ...exist, lastMessage: newMsg } : { user: activeUser, lastMessage: newMsg };
+        return [updatedConv, ...next];
+      });
       setTimeout(() => msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     } catch (e) { toast.error(e.message); }
   }
@@ -82,7 +132,7 @@ export default function MessagesPage() {
           <div style={{ position: 'relative' }}>
             <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
             <input type="text" placeholder="Search users…" value={searchQ} onChange={e => handleSearch(e.target.value)}
-              style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: '.85rem', background: '#f9fafb' }} />
+              style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: '.85rem', background: 'var(--white)', color: 'var(--text-primary)' }} />
           </div>
 
           {searchResults ? (
@@ -127,15 +177,24 @@ export default function MessagesPage() {
                 {msgs === null ? <div className="skeleton" style={{ height: 48, borderRadius: 18, width: '60%' }} /> :
                   msgs.length === 0 ? <div className="empty-state"><i className="fa-regular fa-comment" /><p>No messages yet. Say hello!</p></div> :
                   msgs.map((m, i) => {
-                    const isMe = (m.sender?._id || m.sender) === me?._id;
+                    const mSenderId = m.sender?._id ? String(m.sender._id) : String(m.sender);
+                    const myId = String(me?._id);
+                    const isMe = mSenderId === myId;
                     const t = new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     return (
-                      <div key={i}>
-                        <div style={{ maxWidth: '65%', padding: '10px 14px', borderRadius: 18, fontSize: '.875rem', lineHeight: 1.45,
-                          ...(isMe ? { background: 'var(--sidebar-bg)', color: '#fff', alignSelf: 'flex-end', borderBottomRightRadius: 4, marginLeft: 'auto' } :
-                                     { background: '#f3f4f6', alignSelf: 'flex-start', borderBottomLeftRadius: 4 })
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          maxWidth: '65%',
+                          padding: '10px 14px',
+                          borderRadius: 18,
+                          fontSize: '.875rem',
+                          lineHeight: 1.5,
+                          wordBreak: 'break-word',
+                          ...(isMe
+                            ? { background: 'var(--green)', color: '#fff', borderBottomRightRadius: 4 }
+                            : { background: 'var(--white)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderBottomLeftRadius: 4 })
                         }}>{m.content}</div>
-                        <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 4, textAlign: isMe ? 'right' : 'left' }}>{t}</div>
+                        <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 3 }}>{t}</div>
                       </div>
                     );
                   })
@@ -145,8 +204,8 @@ export default function MessagesPage() {
               <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input type="text" placeholder="Type a message…" value={input} onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') sendMsg(); }}
-                  style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: '#f9fafb' }} />
-                <button className="btn btn--primary btn--icon" onClick={sendMsg} aria-label="Send"><i className="fa-solid fa-paper-plane" /></button>
+                  style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: 'var(--white)', color: 'var(--text-primary)' }} />
+                <button className="btn btn--green btn--icon" onClick={sendMsg} aria-label="Send"><i className="fa-solid fa-paper-plane" /></button>
               </div>
             </>
           )}

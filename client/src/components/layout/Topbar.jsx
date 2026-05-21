@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import NotificationBell from '../NotificationBell';
+import API from '../../lib/api';
 
 const NAV = [
   { label: 'Dashboard', to: '/app/dashboard' },
@@ -18,6 +19,20 @@ export default function Topbar({ title, backTo = null, onBack = null, action = n
   const [isDark, setIsDark] = useState(
     () => document.body.classList.contains('dark')
   );
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    async function fetchUnread() {
+      try {
+        const count = await API.dms.unreadCount();
+        setUnreadMsgs(count);
+      } catch { /* silent */ }
+    }
+    fetchUnread();
+    pollRef.current = setInterval(fetchUnread, 30000);
+    return () => clearInterval(pollRef.current);
+  }, []);
 
   const toggleDark = () => {
     if (isDark) {
@@ -70,8 +85,20 @@ export default function Topbar({ title, backTo = null, onBack = null, action = n
         <button className="icon-btn" onClick={toggleDark} aria-label="Toggle dark mode">
           <i className={`fa-solid ${isDark ? 'fa-sun' : 'fa-moon'}`} />
         </button>
-        <button className="icon-btn" onClick={() => navigate('/app/messages')} aria-label="Messages">
+        <button className="icon-btn" onClick={() => { navigate('/app/messages'); setUnreadMsgs(0); }} aria-label="Messages" style={{ position: 'relative' }}>
           <i className="fa-regular fa-envelope" />
+          {unreadMsgs > 0 && (
+            <span style={{
+              position: 'absolute', top: 4, right: 4,
+              background: '#ef4444', color: '#fff',
+              borderRadius: '50%', width: 16, height: 16,
+              fontSize: '.65rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              lineHeight: 1, border: '2px solid var(--bg)',
+            }}>
+              {unreadMsgs > 9 ? '9+' : unreadMsgs}
+            </span>
+          )}
         </button>
         <NotificationBell />
         {user?.avatar

@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-Bg_NI1en.js";import{u as t}from"./chunk-QFMPRPBF-0msfw7bn.js";import n from"./SectionPage-B6K5-cgr.js";var r=e();function i(){let{id:e}=t();return(0,r.jsx)(n,{embedded:!1,forcedProjectId:e})}export{i as default};

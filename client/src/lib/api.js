@@ -82,7 +82,7 @@ const profile = {
   me:           ()         => get('/profile/me'),
   update:       (data)     => put('/profile/me', data),
   user:         (userId)   => get(`/profile/${userId}`),
-  public:       (userId)   => fetch(BASE + `/profile/public/${userId}`).then(r => r.json()),
+  public:       (userId)   => get(`/profile/public/${userId}`),
   uploadAvatar: async (file) => {
     const formData = new FormData();
     formData.append('avatar', file);
@@ -191,10 +191,11 @@ const tasks = {
 
 /* DMs */
 const dms = {
-  send:          (recipientId, content) => post('/dms', { recipientId, content }),
+  send:          (receiverId, content) => post('/dms', { receiverId, content }),
   conversations: ()                     => get('/dms/conversations').then(res => res?.conversations || []),
+  unreadCount:   ()                     => get('/dms/conversations').then(res => res?.unreadTotal || 0),
   search:        (q)                    => get(`/dms/search?q=${encodeURIComponent(q)}`),
-  messages:      (userId)               => get(`/dms/${userId}`),
+  messages:      (userId)               => get(`/dms/${userId}`).then(res => res?.messages || []),
 };
 
 /* Office */

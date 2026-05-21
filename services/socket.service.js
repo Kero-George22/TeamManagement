@@ -35,6 +35,9 @@ function setupSocket(io) {
     if (!userSockets.has(userId)) userSockets.set(userId, new Set());
     userSockets.get(userId).add(socket.id);
 
+    // Auto-join the user's personal room for DMs and notifications
+    socket.join(`user:${userId}`);
+
     User.findByIdAndUpdate(userId, { lastSeen: new Date() }).catch(() => {});
 
     socket.on('join:project', (projectId) => {
@@ -51,6 +54,7 @@ function setupSocket(io) {
       }
     });
 
+    // Keep this for backward compatibility if the client still emits it
     socket.on('join:dms', () => {
       socket.join(`user:${userId}`);
     });
