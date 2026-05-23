@@ -23,11 +23,6 @@ const CATEGORY_OPTIONS = [
   'E-commerce', 'Social Impact', 'Research & Development', 'Other',
 ];
 
-const LANGUAGE_OPTIONS = [
-  'JavaScript', 'TypeScript', 'Python', 'Java', 'C#', 'C++', 'Go', 'Rust',
-  'Swift', 'Kotlin', 'Ruby', 'PHP', 'Dart', 'R', 'HTML/CSS', 'SQL', 'No-Code', 'Other',
-];
-
 export default function ProjectsPage() {
   const { user } = useAuth();
   const { refreshProjects } = useGlobalProject();
@@ -73,7 +68,6 @@ export default function ProjectsPage() {
         startDate: fd.get('startDate'),
         duration: Number(fd.get('duration')),
         category: fd.get('category') || 'Other',
-        language: fd.get('language') || 'Other',
         isPrivate: fd.get('isPrivate') === 'on',
         rolesRequired: roles.filter(r => r.roleName.trim()),
         taskStatuses: taskStatuses.length > 0 ? taskStatuses : DEFAULT_TASK_STATUSES,
@@ -224,12 +218,6 @@ export default function ProjectsPage() {
               <label className="form-label">Category</label>
               <select name="category" className="form-input" defaultValue="Other">
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Language</label>
-              <select name="language" className="form-input" defaultValue="Other">
-                {LANGUAGE_OPTIONS.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
           </div>

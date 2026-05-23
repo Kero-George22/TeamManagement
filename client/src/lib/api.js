@@ -132,6 +132,7 @@ const projects = {
   update:        (id, data)     => put(`/projects/${id}`, data).then((r) => { invalidateCachePrefix('projects'); return r; }),
   remove:        (id)           => del(`/projects/${id}`).then((r) => { invalidateCachePrefix('projects'); return r; }),
   members:       (id)           => get(`/projects/${id}/members`),
+  removeMember:  (pid, uid)     => del(`/projects/${pid}/members/${uid}`).then((r) => { invalidateCachePrefix('projects'); return r; }),
   requestJoin:   (id, roleName) => post(`/projects/${id}/join`, { roleName }),
   joinRequests:  (id)           => get(`/projects/${id}/join-requests`),
   handleRequest: (pid, rid, action) => patch(`/projects/${pid}/join-requests/${rid}`, { action }),
@@ -149,8 +150,8 @@ const TASKS_STALE_TTL = 15 * 60 * 1000; // 15 minutes - serve stale data while r
 const tasks = {
   list:     (projectId)       => get(`/tasks/${projectId}`).then((r) => { invalidateCachePrefix('tasks'); return r; }),
   board:    (projectId)       => get(`/tasks/${projectId}/board`),
-  dashboardOverview: ()       => {
-    const cached = getCache(TASKS_CACHE_KEY);
+  dashboardOverview: ({ force = false } = {})       => {
+    const cached = force ? null : getCache(TASKS_CACHE_KEY);
     if (cached) {
       // Stale-while-revalidate: return cached data immediately, refresh in background
       get('/tasks/dashboard/overview').then((r) => {

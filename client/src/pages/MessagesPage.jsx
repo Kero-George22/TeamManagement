@@ -1,17 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useSocket } from '../contexts/SocketContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
 import Topbar from '../components/layout/Topbar';
 import Avatar from '../components/ui/Avatar';
 
+function getUserId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return String(value._id || value.id || '');
+}
+
 export default function MessagesPage() {
   const { user: me } = useAuth();
-  const { emitDMMessage } = useSocket();
   const toast = useToast();
   const [params] = useSearchParams();
+  const myId = getUserId(me);
 
   const [convs, setConvs]   = useState(null);
   const [activeId, setActiveId] = useState(params.get('user'));
@@ -30,12 +35,12 @@ export default function MessagesPage() {
   useEffect(() => {
     const handleNewMessage = (e) => {
       const msg = e.detail;
-      const senderId = msg.sender?._id || msg.sender;
+      const senderId = getUserId(msg.sender);
       
       setConvs(prev => {
         if (!prev) return prev;
-        const exist = prev.find(c => c.user?._id === senderId);
-        const next = exist ? prev.filter(c => c.user?._id !== senderId) : [...prev];
+        const exist = prev.find(c => getUserId(c.user) === senderId);
+        const next = exist ? prev.filter(c => getUserId(c.user) !== senderId) : [...prev];
         const updatedConv = exist ? { ...exist, lastMessage: msg } : { user: msg.sender, lastMessage: msg };
         return [updatedConv, ...next];
       });
@@ -56,11 +61,12 @@ export default function MessagesPage() {
   async function loadConversations() {
     try {
       const c = await API.dms.conversations();
-      setConvs(c || []);
+      const visibleConvs = (c || []).filter(conv => getUserId(conv.user) !== myId);
+      setConvs(visibleConvs);
       
       // If we loaded the page with a ?user= ID but don't have the user details yet
       if (activeId && !activeUser) {
-        const exist = c?.find(conv => conv.user?._id === activeId);
+        const exist = visibleConvs.find(conv => getUserId(conv.user) === activeId);
         if (exist) {
           setActiveUser(exist.user);
         } else {
@@ -77,11 +83,23 @@ export default function MessagesPage() {
   }
 
   async function openChat(userId, userObj) {
-    setActiveId(userId);
+    const nextUserId = getUserId(userId);
+    if (!nextUserId || nextUserId === myId) {
+      toast.error('You cannot message yourself');
+      return;
+    }
+    setActiveId(nextUserId);
     setActiveUser(userObj);
   }
 
   async function loadMessages(userId) {
+    if (getUserId(userId) === myId) {
+      setActiveId(null);
+      setActiveUser(null);
+      setMsgs([]);
+      toast.error('You cannot message yourself');
+      return;
+    }
     try {
       const m = await API.dms.messages(userId);
       setMsgs(m || []);
@@ -91,20 +109,21 @@ export default function MessagesPage() {
 
   async function sendMsg() {
     if (!input.trim() || !activeId) return;
+    if (activeId === myId) {
+      toast.error('You cannot message yourself');
+      return;
+    }
     const content = input.trim();
     setInput('');
     try {
       const res = await API.dms.send(activeId, content);
-      const newMsg = res || { _id: Date.now().toString(), sender: { _id: me?._id }, content, createdAt: new Date().toISOString() };
-      
-      // Emit the socket event to notify the receiver
-      emitDMMessage(activeId, newMsg);
+      const newMsg = res || { _id: Date.now().toString(), sender: { _id: myId }, content, createdAt: new Date().toISOString() };
 
       setMsgs(prev => [...(prev || []), newMsg]);
       setConvs(prev => {
         if (!prev) return prev;
-        const exist = prev.find(c => c.user?._id === activeId);
-        const next = exist ? prev.filter(c => c.user?._id !== activeId) : [...prev];
+        const exist = prev.find(c => getUserId(c.user) === activeId);
+        const next = exist ? prev.filter(c => getUserId(c.user) !== activeId) : [...prev];
         const updatedConv = exist ? { ...exist, lastMessage: newMsg } : { user: activeUser, lastMessage: newMsg };
         return [updatedConv, ...next];
       });
@@ -146,11 +165,11 @@ export default function MessagesPage() {
             convs === null ? [0,1].map(i => <div key={i} className="skeleton" style={{ height: 52, borderRadius: 12, marginTop: 6 }} />) :
             convs.length === 0 ? <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: '.85rem' }}>No conversations yet</div> :
             convs.map(c => (
-              <div key={c.user?._id} className={`inbox-row ${c.user?._id === activeId ? 'active' : ''}`} onClick={() => openChat(c.user?._id, c.user)}>
+              <div key={getUserId(c.user)} className={`inbox-row ${getUserId(c.user) === activeId ? 'active' : ''}`} onClick={() => openChat(getUserId(c.user), c.user)}>
                 <Avatar user={c.user} size="md" className="inbox-row__avatar" />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="inbox-row__title">{c.user?.username || c.user?.email?.split('@')[0] || 'User'}</div>
-                  <div className="inbox-row__sub">{c.lastMessage?.content || '…'}</div>
+                  <div className="inbox-row__sub">{c.lastMessage?.content || c.latestMessage || '…'}</div>
                 </div>
               </div>
             ))
@@ -177,8 +196,7 @@ export default function MessagesPage() {
                 {msgs === null ? <div className="skeleton" style={{ height: 48, borderRadius: 18, width: '60%' }} /> :
                   msgs.length === 0 ? <div className="empty-state"><i className="fa-regular fa-comment" /><p>No messages yet. Say hello!</p></div> :
                   msgs.map((m, i) => {
-                    const mSenderId = m.sender?._id ? String(m.sender._id) : String(m.sender);
-                    const myId = String(me?._id);
+                    const mSenderId = getUserId(m.sender);
                     const isMe = mSenderId === myId;
                     const t = new Date(m.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     return (

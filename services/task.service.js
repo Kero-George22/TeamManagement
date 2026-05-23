@@ -46,6 +46,16 @@ async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFiel
   return project;
 }
 
+async function ensureTaskAccess(taskId, userId, isAdmin = false, extraProjectFields = []) {
+  validateObjectId(taskId, 'task ID');
+
+  const task = await Task.findById(taskId);
+  if (!task) throw new AppError('Task not found', 404);
+
+  const project = await ensureProjectAccess(task.project, userId, isAdmin, extraProjectFields);
+  return { task, project };
+}
+
 function isTaskVisibleToMember(task, userId, memberRole) {
   const assignedToMe =
     String(task.assignedTo?._id || task.assignedTo || '') === String(userId);
@@ -518,6 +528,57 @@ async function deleteTask(taskId, userId, isAdmin = false) {
 // GET PROJECT BOARD — tasks grouped by status
 // ─────────────────────────────────────────
 
+async function addComment(taskId, userId, text, isAdmin = false) {
+  if (!text?.trim()) throw new AppError('Comment text is required', 400);
+
+  const { task } = await ensureTaskAccess(taskId, userId, isAdmin);
+  task.comments.push({ user: userId, text: text.trim().slice(0, 2000) });
+  await task.save();
+  await task.populate('comments.user', 'email username avatar');
+
+  try {
+    const { notifyCommentAdded } = require('./notification.service');
+    await notifyCommentAdded(task._id, userId, task.project);
+  } catch {}
+
+  return task.comments;
+}
+
+async function getComments(taskId, userId, isAdmin = false) {
+  await ensureTaskAccess(taskId, userId, isAdmin);
+
+  const task = await Task.findById(taskId)
+    .select('comments')
+    .populate('comments.user', 'email username avatar');
+  return task?.comments || [];
+}
+
+async function getSubtasksForUser(taskId, userId, isAdmin = false) {
+  const { task } = await ensureTaskAccess(taskId, userId, isAdmin);
+
+  return Task.find({ parentTask: task._id, project: task.project })
+    .populate('assignedTo', 'email username avatar')
+    .sort({ createdAt: 1 });
+}
+
+async function attachFile(taskId, userId, filename, isAdmin = false) {
+  if (!filename) throw new AppError('No file uploaded', 400);
+
+  const { task, project } = await ensureTaskAccess(taskId, userId, isAdmin);
+
+  if (!isAdmin) {
+    const isOwner = String(project.owner || '') === String(userId);
+    const isAssigned = String(task.assignedTo?._id || task.assignedTo || '') === String(userId);
+    if (!isOwner && !isAssigned) {
+      throw new AppError('You can only upload attachments to tasks assigned to you or owned projects', 403);
+    }
+  }
+
+  task.attachment = `/uploads/${filename}`;
+  await task.save();
+  return { attachment: task.attachment };
+}
+
 async function getProjectBoard(projectId, userId, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
 
@@ -602,4 +663,8 @@ module.exports = {
   updateTask,
   updateTaskStatus,
   deleteTask,
+  addComment,
+  getComments,
+  getSubtasksForUser,
+  attachFile,
 };

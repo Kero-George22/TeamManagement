@@ -107,6 +107,17 @@ export default function ProjectPage() {
     }
   }
 
+  async function handleRemoveMember(userId, name) {
+    if (!window.confirm(`Remove ${name} from this project?`)) return;
+    try {
+      await API.projects.removeMember(id, userId);
+      toast.success('Member removed');
+      loadMembers();
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove member');
+    }
+  }
+
   async function loadRequests() {
     try {
       setRequests((await API.projects.joinRequests(id) || []).filter(request => request.status === 'pending'));
@@ -476,6 +487,16 @@ export default function ProjectPage() {
                     <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>{member.roleName}</div>
                   </div>
                   <Badge variant="gray">Member</Badge>
+                  {isOwner && member.user?._id !== (user?.id || user?._id) && (project.owner?._id || project.owner) !== member.user?._id && (
+                    <button
+                      className="tool-btn"
+                      onClick={() => handleRemoveMember(member.user._id, member.user?.username || 'this member')}
+                      style={{ color: '#ef4444', fontSize: '.72rem', padding: '4px 8px', marginLeft: 4 }}
+                      title="Remove from project"
+                    >
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

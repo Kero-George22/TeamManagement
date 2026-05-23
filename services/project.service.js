@@ -42,6 +42,10 @@ function normalizeTaskStatuses(statuses) {
   return unique;
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function _checkAndActivate(project) {
   const allFilled = project.rolesRequired.every((r) => r.filledSlots >= r.totalSlots);
   if (allFilled && project.status === 'Recruiting') {
@@ -126,7 +130,7 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
   }
 
   if (filters.roleName)
-    query['rolesRequired.roleName'] = { $regex: filters.roleName, $options: 'i' };
+    query['rolesRequired.roleName'] = { $regex: escapeRegex(filters.roleName), $options: 'i' };
 
   if (filters.durationMin || filters.durationMax) {
     query.duration = {};
@@ -135,7 +139,7 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
   }
 
   if (filters.q?.trim()) {
-    const q = filters.q.trim();
+    const q = escapeRegex(filters.q.trim());
     query.$or = [
       { title: { $regex: q, $options: 'i' } },
       { description: { $regex: q, $options: 'i' } },
@@ -209,7 +213,7 @@ async function getAllProjects(filters = {}, page = 1, limit = 10, userId = null)
   }
 
   if (filters.roleName)
-    query['rolesRequired.roleName'] = { $regex: filters.roleName, $options: 'i' };
+    query['rolesRequired.roleName'] = { $regex: escapeRegex(filters.roleName), $options: 'i' };
 
   const skip = (page - 1) * limit;
 
@@ -258,13 +262,16 @@ async function getProjectById(projectId, userId = null) {
       throw new AppError('This project is private', 403);
   }
 
-  // Ensure ALL projects eventually get an inviteToken to allow sharing
-  if (!project.inviteToken || project.inviteToken === null) {
+  const isOwner = userId && String(project.owner._id || project.owner) === String(userId);
+
+  if (isOwner && (!project.inviteToken || project.inviteToken === null)) {
     project.inviteToken = crypto.randomBytes(16).toString('hex');
     await project.save();
   }
 
-  return project;
+  const output = project.toObject();
+  if (!isOwner) delete output.inviteToken;
+  return output;
 }
 
 // ─────────────────────────────────────────
@@ -275,9 +282,11 @@ async function getProjectByInviteToken(token) {
   if (!token) throw new AppError('Invite token is required', 400);
 
   const project = await Project.findOne({ inviteToken: token })
-    .populate('owner', 'email username avatar');
+    .populate('owner', 'email username avatar')
+    .lean();
 
   if (!project) throw new AppError('Invalid or expired invite link', 404);
+  delete project.inviteToken;
   return project;
 }
 
@@ -382,7 +391,7 @@ async function joinViaInvite(token, userId, roleName) {
       'members.userId': { $ne: userId },
       rolesRequired: {
         $elemMatch: {
-          roleName: { $regex: new RegExp(`^${roleName}$`, 'i') },
+          roleName: { $regex: new RegExp(`^${escapeRegex(roleName)}$`, 'i') },
           filledSlots: { $lt: role.totalSlots },
         },
       },
@@ -392,7 +401,7 @@ async function joinViaInvite(token, userId, roleName) {
       $inc:  { 'rolesRequired.$[role].filledSlots': 1 },
     },
     {
-      arrayFilters: [{ 'role.roleName': { $regex: new RegExp(`^${roleName}$`, 'i') } }],
+      arrayFilters: [{ 'role.roleName': { $regex: new RegExp(`^${escapeRegex(roleName)}$`, 'i') } }],
       new: true,
     }
   );
@@ -669,7 +678,7 @@ async function toggleBookmark(projectId, userId) {
 // GET PROJECT MEMBERS
 // ─────────────────────────────────────────
 
-async function getProjectMembers(projectId) {
+async function getProjectMembers(projectId, requesterId, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
 
   const project = await Project.findById(projectId).populate(
@@ -678,11 +687,50 @@ async function getProjectMembers(projectId) {
   );
   if (!project) throw new AppError('Project not found', 404);
 
+  const uid = String(requesterId || '');
+  const isOwner = String(project.owner) === uid;
+  const isMember = project.members.some((m) => String(m.userId?._id || m.userId) === uid);
+  if (!isAdmin && !isOwner && !isMember) {
+    throw new AppError('Only project members can view the member list', 403);
+  }
+
   return project.members.map((m) => ({
     user:     m.userId,
     role:     m.roleName,
     joinedAt: m.joinedAt,
   }));
+}
+
+// ─────────────────────────────────────────
+// REMOVE MEMBER
+// ─────────────────────────────────────────
+
+async function removeMember(projectId, memberUserId, requesterId) {
+  validateObjectId(projectId, 'project ID');
+  validateObjectId(memberUserId, 'member user ID');
+
+  const project = await Project.findById(projectId).select('owner members rolesRequired');
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (project.owner.toString() !== requesterId.toString())
+    throw new AppError('Only the project owner can remove members', 403);
+
+  if (project.owner.toString() === memberUserId.toString())
+    throw new AppError('Cannot remove the project owner', 400);
+
+  const member = project.members.find(
+    (m) => m.userId.toString() === memberUserId.toString()
+  );
+  if (!member) throw new AppError('Member not found in project', 404);
+
+  await Project.findByIdAndUpdate(projectId, {
+    $pull: { members: { userId: memberUserId } },
+    $inc:  { 'rolesRequired.$[role].filledSlots': -1 },
+  }, {
+    arrayFilters: [{ 'role.roleName': member.roleName, 'role.filledSlots': { $gt: 0 } }],
+  });
+
+  return { removedUserId: memberUserId, roleName: member.roleName };
 }
 
 // ─────────────────────────────────────────
@@ -702,6 +750,7 @@ module.exports = {
   updateProject,
   deleteProject,
   getProjectMembers,
+  removeMember,
   toggleLike,
   toggleBookmark,
 };

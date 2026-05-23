@@ -46,6 +46,11 @@
   --nav-active-text: #ffffff;
   --selection-bg: rgba(34, 197, 94, 0.28);
   --selection-text: #0b1220;
+  
+  --btn-primary-bg: var(--text-primary);
+  --btn-primary-text: #ffffff;
+  --btn-ghost-bg: #f3f4f6;
+  --btn-danger-bg: #fee2e2;
 
   --transition: 0.2s ease;
 }
@@ -75,6 +80,11 @@ body.dark {
   --nav-active-text: #d1fae5;
   --selection-bg: rgba(34, 197, 94, 0.4);
   --selection-text: #f8fafc;
+  
+  --btn-primary-bg: var(--green);
+  --btn-primary-text: #ffffff;
+  --btn-ghost-bg: #2a2a2a;
+  --btn-danger-bg: rgba(239, 68, 68, 0.2);
 }
 
 /* ─── Reset ──────────────────────────────── */
@@ -394,8 +404,8 @@ body.dark .progress { background: rgba(255,255,255,.08); }
 .btn:active { transform: scale(.97); }
 
 .btn--primary {
-  background: var(--text-primary);
-  color: #fff;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 .btn--green {
   background: var(--green);
@@ -407,11 +417,11 @@ body.dark .progress { background: rgba(255,255,255,.08); }
   color: var(--text-primary);
 }
 .btn--ghost {
-  background: #f3f4f6;
+  background: var(--btn-ghost-bg);
   color: var(--text-secondary);
 }
 .btn--danger {
-  background: #fee2e2;
+  background: var(--btn-danger-bg);
   color: #dc2626;
 }
 .btn--sm {

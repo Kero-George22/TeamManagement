@@ -2,7 +2,6 @@ const taskService = require('../services/task.service');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
-const Task = require('../models/task.model');
 
 // ─────────────────────────────────────────
 // CREATE TASKS — AI generates per role
@@ -118,17 +117,8 @@ const deleteTask = asyncWrapper(async (req, res) => {
 
 const addComment = asyncWrapper(async (req, res) => {
   const { text } = req.body;
-  if (!text?.trim()) throw new AppError('Comment text is required', 400);
-
-  const Task = require('../models/task.model');
-  const task = await Task.findById(req.params.taskId);
-  if (!task) throw new AppError('Task not found', 404);
-
-  task.comments.push({ user: req.user._id, text: text.trim() });
-  await task.save();
-  await task.populate('comments.user', 'email username avatar');
-
-  return success(res, task.comments, 'Comment added', 201);
+  const comments = await taskService.addComment(req.params.taskId, req.user._id, text, req.user.isAdmin);
+  return success(res, comments, 'Comment added', 201);
 });
 
 // ─────────────────────────────────────────
@@ -136,12 +126,8 @@ const addComment = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getComments = asyncWrapper(async (req, res) => {
-  const Task = require('../models/task.model');
-  const task = await Task.findById(req.params.taskId)
-    .select('comments')
-    .populate('comments.user', 'email username avatar');
-  if (!task) throw new AppError('Task not found', 404);
-  return success(res, task.comments || [], 'Comments retrieved');
+  const comments = await taskService.getComments(req.params.taskId, req.user._id, req.user.isAdmin);
+  return success(res, comments, 'Comments retrieved');
 });
 
 // ─────────────────────────────────────────
@@ -149,10 +135,7 @@ const getComments = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getSubtasks = asyncWrapper(async (req, res) => {
-  const Task = require('../models/task.model');
-  const subtasks = await Task.find({ parentTask: req.params.taskId })
-    .populate('assignedTo', 'email username avatar')
-    .sort({ createdAt: 1 });
+  const subtasks = await taskService.getSubtasksForUser(req.params.taskId, req.user._id, req.user.isAdmin);
   return success(res, subtasks, 'Subtasks retrieved');
 });
 
@@ -162,14 +145,13 @@ const getSubtasks = asyncWrapper(async (req, res) => {
 
 const uploadAttachment = asyncWrapper(async (req, res) => {
   if (!req.file) throw new AppError('No file uploaded', 400);
-
-  const task = await Task.findById(req.params.taskId);
-  if (!task) throw new AppError('Task not found', 404);
-
-  task.attachment = `/uploads/${req.file.filename}`;
-  await task.save();
-
-  return success(res, { attachment: task.attachment }, 'File uploaded', 200);
+  const result = await taskService.attachFile(
+    req.params.taskId,
+    req.user._id,
+    req.file.filename,
+    req.user.isAdmin
+  );
+  return success(res, result, 'File uploaded', 200);
 });
 
 // ─────────────────────────────────────────

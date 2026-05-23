@@ -208,8 +208,17 @@ const deleteProject = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getProjectMembers = asyncWrapper(async (req, res) => {
-  const members = await projectService.getProjectMembers(req.params.id);
+  const members = await projectService.getProjectMembers(req.params.id, req.user._id, req.user.isAdmin);
   return success(res, members, 'Project members retrieved');
+});
+
+// ─────────────────────────────────────────
+// REMOVE MEMBER
+// ─────────────────────────────────────────
+
+const removeMember = asyncWrapper(async (req, res) => {
+  const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id);
+  return success(res, result, 'Member removed from project');
 });
 
 // ─────────────────────────────────────────
@@ -247,6 +256,7 @@ module.exports = {
   updateProject,
   deleteProject,
   getProjectMembers,
+  removeMember,
   toggleLike,
   toggleBookmark,
 };

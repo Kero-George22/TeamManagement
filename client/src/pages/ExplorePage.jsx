@@ -12,19 +12,26 @@ const STATUS_COLORS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: '
 
 const CATEGORY_GROUPS = [
   {
-    id: 'tech',
-    label: 'Technology',
+    id: 'software',
+    label: 'Software',
     icon: 'fa-microchip',
     children: [
       { id: 'Web Development', label: 'Web Dev', icon: 'fa-globe' },
       { id: 'Mobile Development', label: 'Mobile', icon: 'fa-mobile-screen' },
       { id: 'Software Development', label: 'Software', icon: 'fa-code' },
-      { id: 'Data Science & AI', label: 'AI & Data', icon: 'fa-brain' },
       { id: 'DevOps & Cloud', label: 'DevOps', icon: 'fa-cloud' },
       { id: 'Cybersecurity', label: 'Security', icon: 'fa-shield-halved' },
       { id: 'Blockchain', label: 'Blockchain', icon: 'fa-link' },
-      { id: 'IoT & Hardware', label: 'IoT', icon: 'fa-microchip' },
       { id: 'Game Development', label: 'Games', icon: 'fa-gamepad' },
+    ],
+  },
+  {
+    id: 'data',
+    label: 'Data & AI',
+    icon: 'fa-brain',
+    children: [
+      { id: 'Data Science & AI', label: 'Data Science & AI', icon: 'fa-brain' },
+      { id: 'Research & Development', label: 'Research', icon: 'fa-flask' },
     ],
   },
   {
@@ -33,6 +40,16 @@ const CATEGORY_GROUPS = [
     icon: 'fa-palette',
     children: [
       { id: 'UI/UX Design', label: 'UI/UX', icon: 'fa-pen-ruler' },
+    ],
+  },
+  {
+    id: 'product',
+    label: 'Product',
+    icon: 'fa-lightbulb',
+    children: [
+      { id: 'E-commerce', label: 'E-commerce', icon: 'fa-cart-shopping' },
+      { id: 'Business & Marketing', label: 'Go-to-market', icon: 'fa-bullhorn' },
+      { id: 'Research & Development', label: 'Innovation', icon: 'fa-flask' },
     ],
   },
   {
@@ -51,24 +68,38 @@ const CATEGORY_GROUPS = [
     icon: 'fa-gears',
     children: [
       { id: 'Engineering', label: 'Engineering', icon: 'fa-gears' },
-      { id: 'Healthcare', label: 'Healthcare', icon: 'fa-heart-pulse' },
+      { id: 'IoT & Hardware', label: 'Hardware', icon: 'fa-microchip' },
       { id: 'Research & Development', label: 'R&D', icon: 'fa-flask' },
     ],
   },
   {
-    id: 'social',
-    label: 'Social',
-    icon: 'fa-hand-holding-heart',
+    id: 'health',
+    label: 'Health',
+    icon: 'fa-heart-pulse',
     children: [
-      { id: 'Education & Training', label: 'Education', icon: 'fa-graduation-cap' },
-      { id: 'Social Impact', label: 'Social', icon: 'fa-hand-holding-heart' },
+      { id: 'Healthcare', label: 'Healthcare', icon: 'fa-heart-pulse' },
+      { id: 'Research & Development', label: 'Medical R&D', icon: 'fa-flask' },
     ],
   },
-];
-
-const LANGUAGES = [
-  'JavaScript', 'TypeScript', 'Python', 'Java', 'C#', 'C++', 'Go', 'Rust',
-  'Swift', 'Kotlin', 'Ruby', 'PHP', 'Dart', 'R', 'HTML/CSS', 'SQL', 'No-Code',
+  {
+    id: 'education',
+    label: 'Education',
+    icon: 'fa-graduation-cap',
+    children: [
+      { id: 'Education & Training', label: 'Education', icon: 'fa-graduation-cap' },
+      { id: 'Research & Development', label: 'Research', icon: 'fa-flask' },
+    ],
+  },
+  {
+    id: 'impact',
+    label: 'Impact',
+    icon: 'fa-hand-holding-heart',
+    children: [
+      { id: 'Social Impact', label: 'Social Impact', icon: 'fa-hand-holding-heart' },
+      { id: 'Education & Training', label: 'Education', icon: 'fa-graduation-cap' },
+      { id: 'Healthcare', label: 'Healthcare', icon: 'fa-heart-pulse' },
+    ],
+  },
 ];
 
 export default function ExplorePage() {
@@ -82,7 +113,6 @@ export default function ExplorePage() {
     q: '',
     role: '',
     category: 'all',
-    language: 'all',
     status: 'Recruiting',
     sort: 'newest',
     durationMin: '',
@@ -113,21 +143,18 @@ export default function ExplorePage() {
         q: filters.q,
         role: filters.role,
         category: filters.category !== 'all' ? filters.category : undefined,
-        language: filters.language !== 'all' ? filters.language : undefined,
-        status: filters.status,
+        status: filters.status !== 'all' ? filters.status : undefined,
         sort: filters.sort,
-        durationMin: filters.durationMin,
-        durationMax: filters.durationMax,
+        durationMin: filters.durationMin || undefined,
+        durationMax: filters.durationMax || undefined,
         page,
-        limit: 12,
+        limit: 20,
       });
-      setResult(data);
-    } catch (e) {
-      toast.error(e.message || 'Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, page, toast]);
+      setProjects(data?.projects || []);
+      setTotalPages(data?.totalPages || 1);
+    } catch { toast.error('Failed to load projects'); }
+    setLoading(false);
+  }, [filters, page]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -205,7 +232,6 @@ export default function ExplorePage() {
         startDate: fd.get('startDate'),
         duration: parseInt(fd.get('duration'), 10),
         category: fd.get('category') || 'Other',
-        language: fd.get('language') || 'Other',
         rolesRequired: roles.filter(r => r.roleName.trim()),
         isPrivate,
       });
@@ -329,17 +355,6 @@ export default function ExplorePage() {
             />
             <select
               className="form-input"
-              value={filters.language}
-              onChange={(e) => updateFilter('language', e.target.value)}
-              style={{ flex: '0 1 140px' }}
-            >
-              <option value="all">All Languages</option>
-              {LANGUAGES.map(lang => (
-                <option key={lang} value={lang}>{lang}</option>
-              ))}
-            </select>
-            <select
-              className="form-input"
               value={filters.status}
               onChange={(e) => updateFilter('status', e.target.value)}
               style={{ flex: '0 1 140px' }}
@@ -460,12 +475,6 @@ export default function ExplorePage() {
                     {p.category && p.category !== 'Other' && (
                       <span className="chip" style={{ fontSize: '.7rem' }}>
                         {p.category}
-                      </span>
-                    )}
-                    {p.language && p.language !== 'Other' && (
-                      <span className="chip" style={{ fontSize: '.7rem', background: 'rgba(59,130,246,.12)', color: '#3b82f6' }}>
-                        <i className="fa-solid fa-code" style={{ marginRight: 4, fontSize: '.65rem' }} />
-                        {p.language}
                       </span>
                     )}
                   </div>
@@ -624,15 +633,6 @@ export default function ExplorePage() {
                 <option value="Other">Other</option>
                 {CATEGORY_GROUPS.flatMap(g => g.children).map(c => (
                   <option key={c.id} value={c.id}>{c.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Language</label>
-              <select name="language" className="form-input" defaultValue="Other">
-                <option value="Other">Other</option>
-                {LANGUAGES.map(lang => (
-                  <option key={lang} value={lang}>{lang}</option>
                 ))}
               </select>
             </div>

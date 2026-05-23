@@ -25,6 +25,10 @@ export default defineConfig({
       '/portfolio':   'http://localhost:3000',
       '/time':        'http://localhost:3000',
       '/notifications': 'http://localhost:3000',
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+      },
     },
   },
 });

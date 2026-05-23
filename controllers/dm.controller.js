@@ -1,8 +1,14 @@
+const mongoose = require('mongoose');
 const DirectMessage = require('../models/directMessage.model');
 const User = require('../models/user.model');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
+const { sendDirectMessageToUser } = require('../services/socket.service');
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // ─────────────────────────────────────────
 // SEND A MESSAGE
@@ -12,6 +18,8 @@ exports.sendMessage = asyncWrapper(async (req, res) => {
   const senderId = req.user._id;
 
   if (!receiverId) throw new AppError('Receiver ID is required', 400);
+  if (!mongoose.Types.ObjectId.isValid(receiverId)) throw new AppError('Invalid receiver ID', 400);
+  if (String(receiverId) === String(senderId)) throw new AppError('You cannot message yourself', 400);
   if (!content?.trim()) throw new AppError('Message content is required', 400);
 
   const receiver = await User.findById(receiverId);
@@ -23,6 +31,15 @@ exports.sendMessage = asyncWrapper(async (req, res) => {
     content: content.trim(),
   });
 
+  sendDirectMessageToUser(receiverId, {
+    ...message.toObject(),
+    sender: {
+      _id: req.user._id,
+      username: req.user.username,
+      avatar: req.user.avatar,
+    },
+  });
+
   return success(res, message, 'Message sent successfully', 201);
 });
 
@@ -32,6 +49,8 @@ exports.sendMessage = asyncWrapper(async (req, res) => {
 exports.getMessages = asyncWrapper(async (req, res) => {
   const { userId } = req.params;
   const currentUserId = req.user._id;
+  if (!mongoose.Types.ObjectId.isValid(userId)) throw new AppError('Invalid user ID', 400);
+  if (String(userId) === String(currentUserId)) throw new AppError('You cannot message yourself', 400);
   const { page = 1, limit = 50 } = req.query;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
@@ -125,7 +144,10 @@ exports.getConversations = asyncWrapper(async (req, res) => {
     ]),
   ]);
 
-  const userIds = groupedConversations.map((conversation) => conversation._id);
+  const visibleConversations = groupedConversations
+    .filter((conversation) => String(conversation._id) !== String(currentUserId));
+
+  const userIds = visibleConversations.map((conversation) => conversation._id);
   const users = userIds.length > 0
     ? await User.find({ _id: { $in: userIds } })
         .select('username email avatar')
@@ -133,7 +155,7 @@ exports.getConversations = asyncWrapper(async (req, res) => {
     : [];
   const userById = new Map(users.map((user) => [String(user._id), user]));
 
-  const conversations = groupedConversations
+  const conversations = visibleConversations
     .map((conversation) => ({
       user: userById.get(String(conversation._id)) || null,
       latestMessage: conversation.latestMessage,
@@ -154,13 +176,14 @@ exports.searchUsers = asyncWrapper(async (req, res) => {
   const { query } = req.query;
   const currentUserId = req.user._id;
 
-  if (!query) return success(res, [], 'Search query required');
+  if (!query?.trim()) return success(res, [], 'Search query required');
 
+  const safeQuery = escapeRegex(query.trim()).slice(0, 80);
   const users = await User.find({
     _id: { $ne: currentUserId },
     $or: [
-      { username: { $regex: query, $options: 'i' } },
-      { email: { $regex: query, $options: 'i' } },
+      { username: { $regex: safeQuery, $options: 'i' } },
+      { email: { $regex: safeQuery, $options: 'i' } },
     ]
   }).select('username email avatar').limit(10);
 

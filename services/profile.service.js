@@ -16,6 +16,10 @@ function generateVerificationToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString('hex');
 }
 
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
 // ─────────────────────────────────────────
 // GET PROFILE
 // ─────────────────────────────────────────
@@ -76,6 +80,7 @@ async function updateProfile(userId, updates = {}) {
   const payload = {};
   let emailVerificationRequired = false;
   let verificationTarget = null;
+  let rawVerificationToken = null;
 
   if (updates.email !== undefined) {
     const nextEmail = String(updates.email).trim().toLowerCase();
@@ -100,11 +105,13 @@ async function updateProfile(userId, updates = {}) {
       });
       if (exists) throw new AppError('Email already in use', 409);
 
+      const verificationToken = generateVerificationToken(32);
       payload.pendingEmail = nextEmail;
-      payload.verificationToken = generateVerificationToken(32);
+      payload.verificationToken = hashToken(verificationToken);
       payload.verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
       emailVerificationRequired = true;
       verificationTarget = nextEmail;
+      rawVerificationToken = verificationToken;
     }
   }
 
@@ -176,7 +183,7 @@ async function updateProfile(userId, updates = {}) {
   if (!user) throw new AppError('User not found', 404);
 
   if (emailVerificationRequired && verificationTarget) {
-    await emailService.verificationEmail(verificationTarget, payload.verificationToken);
+    await emailService.verificationEmail(verificationTarget, rawVerificationToken);
   }
 
   if (emailVerificationRequired) {

@@ -1,10 +1,28 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
+const Project = require('../models/project.model');
+const DirectMessage = require('../models/directMessage.model');
+const Message = require('../models/message.model');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET env variable is not set');
 
 let ioInstance = null;
 const userSockets = new Map();
+
+async function canAccessProject(projectId, userId) {
+  if (!mongoose.Types.ObjectId.isValid(String(projectId))) return false;
+
+  const project = await Project.findById(projectId).select('owner members').lean();
+  if (!project) return false;
+
+  const uid = String(userId);
+  return (
+    String(project.owner) === uid ||
+    (project.members || []).some((m) => String(m.userId) === uid)
+  );
+}
 
 function setIO(io) {
   ioInstance = io;
@@ -40,17 +58,21 @@ function setupSocket(io) {
 
     User.findByIdAndUpdate(userId, { lastSeen: new Date() }).catch(() => {});
 
-    socket.on('join:project', (projectId) => {
-      if (projectId) {
+    socket.on('join:project', async (projectId) => {
+      if (projectId && await canAccessProject(projectId, userId)) {
         socket.join(`project:${projectId}`);
         socket.to(`project:${projectId}`).emit('user:online', { userId, username: socket.user.username });
+      } else {
+        socket.emit('error:forbidden', { message: 'You cannot join this project room' });
       }
     });
 
-    socket.on('leave:project', (projectId) => {
+    socket.on('leave:project', async (projectId) => {
       if (projectId) {
         socket.leave(`project:${projectId}`);
-        socket.to(`project:${projectId}`).emit('user:offline', { userId });
+        if (await canAccessProject(projectId, userId)) {
+          socket.to(`project:${projectId}`).emit('user:offline', { userId });
+        }
       }
     });
 
@@ -59,9 +81,14 @@ function setupSocket(io) {
       socket.join(`user:${userId}`);
     });
 
-    socket.on('office:message', (data) => {
+    socket.on('office:message', async (data) => {
       const { projectId, message } = data;
-      if (projectId && message) {
+      if (projectId && message && await canAccessProject(projectId, userId)) {
+        if (message._id) {
+          if (!mongoose.Types.ObjectId.isValid(String(message._id))) return;
+          const exists = await Message.exists({ _id: message._id, project: projectId, user: userId });
+          if (!exists) return socket.emit('error:forbidden', { message: 'Invalid office message' });
+        }
         socket.to(`project:${projectId}`).emit('office:message', {
           ...message,
           user: { _id: socket.user._id, username: socket.user.username, avatar: socket.user.avatar },
@@ -69,9 +96,22 @@ function setupSocket(io) {
       }
     });
 
-    socket.on('dm:message', (data) => {
+    socket.on('dm:message', async (data) => {
       const { receiverId, message } = data;
-      if (receiverId && message) {
+      if (receiverId && message && mongoose.Types.ObjectId.isValid(String(receiverId))) {
+        if (String(receiverId) === userId) return;
+        if (message._id) {
+          if (!mongoose.Types.ObjectId.isValid(String(message._id))) return;
+          const exists = await DirectMessage.exists({
+            _id: message._id,
+            sender: userId,
+            receiver: receiverId,
+          });
+          if (!exists) return socket.emit('error:forbidden', { message: 'Invalid direct message' });
+        } else {
+          const receiverExists = await User.exists({ _id: receiverId });
+          if (!receiverExists) return;
+        }
         io.to(`user:${receiverId}`).emit('dm:message', {
           ...message,
           sender: { _id: socket.user._id, username: socket.user.username, avatar: socket.user.avatar },
@@ -84,9 +124,9 @@ function setupSocket(io) {
       }
     });
 
-    socket.on('typing:start', (data) => {
+    socket.on('typing:start', async (data) => {
       const { projectId, receiverId } = data;
-      if (projectId) {
+      if (projectId && await canAccessProject(projectId, userId)) {
         socket.to(`project:${projectId}`).emit('typing:update', { userId, username: socket.user.username, isTyping: true });
       }
       if (receiverId) {
@@ -94,9 +134,9 @@ function setupSocket(io) {
       }
     });
 
-    socket.on('typing:stop', (data) => {
+    socket.on('typing:stop', async (data) => {
       const { projectId, receiverId } = data;
-      if (projectId) {
+      if (projectId && await canAccessProject(projectId, userId)) {
         socket.to(`project:${projectId}`).emit('typing:update', { userId, username: socket.user.username, isTyping: false });
       }
       if (receiverId) {
@@ -104,9 +144,9 @@ function setupSocket(io) {
       }
     });
 
-    socket.on('task:updated', (data) => {
+    socket.on('task:updated', async (data) => {
       const { projectId, task } = data;
-      if (projectId) {
+      if (projectId && await canAccessProject(projectId, userId)) {
         socket.to(`project:${projectId}`).emit('task:updated', task);
       }
     });
@@ -133,8 +173,13 @@ function sendNotificationToUser(userId, notification) {
   }
 }
 
+function sendDirectMessageToUser(userId, message) {
+  if (!ioInstance) return;
+  ioInstance.to(`user:${String(userId)}`).emit('dm:message', message);
+}
+
 function emitToProject(projectId, event, data) {
   if (ioInstance) ioInstance.to(`project:${projectId}`).emit(event, data);
 }
 
-module.exports = { setupSocket, sendNotificationToUser, emitToProject };
+module.exports = { setupSocket, sendNotificationToUser, sendDirectMessageToUser, emitToProject };

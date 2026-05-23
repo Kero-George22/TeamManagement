@@ -2,14 +2,20 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
+const fs = require('fs');
 const helmet = require('helmet');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const errorHandler = require('./middlewares/error.handler');
+const { requireAuth } = require('./middlewares/auth.middleware');
+const Task = require('./models/task.model');
+const Project = require('./models/project.model');
 
 const app = express();
 const server = http.createServer(app);
+const uploadsPath = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsPath, { recursive: true });
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || '*',
@@ -64,7 +70,29 @@ app.use('/analytics',   require('./routers/analytics.routes'));
 app.use('/portfolio',   require('./routers/portfolio.routes'));
 app.use('/submissions', require('./routers/submission.routes'));
 app.use('/goals',       require('./routers/goal.routes'));
-app.use('/uploads',  express.static(path.join(__dirname, 'uploads')));
+app.get('/uploads/:filename', requireAuth, async (req, res, next) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    const attachment = `/uploads/${filename}`;
+    const task = await Task.findOne({ attachment }).select('project assignedTo').lean();
+    if (!task) return res.status(404).json({ success: false, message: 'File not found' });
+
+    const project = await Project.findById(task.project).select('owner members').lean();
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const uid = String(req.user._id);
+    const canAccess =
+      req.user.isAdmin ||
+      String(project.owner) === uid ||
+      String(task.assignedTo || '') === uid ||
+      (project.members || []).some((m) => String(m.userId) === uid);
+
+    if (!canAccess) return res.status(403).json({ success: false, message: 'Forbidden' });
+    return res.sendFile(path.join(uploadsPath, filename));
+  } catch (err) {
+    return next(err);
+  }
+});
 
 // ─────────────────────────────────────────
 // WebSocket (Socket.io)

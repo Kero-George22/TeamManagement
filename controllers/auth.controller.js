@@ -18,6 +18,10 @@ function generateVerificationCode() {
   return crypto.randomInt(100000, 999999).toString();
 }
 
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
 function expiresIn(hours) {
   return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
@@ -44,11 +48,12 @@ exports.signup = asyncWrapper(async (req, res) => {
     // If user exists but is not verified, we allow them to restart the signup process
     // This updates their password to the new one and sends a fresh OTP
     user.password = password;
-    user.verificationToken = generateVerificationCode();
+    const verificationCode = generateVerificationCode();
+    user.verificationToken = hashToken(verificationCode);
     user.verificationTokenExpires = expiresIn(Number(process.env.VERIFICATION_HOURS) || 24);
     await user.save();
 
-    await emailService.verificationEmail(email, user.verificationToken);
+    await emailService.verificationEmail(email, verificationCode);
     return success(res, { id: user._id, email: user.email }, 'Verification email resent.', 200);
   }
 
@@ -56,7 +61,7 @@ exports.signup = asyncWrapper(async (req, res) => {
   user = await User.create({
     email,
     password,
-    verificationToken: token,
+    verificationToken: hashToken(token),
     verificationTokenExpires: expiresIn(Number(process.env.VERIFICATION_HOURS) || 24),
   });
 
@@ -70,7 +75,7 @@ exports.verifyEmail = asyncWrapper(async (req, res) => {
   if (!token) throw new AppError('Verification token required', 400);
 
   const user = await User.findOne({
-    verificationToken: token,
+    verificationToken: { $in: [hashToken(token), token] },
     verificationTokenExpires: { $gt: new Date() },
   });
   if (!user) throw new AppError('Invalid or expired token', 400);
@@ -104,7 +109,7 @@ exports.login = asyncWrapper(async (req, res) => {
   if (!match) throw new AppError('Invalid credentials', 401);
 
   const token = generateJwt(user);
-  return success(res, { token, user: { id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin } }, 'Logged in');
+  return success(res, { token, user: { id: user._id, _id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin } }, 'Logged in');
 });
 
 exports.googleLogin = asyncWrapper(async (req, res) => {
@@ -150,7 +155,7 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
   const token = generateJwt(user);
   return success(res, {
     token,
-    user: { id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin },
+    user: { id: user._id, _id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin },
   }, 'Logged in with Google');
 });
 
@@ -177,7 +182,7 @@ exports.requestPasswordReset = asyncWrapper(async (req, res) => {
   if (!user) return success(res, {}, 'If that email exists, a reset link was sent');
 
   const token = generateToken(16);
-  user.resetPasswordToken = token;
+  user.resetPasswordToken = hashToken(token);
   user.resetPasswordTokenExpires = expiresIn(Number(process.env.RESET_HOURS) || 1);
   await user.save();
 
@@ -191,7 +196,7 @@ exports.resetPassword = asyncWrapper(async (req, res) => {
   if (newPassword.length < 8) throw new AppError('Password min length 8', 400);
 
   const user = await User.findOne({
-    resetPasswordToken: token,
+    resetPasswordToken: { $in: [hashToken(token), token] },
     resetPasswordTokenExpires: { $gt: new Date() },
   });
   if (!user) throw new AppError('Invalid or expired token', 400);

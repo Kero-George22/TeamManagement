@@ -31,6 +31,7 @@ router.delete('/:id',         requireAuth, projectController.deleteProject);
 // Members
 // ─────────────────────────────────────────
 router.get('/:id/members', requireAuth, projectController.getProjectMembers);
+router.delete('/:id/members/:userId', requireAuth, projectController.removeMember);
 
 // ─────────────────────────────────────────
 // Join requests — public projects

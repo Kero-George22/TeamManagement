@@ -521,7 +521,7 @@ function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStat
    ═══════════════════════════════════════════════════════════ */
 export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProject = null, forcedProjectMembers = [] }) {
   const { user } = useAuth();
-  const { projects, selectedProject } = useGlobalProject();
+  const { projects, selectedProject, loadingProjects } = useGlobalProject();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -620,11 +620,12 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   useEffect(() => {
     const currentId = activeProjectIdRef.current;
     const prevId = prevProjectIdRef.current;
+    if (!embedded && loadingProjects) return;
     if (currentId !== prevId || prevId === null) {
       prevProjectIdRef.current = currentId;
       loadTasksRef.current();
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, embedded, loadingProjects, projects.length]);
 
   useEffect(() => {
     const members = forcedProjectMembersRef.current;
@@ -662,13 +663,13 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }
 
   async function loadTasks() {
-    if (!activeProject?._id && (!projects || projects.length === 0)) { setTasks([]); return; }
+    if (embedded && !activeProject?._id) { setTasks([]); return; }
     try {
       if (activeProject?._id) {
         const list = await API.tasks.list(activeProject._id);
         setTasks(list.map(t => ({ ...t, projectRef: activeProject })) || []);
       } else {
-        const response = await API.tasks.dashboardOverview();
+        const response = await API.tasks.dashboardOverview({ force: true });
         setTasks(response?.tasks || []);
       }
     } catch { toast.error('Failed to load tasks'); setTasks([]); }
