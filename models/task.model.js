@@ -9,7 +9,7 @@ const commentSchema = new mongoose.Schema({
 const taskSchema = new mongoose.Schema({
   project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
   parentTask: { type: mongoose.Schema.Types.ObjectId, ref: 'Task', default: null }, // subtask support
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   title: { type: String, required: true },
   description: { type: String, default: '' },
   taskType: { type: String, default: 'Task' },

@@ -28,7 +28,7 @@ export default function TaskPage() {
     })();
   }, [taskId]);
 
-  const isAssigned = task && (task.assignedTo?._id || task.assignedTo) === user?._id;
+  const isAssigned = task && Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === user?._id);
 
   async function updateStatus(status) {
     try { await API.tasks.status(taskId, status); setTask({ ...task, status }); toast.success(`Status → "${status}"`); } catch (e) { toast.error(e.message); }
@@ -169,7 +169,7 @@ export default function TaskPage() {
               ['Priority', <Badge variant={PCOL[task.priority]}>{task.priority}</Badge>],
               ['Role', task.assignedRole],
               ['Deadline', task.deadline ? fmtDate(task.deadline) : 'No deadline'],
-              ['Assigned To', task.assignedTo?.username || task.assignedTo?.email?.split('@')[0] || 'Unassigned'],
+              ['Assigned To', Array.isArray(task.assignedTo) && task.assignedTo.length > 0 ? task.assignedTo.map(u => u.username || u.email?.split('@')[0]).join(', ') : 'Unassigned'],
               ['Created', fmtDate(task.createdAt)],
             ].map(([label, val]) => (
               <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>

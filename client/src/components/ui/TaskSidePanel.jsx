@@ -28,7 +28,7 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
 
   if (!task) return null;
 
-  const isAssignee = (task.assignedTo?._id || task.assignedTo) === userId;
+  const isAssignee = Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === userId);
   const canChangeStatus = isOwner || isAssignee;
   const canMarkDone = isOwner; // Only owner can mark as Done/Approved
 
@@ -168,8 +168,15 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
         <div className="task-panel__fields">
           <div className="task-panel__field">
             <span className="task-panel__label">Assignee</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {task.assignedTo ? <><Avatar user={task.assignedTo} size="sm" /> <span style={{ fontWeight: 500, fontSize: '.875rem' }}>{task.assignedTo?.username || task.assignedTo?.email?.split('@')[0] || 'User'}</span></> : <span style={{ color: 'var(--text-muted)', fontSize: '.875rem' }}>Unassigned</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {Array.isArray(task.assignedTo) && task.assignedTo.length > 0 ? (
+                task.assignedTo.map(u => (
+                  <div key={u._id || u} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-card)', padding: '2px 8px 2px 2px', borderRadius: 20, border: '1px solid var(--border)' }}>
+                    <Avatar user={u} size="sm" />
+                    <span style={{ fontWeight: 500, fontSize: '.875rem' }}>{u.username || u.email?.split('@')[0] || 'User'}</span>
+                  </div>
+                ))
+              ) : <span style={{ color: 'var(--text-muted)', fontSize: '.875rem' }}>Unassigned</span>}
             </div>
           </div>
           <div className="task-panel__field">

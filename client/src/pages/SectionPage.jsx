@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Select from 'react-select';
 import { useAuth } from '../contexts/AuthContext';
 import { useGlobalProject } from '../contexts/ProjectContext';
 import { useToast } from '../lib/toast';
@@ -554,6 +555,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   };
   const [newTaskInput, setNewTaskInput] = useState(emptyComposer);
   const [taskModal, setTaskModal] = useState(false);
+  const [modalAssignees, setModalAssignees] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
 
   // Custom Status
@@ -698,8 +700,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     const currentUserId = user ? String(user.id || user._id) : null;
     const isOwner = activeProject && ownerId && currentUserId && (String(ownerId) === currentUserId);
     
-    const assigneeStrId = t.assignedTo ? String(t.assignedTo._id || t.assignedTo) : null;
-    const isAssignee = assigneeStrId && currentUserId ? (assigneeStrId === currentUserId) : false;
+    const isAssignee = Array.isArray(t.assignedTo) && currentUserId
+      ? t.assignedTo.some(u => String(u._id || u) === currentUserId)
+      : false;
     
     // Check local admin role (since user context might lag behind DB)
     const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
@@ -938,7 +941,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       title: newTaskInput.title.trim(),
       description: newTaskInput.requirements.trim() || 'Added from My Tasks',
       assignedRole: 'Developer',
-      assignedTo: newTaskInput.assignee === 'unassigned' ? null : (newTaskInput.assignee === 'me' ? 'me' : newTaskInput.assignee),
+      assignedTo: newTaskInput.assignee === 'unassigned' ? [] : [newTaskInput.assignee === 'me' ? 'me' : newTaskInput.assignee],
       priority: newTaskInput.priority || 'Medium',
       status: newTaskInput.status || 'Todo',
     };
@@ -977,7 +980,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     e.preventDefault();
     const fd = new FormData(e.target);
     const projectId = activeProject?._id || fd.get('projectId');
-    const assignedTo = fd.get('assignedTo');
+    const assignedTo = modalAssignees.map(o => o.value);
     try {
       await API.tasks.create(projectId, {
         title: fd.get('title'),
@@ -986,10 +989,11 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         priority: fd.get('priority') || 'Medium',
         status: fd.get('status') || 'Todo',
         deadline: fd.get('deadline') || undefined,
-        assignedTo: assignedTo === 'unassigned' ? null : (assignedTo === 'me' ? 'me' : assignedTo)
+        assignedTo,
       });
       toast.success('Task created!');
       setTaskModal(false);
+      setModalAssignees([]);
       loadTasks();
     } catch (err) {
       toast.error(err.message);
@@ -1000,13 +1004,13 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   const processedList = useMemo(() => {
     let list = [...(tasks || [])];
     if (search) list = list.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
-    if (showMineOnly) list = list.filter(t => t.assignedTo?._id === user._id || t.assignedTo === user._id);
+    if (showMineOnly) list = list.filter(t => Array.isArray(t.assignedTo) && t.assignedTo.some(u => (u._id || u) === user._id));
     if (filter.status) list = list.filter(t => t.status === filter.status);
     if (filter.project) list = list.filter(t => t.projectRef?._id === filter.project);
     if (filter.assignee) {
-      if (filter.assignee === 'me') list = list.filter(t => t.assignedTo?._id === user._id || t.assignedTo === user._id);
-      else if (filter.assignee === 'unassigned') list = list.filter(t => !t.assignedTo);
-      else list = list.filter(t => (t.assignedTo?._id || t.assignedTo) === filter.assignee);
+      if (filter.assignee === 'me') list = list.filter(t => Array.isArray(t.assignedTo) && t.assignedTo.some(u => (u._id || u) === user._id));
+      else if (filter.assignee === 'unassigned') list = list.filter(t => !Array.isArray(t.assignedTo) || t.assignedTo.length === 0);
+      else list = list.filter(t => Array.isArray(t.assignedTo) && t.assignedTo.some(u => (u._id || u) === filter.assignee));
     }
     list.sort((a, b) => {
       let valA, valB;
@@ -1024,8 +1028,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         valB = (b.projectRef?.title || b.project || '').toLowerCase();
       }
       else if (sort.field === 'assignee') {
-        valA = (a.assignedTo?.username || a.assignedTo?.email || '').toLowerCase();
-        valB = (b.assignedTo?.username || b.assignedTo?.email || '').toLowerCase();
+        valA = (Array.isArray(a.assignedTo) && a.assignedTo.length > 0 ? (a.assignedTo[0].username || a.assignedTo[0].email || '') : '').toLowerCase();
+        valB = (Array.isArray(b.assignedTo) && b.assignedTo.length > 0 ? (b.assignedTo[0].username || b.assignedTo[0].email || '') : '').toLowerCase();
       }
       else {
         valA = a.deadline ? new Date(a.deadline).getTime() : 9999999999999;
@@ -1107,10 +1111,12 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     } else if (activeGroup === 'assignee') {
       const map = {};
       list.forEach(t => {
-        const a = t.assignedTo;
-        const key = a?._id || 'unassigned';
-        if (!map[key]) map[key] = { id: key, label: a?.username || a?.email || 'Unassigned', tasks: [], avatar: a };
-        map[key].tasks.push(t);
+        const assignees = Array.isArray(t.assignedTo) && t.assignedTo.length > 0 ? t.assignedTo : [null];
+        assignees.forEach(a => {
+          const key = a?._id || 'unassigned';
+          if (!map[key]) map[key] = { id: key, label: a?.username || a?.email || 'Unassigned', tasks: [], avatar: a };
+          if (!map[key].tasks.find(x => x._id === t._id)) map[key].tasks.push(t);
+        });
       });
       result.push(...Object.values(map));
 
@@ -1613,8 +1619,16 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                             {/* Assignee */}
                             {columns.collaborators && (
                               <div>
-                                {t.assignedTo
-                                  ? <Avatar user={t.assignedTo} size="sm" />
+                                {Array.isArray(t.assignedTo) && t.assignedTo.length > 0
+                                  ? (
+                                    <div style={{ display: 'flex' }}>
+                                      {t.assignedTo.map((u, i) => (
+                                        <div key={u._id || i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i, border: '2px solid var(--white)', borderRadius: '50%' }}>
+                                          <Avatar user={u} size="sm" />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
                                   : <span style={{ color: 'var(--text-muted)', fontSize: '.78rem' }}>Unassigned</span>
                                 }
                               </div>
@@ -1836,8 +1850,16 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.67rem', fontWeight: 700, color: pCfg.color, background: pCfg.bg, borderRadius: 5, padding: '2px 6px' }}>
                             {pCfg.icon} {pCfg.label}
                           </span>
-                          {t.assignedTo
-                            ? <Avatar user={t.assignedTo} size="sm" style={{ width: 22, height: 22 }} />
+                          {Array.isArray(t.assignedTo) && t.assignedTo.length > 0
+                            ? (
+                              <div style={{ display: 'flex' }}>
+                                {t.assignedTo.map((u, i) => (
+                                  <div key={u._id || i} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: 10 - i, border: '2px solid var(--white)', borderRadius: '50%' }}>
+                                    <Avatar user={u} size="sm" style={{ width: 22, height: 22 }} />
+                                  </div>
+                                ))}
+                              </div>
+                            )
                             : <i className="fa-regular fa-user" style={{ color: '#9ca3af', fontSize: '.8rem' }} />
                           }
                         </div>
@@ -2024,16 +2046,33 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           </div>
           <div className="form-group">
             <label className="form-label">Collaborator</label>
-            <select name="assignedTo" className="form-input" defaultValue="me">
-              <option value="me">Assign to me</option>
-              <option value="unassigned">Unassigned</option>
-              {projectMembers.map(m => {
-                const memberId = m.user?._id || m.userId?._id || m.userId;
-                const memberName = m.user?.username || m.user?.email?.split('@')[0] || 'Member';
-                if (!memberId) return null;
-                return <option key={memberId} value={memberId}>{memberName}</option>;
-              })}
-            </select>
+            <Select
+              isMulti
+              name="assignedTo"
+              className="react-select-container"
+              classNamePrefix="react-select"
+              placeholder="Unassigned"
+              value={modalAssignees}
+              onChange={setModalAssignees}
+              options={[
+                { value: 'me', label: 'Assign to me' },
+                ...projectMembers.map(m => {
+                  const memberId = m.user?._id || m.userId?._id || m.userId;
+                  const memberName = m.user?.username || m.user?.email?.split('@')[0] || 'Member';
+                  if (!memberId) return null;
+                  return { value: memberId, label: memberName };
+                }).filter(Boolean)
+              ]}
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  borderRadius: '8px',
+                  borderColor: 'var(--border)',
+                  boxShadow: 'none',
+                  minHeight: '38px',
+                })
+              }}
+            />
           </div>
           <button className="btn btn--primary" style={{ width: '100%', marginTop: 8, borderRadius: 12 }}>Create Task</button>
         </form>

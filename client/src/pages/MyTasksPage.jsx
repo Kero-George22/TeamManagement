@@ -301,8 +301,14 @@ function TaskRow({ task, projects, onStatusChange, onOpen }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '.7rem', fontWeight: 600, color: pCfg.color }}>
           {pCfg.icon} {task.priority}
         </span>
-        {task.assignedTo && task.assignedTo._id !== task.assignedTo && (
-          <Avatar user={task.assignedTo} size="sm" />
+        {Array.isArray(task.assignedTo) && task.assignedTo.length > 0 && task.assignedTo[0]._id && (
+          <div style={{ display: 'flex' }}>
+            {task.assignedTo.map((u, i) => (
+              <div key={u._id || i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i, border: '2px solid var(--bg-card)', borderRadius: '50%' }}>
+                <Avatar user={u} size="sm" />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -109,7 +109,7 @@ export default function DashboardPage() {
     const joined = list.filter(project => (project.members || []).some(member => (member.userId?._id || member.userId) === user?._id));
     const active = list.filter(project => project.status !== 'Completed');
     const taskList = allTasks || [];
-    const myTasks = taskList.filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+    const myTasks = taskList.filter(task => Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === user?._id));
 
     return {
       totalProjects: list.length,
@@ -131,7 +131,7 @@ export default function DashboardPage() {
   }, [projects]);
 
   const myTasks = useMemo(() => {
-    const list = (allTasks || []).filter(task => (task.assignedTo?._id || task.assignedTo) === user?._id);
+    const list = (allTasks || []).filter(task => Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === user?._id));
     const priorityRank = { High: 3, Medium: 2, Low: 1 };
 
     return list.sort((left, right) => {
@@ -386,7 +386,7 @@ export default function DashboardPage() {
 
                   return (
                     <div key={task._id} className="dashboard-task-row" onClick={() => setSelectedTask(task)} style={{ cursor: 'pointer' }}>
-                      <Avatar user={task.assignedTo || user} size="sm" />
+                      <Avatar user={(Array.isArray(task.assignedTo) && task.assignedTo.length > 0) ? task.assignedTo[0] : user} size="sm" />
                       <div className="dashboard-task-row__body">
                         <div className="dashboard-task-row__title">{task.title}</div>
                         <div className="dashboard-task-row__meta">

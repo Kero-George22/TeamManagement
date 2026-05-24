@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import Select from 'react-select';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../lib/toast';
 import API from '../lib/api';
@@ -129,7 +130,7 @@ export default function ProjectPage() {
   const filteredTasks = useMemo(() => {
     const list = tasks || [];
     if (!myTasksOnly) return list;
-    return list.filter(task => (task.assignedTo?._id || task.assignedTo) === (user?.id || user?._id));
+    return list.filter(task => Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === (user?.id || user?._id)));
   }, [tasks, myTasksOnly, user]);
 
   const groupedTasks = useMemo(() => {
@@ -188,7 +189,7 @@ export default function ProjectPage() {
         description: formData.get('description'),
         taskType: formData.get('taskType') || 'Task',
         assignedRole: formData.get('role') || 'Member',
-        assignedTo: formData.get('assignedTo') || null,
+        assignedTo: formData.getAll('assignedTo'),
         priority: formData.get('priority'),
         status: formData.get('status') || 'Todo',
         startDate: formData.get('startDate') || undefined,
@@ -663,17 +664,29 @@ export default function ProjectPage() {
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Assignee</label>
-              <select name="assignedTo" className="form-input" defaultValue="">
-                <option value="">Unassigned</option>
-                {(members || []).map((member, index) => {
+              <Select
+                isMulti
+                name="assignedTo"
+                className="react-select-container"
+                classNamePrefix="react-select"
+                placeholder="Unassigned"
+                options={(members || []).map((member) => {
                   const userInfo = member.user || member;
-                  return (
-                    <option key={index} value={userInfo?._id}>
-                      {userInfo?.username || userInfo?.email?.split('@')[0] || 'User'}
-                    </option>
-                  );
+                  return {
+                    value: userInfo?._id,
+                    label: userInfo?.username || userInfo?.email?.split('@')[0] || 'User'
+                  };
                 })}
-              </select>
+                styles={{
+                  control: (base) => ({
+                    ...base,
+                    borderRadius: '8px',
+                    borderColor: 'var(--border)',
+                    boxShadow: 'none',
+                    minHeight: '38px',
+                  })
+                }}
+              />
             </div>
             <div className="form-group">
               <label className="form-label">Story Points</label>
