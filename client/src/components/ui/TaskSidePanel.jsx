@@ -29,12 +29,13 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
   if (!task) return null;
 
   const isAssignee = Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === userId);
-  const canChangeStatus = isOwner || isAssignee;
+  const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+  const canChangeStatus = isOwner || isAssignee || isUnassigned;
   const canMarkDone = isOwner; // Only owner can mark as Done/Approved
 
   async function changeField(field, value) {
     if (!canChangeStatus) {
-      toast.error('Only project owner or assignee can edit task');
+      toast.error('Only project owner, assignee, or any member for unassigned tasks can edit');
       return;
     }
     setLoading(true);
@@ -54,7 +55,7 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
 
   async function changeStatus(newStatus) {
     if (!canChangeStatus) {
-      toast.error('Only project owner or assignee can change task status');
+      toast.error('Only project owner, assignee, or any member for unassigned tasks can change task status');
       return;
     }
     if (!canMarkDone && (newStatus === 'Done' || newStatus === 'Approved')) {

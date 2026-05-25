@@ -28,6 +28,8 @@ const io = new Server(server, {
 // ─────────────────────────────────────────
 
 app.use(helmet());
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
 
 // ─────────────────────────────────────────
 // CORS — must come before routes
@@ -58,6 +60,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // ─────────────────────────────────────────
 
 app.use('/auth',     require('./routers/auth.routes'));
+app.use('/admin',    require('./routers/admin.routes'));
 app.use('/projects', require('./routers/project.routes'));
 app.use('/tasks',    require('./routers/task.routes'));
 app.use('/profile',  require('./routers/profile.routes'));

@@ -25,6 +25,7 @@ const GoalsPage = lazy(() => import('./pages/GoalsPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'));
 const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
 
@@ -107,6 +108,7 @@ export default function App() {
                   <Route path="/app/messages"       element={<MessagesPage />} />
                   <Route path="/app/profile"        element={<ProfilePage />} />
                   <Route path="/app/office/:id"     element={<OfficePage />} />
+                  <Route path="/app/admin"           element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                   <Route path="/app/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
                   <Route path="/app/admin/reviews"   element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
                 </Route>

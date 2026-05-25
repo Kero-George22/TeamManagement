@@ -703,6 +703,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     const isAssignee = Array.isArray(t.assignedTo) && currentUserId
       ? t.assignedTo.some(u => String(u._id || u) === currentUserId)
       : false;
+    const isUnassigned = !t.assignedTo || t.assignedTo.length === 0;
     
     // Check local admin role (since user context might lag behind DB)
     const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
@@ -711,8 +712,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     // Admin أو Owner يقدر يحط أي task في أي حالة
     if (!isAdmin && !isOwner) {
       // Member عادي
-      if (!isAssignee) {
-        toast.error('You can only move tasks assigned to you');
+      if (!isAssignee && !isUnassigned) {
+        toast.error('You can only move tasks assigned to you or unassigned tasks');
         setDraggedTaskId(null);
         return;
       }

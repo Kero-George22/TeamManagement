@@ -2,7 +2,6 @@ const asyncWrapper     = require('../utils/asyncWrapper');
 const { success }      = require('../utils/apiResponse');
 const AppError         = require('../utils/AppError');
 const User             = require('../models/user.model');
-const TokenBlacklist   = require('../models/tokenBlacklist.model');
 const emailService     = require('../utils/email.service');
 const crypto           = require('crypto');
 const jwt              = require('jsonwebtoken');
@@ -30,7 +29,15 @@ function generateJwt(user) {
   return jwt.sign(
     { sub: String(user._id), email: user.email },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
+  );
+}
+
+function generateRefreshToken(user) {
+  return jwt.sign(
+    { sub: String(user._id) },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
   );
 }
 
@@ -104,11 +111,25 @@ exports.login = asyncWrapper(async (req, res) => {
   const user = await User.findOne({ email }).select('+password');
   if (!user) throw new AppError('Invalid credentials', 401);
   if (!user.isVerified) throw new AppError('Email not verified', 403);
+  if (user.isBanned) throw new AppError('Your account has been banned', 403);
 
   const match = await user.comparePassword(password);
   if (!match) throw new AppError('Invalid credentials', 401);
 
   const token = generateJwt(user);
+  const refreshToken = generateRefreshToken(user);
+  
+  user.refreshTokens = user.refreshTokens || [];
+  user.refreshTokens.push(refreshToken);
+  await user.save();
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  });
+
   return success(res, { token, user: { id: user._id, _id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin } }, 'Logged in');
 });
 
@@ -131,6 +152,7 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
   if (!email || !emailVerified) throw new AppError('Google account email is not verified', 403);
 
   let user = await User.findOne({ email });
+  if (user && user.isBanned) throw new AppError('Your account has been banned', 403);
   if (!user) {
     user = await User.create({
       email,
@@ -153,6 +175,19 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
   }
 
   const token = generateJwt(user);
+  const refreshToken = generateRefreshToken(user);
+
+  user.refreshTokens = user.refreshTokens || [];
+  user.refreshTokens.push(refreshToken);
+  await user.save();
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  });
+  
   return success(res, {
     token,
     user: { id: user._id, _id: user._id, email: user.email, username: user.username, avatar: user.avatar, isAdmin: user.isAdmin },
@@ -160,18 +195,42 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
 });
 
 exports.logout = asyncWrapper(async (req, res) => {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7);
-    const decoded = jwt.decode(token);
-    if (decoded?.exp) {
-      await TokenBlacklist.create({
-        token,
-        expiresAt: new Date(decoded.exp * 1000),
-      });
+  const { refreshToken } = req.cookies;
+  if (refreshToken) {
+    // If the user's access token is still valid, req.user will be present via requireAuth.
+    // However, if the frontend calls logout without an access token (or it expired), req.user might be empty.
+    // Try to find the user by refreshToken to remove it.
+    const user = req.user 
+      ? await User.findById(req.user._id) 
+      : await User.findOne({ refreshTokens: refreshToken });
+
+    if (user && user.refreshTokens) {
+      user.refreshTokens = user.refreshTokens.filter(rt => rt !== refreshToken);
+      await user.save();
     }
   }
+  
+  res.clearCookie('refreshToken');
   return success(res, {}, 'Logged out');
+});
+
+exports.refreshToken = asyncWrapper(async (req, res) => {
+  const { refreshToken } = req.cookies;
+  if (!refreshToken) throw new AppError('Refresh token required', 401);
+
+  try {
+    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
+    const user = await User.findById(payload.sub);
+    if (!user || !user.refreshTokens || !user.refreshTokens.includes(refreshToken)) {
+      throw new AppError('Invalid refresh token', 401);
+    }
+
+    const token = generateJwt(user);
+    // Optionally rotate refresh token here as well
+    return success(res, { token }, 'Token refreshed');
+  } catch (err) {
+    throw new AppError('Invalid or expired refresh token', 401);
+  }
 });
 
 exports.requestPasswordReset = asyncWrapper(async (req, res) => {

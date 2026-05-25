@@ -1,0 +1,1 @@
+import{n as e,t}from"./jsx-runtime-Bg_NI1en.js";import n from"./SectionPage-BTHFo3jq.js";e();var r=t();function i(){return(0,r.jsx)(n,{})}export{i as default};

@@ -297,9 +297,11 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
   if (!isMember)
     throw new AppError('You must be a project member to update tasks', 403);
 
-  // Member يقدر يغير الـ tasks المسندة له بس
-  if (!isAssigned)
-    throw new AppError('You can only update tasks assigned to you', 403);
+  const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+
+  // Member يقدر يغير الـ tasks المسندة له بس أو اللي مش مسندة لحد
+  if (!isAssigned && !isUnassigned)
+    throw new AppError('You can only update tasks assigned to you or unassigned tasks', 403);
 
   // Member ممنوع يحط task في Done أو Approved
   if (BLOCKED_FOR_MEMBERS.includes(newStatus))
@@ -436,12 +438,14 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
     ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
-  // Non-admins can only edit if assigned to them
+  // Non-admins can only edit if assigned to them, or if it is unassigned
   if (!isAdmin) {
     const isOwner = String(project.owner || '') === String(userId);
     const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
-    if (!isOwner && !isAssigned)
-      throw new AppError('You can only edit tasks assigned to you or owned projects', 403);
+    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+    
+    if (!isOwner && !isAssigned && !isUnassigned)
+      throw new AppError('You can only edit tasks assigned to you, unassigned tasks, or owned projects', 403);
   }
 
   // Map frontend fields to backend fields
@@ -637,8 +641,10 @@ async function attachFile(taskId, userId, filename, isAdmin = false) {
   if (!isAdmin) {
     const isOwner = String(project.owner || '') === String(userId);
     const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
-    if (!isOwner && !isAssigned) {
-      throw new AppError('You can only upload attachments to tasks assigned to you or owned projects', 403);
+    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+    
+    if (!isOwner && !isAssigned && !isUnassigned) {
+      throw new AppError('You can only upload attachments to tasks assigned to you, unassigned tasks, or owned projects', 403);
     }
   }
 
@@ -648,53 +654,98 @@ async function attachFile(taskId, userId, filename, isAdmin = false) {
 }
 
 async function getProjectBoard(projectId, userId, isAdmin = false) {
+  const matchStage = {
+    project: projectId,
+  };
+
+  // Optional permission filtering
+  if (!isAdmin) {
+    matchStage.$or = [
+      { createdBy: userId },
+      { assignedTo: userId },
+    ];
+  }
+
+  const groups = await Task.aggregate([
+    {
+      $match: matchStage,
+    },
+
+    // Populate assignedTo user
+    {
+      $lookup: {
         from: 'users',
         localField: 'assignedTo',
         foreignField: '_id',
         as: 'assignedTo',
       },
     },
-    { $unwind: { path: '$assignedTo', preserveNullAndEmptyArrays: true } },
+
+    {
+      $unwind: {
+        path: '$assignedTo',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+
+    // Shape assigned user data
     {
       $addFields: {
         assignedTo: {
           $cond: {
             if: '$assignedTo',
-            then: { _id: '$assignedTo._id', email: '$assignedTo.email', username: '$assignedTo.username', avatar: '$assignedTo.avatar' },
+            then: {
+              _id: '$assignedTo._id',
+              email: '$assignedTo.email',
+              username: '$assignedTo.username',
+              avatar: '$assignedTo.avatar',
+            },
             else: null,
           },
         },
       },
     },
+
+    // Group by task status
     {
       $group: {
         _id: '$status',
         count: { $sum: 1 },
-        tasks: { $push: '$$CURRENT' },
+
+        tasks: {
+          $push: {
+            _id: '$_id',
+            title: '$title',
+            description: '$description',
+            assignedTo: '$assignedTo',
+            assignedRole: '$assignedRole',
+            priority: '$priority',
+            status: '$status',
+            deadline: '$deadline',
+            labels: '$labels',
+            storyPoints: '$storyPoints',
+            taskType: '$taskType',
+            createdAt: '$createdAt',
+          },
+        },
       },
     },
+
+    // Final output format
     {
       $project: {
         _id: 0,
         status: '$_id',
         count: 1,
-        tasks: {
-          _id: 1,
-          title: 1,
-          description: 1,
-          assignedTo: 1,
-          assignedRole: 1,
-          priority: 1,
-          status: 1,
-          deadline: 1,
-          labels: 1,
-          storyPoints: 1,
-          taskType: 1,
-          createdAt: 1,
-        },
+        tasks: 1,
       },
     },
-    { $sort: { status: 1 } },
+
+    {
+      $sort: {
+        status: 1,
+      },
+    },
   ]);
 
   return groups;

@@ -78,7 +78,7 @@ export default function Topbar({ title, backTo = null, onBack = null, action = n
 
       <div className="topbar__actions">
         {user?.isAdmin && (
-          <button className="icon-btn" onClick={() => navigate('/app/admin/analytics')} aria-label="Admin" title="Admin">
+          <button className="icon-btn" onClick={() => navigate('/app/admin')} aria-label="Admin" title="Admin">
             <i className="fa-solid fa-shield-halved" />
           </button>
         )}

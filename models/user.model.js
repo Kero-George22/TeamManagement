@@ -8,6 +8,9 @@ const UserSchema = new mongoose.Schema(
 
     isVerified: { type: Boolean, default: false },
     isAdmin:    { type: Boolean, default: false },
+    isBanned:   { type: Boolean, default: false },
+    
+    refreshTokens: [{ type: String }],
 
     verificationToken:         { type: String },
     verificationTokenExpires:  { type: Date },

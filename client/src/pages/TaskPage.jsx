@@ -29,6 +29,8 @@ export default function TaskPage() {
   }, [taskId]);
 
   const isAssigned = task && Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === user?._id);
+  const isUnassigned = task && (!task.assignedTo || task.assignedTo.length === 0);
+  const canEdit = isAssigned || isUnassigned;
 
   async function updateStatus(status) {
     try { await API.tasks.status(taskId, status); setTask({ ...task, status }); toast.success(`Status → "${status}"`); } catch (e) { toast.error(e.message); }
@@ -103,7 +105,7 @@ export default function TaskPage() {
             </div>
           )}
 
-          {isAssigned && (
+          {canEdit && (
             <div className="card">
               <h3 className="section-title">Update Status</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -115,7 +117,7 @@ export default function TaskPage() {
             </div>
           )}
 
-          {isAssigned && (
+          {canEdit && (
             <div className="card">
               <h3 className="section-title">Submit Work</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -135,7 +137,7 @@ export default function TaskPage() {
             </div>
           )}
 
-          {isAssigned && (
+          {canEdit && (
             <div className="card">
               <h3 className="section-title">Attachment</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

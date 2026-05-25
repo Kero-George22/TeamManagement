@@ -33,23 +33,60 @@ const isLoggedIn = () => !!getToken();
 
 /* core fetch */
 let onUnauthorized = () => { window.location.href = '/app/login'; };
-
 export const setOnUnauthorized = (fn) => { onUnauthorized = fn; };
 
-const request = async (method, path, body = null) => {
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+const subscribeTokenRefresh = (cb) => { refreshSubscribers.push(cb); };
+const onRefreshed = (accessToken) => { refreshSubscribers.map(cb => cb(accessToken)); refreshSubscribers = []; };
+
+const request = async (method, path, body = null, isRetry = false) => {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const opts = { method, headers };
+  const opts = { method, headers, credentials: 'include' };
   if (body) opts.body = JSON.stringify(body);
 
   const res = await fetch(BASE + path, opts);
 
+  if (res.status === 401 && !isRetry && path !== '/auth/login' && path !== '/auth/refresh') {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      try {
+        const refreshRes = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
+        const json = await refreshRes.json().catch(() => ({}));
+        
+        if (!refreshRes.ok || (!json.data?.token && !json.token)) {
+          throw new Error('Refresh failed');
+        }
+        
+        const newToken = json.data?.token || json.token;
+        saveAuth({ token: newToken });
+        
+        isRefreshing = false;
+        onRefreshed(newToken);
+      } catch (err) {
+        isRefreshing = false;
+        clearAuth();
+        onUnauthorized();
+        throw new Error('Session expired');
+      }
+    }
+    
+    // Wait until refresh is done, then retry the request
+    return new Promise((resolve) => {
+      subscribeTokenRefresh(() => {
+        resolve(request(method, path, body, true));
+      });
+    });
+  }
+
   if (res.status === 401) {
     clearAuth();
     onUnauthorized();
-    return;
+    throw new Error('Session expired');
   }
 
   const json = await res.json().catch(() => ({}));
@@ -289,10 +326,20 @@ const goals = {
   importLocal:  (goalsList) => post('/goals/import-local', { goals: goalsList }).then((r) => { invalidateCachePrefix('goals'); return r; }),
 };
 
+/* Admin */
+const admin = {
+  stats:         () => get('/admin/stats'),
+  users:         () => get('/admin/users'),
+  toggleBan:     (id) => put(`/admin/users/${id}/ban`),
+  deleteUser:    (id) => del(`/admin/users/${id}`),
+  projects:      () => get('/admin/projects'),
+  deleteProject: (id) => del(`/admin/projects/${id}`),
+};
+
 const API = {
   getToken, getUser, saveAuth, clearAuth, isLoggedIn,
   auth, profile, projects, tasks, dms, office, notifications, time,
-  analytics, portfolio, submissions, goals,
+  analytics, portfolio, submissions, goals, admin
 };
 
 export default API;
