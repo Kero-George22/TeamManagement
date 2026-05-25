@@ -259,7 +259,7 @@ export default function ExplorePage() {
       } />
 
       {/* Category Groups */}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingBottom: 12, marginBottom: 16 }}>
         {/* All button */}
         <button
           type="button"
