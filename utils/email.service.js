@@ -45,15 +45,51 @@ function verificationEmail(to, token) {
 }
 
 function passwordResetEmail(to, token) {
-  const resetUrl = (process.env.PASSWORD_RESET_URL || `https://example.com/reset`) + `?token=${token}`;
-  const html = `<p>Reset your password by clicking <a href="${resetUrl}">this link</a>. The link expires in ${process.env.VERIFICATION_HOURS || 24} hours.</p>`;
-  return sendMail({ to, subject: 'Reset your password', html, text: `Reset: ${resetUrl}` });
+  const frontendUrl = process.env.FRONTEND_URL || process.env.PASSWORD_RESET_URL || 'http://localhost:5173';
+  const resetUrl = `${frontendUrl}/app/forgot-password?token=${token}`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #fff; border-radius: 16px;">
+      <div style="font-size: 1.4rem; font-weight: 800; margin-bottom: 24px;">
+        Team<span style="color: #22c55e;">Forge</span>
+      </div>
+      <h2 style="font-size: 1.2rem; font-weight: 700; margin: 0 0 8px;">Reset your password</h2>
+      <p style="font-size: .9rem; color: #64748b; line-height: 1.6; margin: 0 0 24px;">
+        Click the button below to reset your password. The link expires in ${process.env.RESET_HOURS || 1} hour(s).
+      </p>
+      <a href="${resetUrl}" style="display: inline-block; padding: 12px 28px; background: #3b82f6; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: .95rem;">
+        Reset Password
+      </a>
+      <p style="font-size: .82rem; color: #94a3b8; margin-top: 24px; line-height: 1.5;">
+        If you didn't request a password reset, you can safely ignore this email.
+      </p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+      <p style="font-size: .78rem; color: #94a3b8;">
+        Or copy this link into your browser:<br />
+        <a href="${resetUrl}" style="color: #3b82f6;">${resetUrl}</a>
+      </p>
+    </div>
+  `;
+  return sendMail({ to, subject: 'Reset your TeamForge password', html, text: `Reset your password: ${resetUrl}` });
 }
 
 function passwordChangedEmail(to) {
-  const url = process.env.ACCOUNT_URL || `https://example.com/account`;
-  const html = `<p>Your password was changed. If this wasn't you, visit <a href="${url}">your account</a> or contact support.</p>`;
-  return sendMail({ to, subject: 'Your password was changed', html, text: `Visit: ${url}` });
+  const frontendUrl = process.env.FRONTEND_URL || process.env.PASSWORD_RESET_URL || 'http://localhost:5173';
+  const url = `${frontendUrl}/app/login`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #fff; border-radius: 16px;">
+      <div style="font-size: 1.4rem; font-weight: 800; margin-bottom: 24px;">
+        Team<span style="color: #22c55e;">Forge</span>
+      </div>
+      <h2 style="font-size: 1.2rem; font-weight: 700; margin: 0 0 8px;">Password changed</h2>
+      <p style="font-size: .9rem; color: #64748b; line-height: 1.6; margin: 0 0 24px;">
+        Your TeamForge password was changed successfully. If this wasn't you, please contact support immediately.
+      </p>
+      <a href="${url}" style="display: inline-block; padding: 12px 28px; background: #3b82f6; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: .95rem;">
+        Sign In
+      </a>
+    </div>
+  `;
+  return sendMail({ to, subject: 'Your TeamForge password was changed', html, text: `Your password was changed. Sign in: ${url}` });
 }
 
 module.exports = { sendMail, verificationEmail, passwordResetEmail, passwordChangedEmail };

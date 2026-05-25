@@ -250,9 +250,11 @@ exports.requestPasswordReset = asyncWrapper(async (req, res) => {
 });
 
 exports.resetPassword = asyncWrapper(async (req, res) => {
-  const { token, newPassword } = req.body;
+  const { token, newPassword, confirmPassword } = req.body;
   if (!token || !newPassword) throw new AppError('Token and newPassword required', 400);
   if (newPassword.length < 8) throw new AppError('Password min length 8', 400);
+  if (confirmPassword !== undefined && newPassword !== confirmPassword)
+    throw new AppError('Passwords do not match', 400);
 
   const user = await User.findOne({
     resetPasswordToken: { $in: [hashToken(token), token] },

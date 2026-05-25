@@ -145,7 +145,7 @@ export default function AdminDashboardPage() {
             {activeTab === 'users' && (
               <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead style={{ background: 'var(--bg-hover)', borderBottom: '2px solid var(--border)' }}>
+                  <thead style={{ background: 'var(--bg)', borderBottom: '2px solid var(--border)' }}>
                     <tr>
                       <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '.85rem' }}>User</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '.85rem' }}>Email</th>
@@ -202,7 +202,7 @@ export default function AdminDashboardPage() {
             {activeTab === 'projects' && (
               <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead style={{ background: 'var(--bg-hover)', borderBottom: '2px solid var(--border)' }}>
+                  <thead style={{ background: 'var(--bg)', borderBottom: '2px solid var(--border)' }}>
                     <tr>
                       <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '.85rem' }}>Project</th>
                       <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '.85rem' }}>Owner</th>

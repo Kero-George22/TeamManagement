@@ -22,6 +22,7 @@ const SectionPage = lazy(() => import('./pages/SectionPage'));
 const MyTasksPageWrapper = lazy(() => import('./pages/MyTasksPageWrapper'));
 const BoardPage = lazy(() => import('./pages/BoardPage'));
 const GoalsPage = lazy(() => import('./pages/GoalsPage'));
+const OnboardPage = lazy(() => import('./pages/OnboardPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage'));
 const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'));
@@ -94,6 +95,9 @@ export default function App() {
                 <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/app/profile/:userId" element={<PublicProfilePage />} />
                 <Route path="/app/invite/:token"   element={<InvitePage />} />
+
+                {/* Protected route — no shell (fullscreen) */}
+                <Route path="/app/onboard" element={<ProtectedRoute><OnboardPage /></ProtectedRoute>} />
 
                 {/* Protected routes with layout shell */}
                 <Route element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>

@@ -110,7 +110,7 @@ const auth = {
   googleLogin: (idToken)            => post('/auth/google',  { idToken }),
   logout:      ()                   => post('/auth/logout'),
   forgotPw:    (email)              => post('/auth/forgot-password', { email }),
-  resetPw:     (token, newPassword) => post('/auth/reset-password',  { token, newPassword }),
+  resetPw:     (token, newPassword, confirmPassword) => post('/auth/reset-password',  { token, newPassword, confirmPassword }),
   changePw:    (oldPassword, newPw) => post('/auth/change-password', { oldPassword, newPassword: newPw }),
 };
 

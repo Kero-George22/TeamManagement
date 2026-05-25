@@ -19,7 +19,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isLoggedIn) {
-      navigate('/app/dashboard', { replace: true });
+      const u = API.getUser();
+      if (u && !u.username) {
+        navigate('/app/onboard', { replace: true });
+      } else {
+        navigate('/app/dashboard', { replace: true });
+      }
     }
   }, [isLoggedIn, navigate]);
 
@@ -31,7 +36,13 @@ export default function LoginPage() {
       const data = await API.auth.googleLogin(idToken);
       login(data);
       toast.success('Signed in with Google!');
-      setTimeout(() => navigate('/app/dashboard'), 600);
+      setTimeout(() => {
+        if (!data.user.username) {
+          navigate('/app/onboard', { replace: true });
+        } else {
+          navigate('/app/dashboard', { replace: true });
+        }
+      }, 600);
     } catch (err) {
       toast.error(err.message || 'Google sign-in failed');
     } finally {
@@ -68,7 +79,13 @@ export default function LoginPage() {
       const data = await API.auth.login(fd.get('email'), fd.get('password'));
       login(data);
       toast.success('Logged in! Redirecting…');
-      setTimeout(() => navigate('/app/dashboard'), 600);
+      setTimeout(() => {
+        if (!data.user.username) {
+          navigate('/app/onboard', { replace: true });
+        } else {
+          navigate('/app/dashboard', { replace: true });
+        }
+      }, 600);
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   }
