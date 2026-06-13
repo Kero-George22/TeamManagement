@@ -1,7 +1,7 @@
 /* ── TeamForge API Client (ES Module) ─────── */
 import { getCache, setCache, invalidateCachePrefix } from './cache.js';
 
-const BASE = '';
+const BASE = '/api/v1';
 
 const getToken = () => localStorage.getItem('tf_token') || localStorage.getItem('jxp_token');
 const getUser  = () => {
@@ -32,7 +32,7 @@ const clearAuth = () => {
 const isLoggedIn = () => !!getToken();
 
 /* core fetch */
-let onUnauthorized = () => { window.location.href = '/app/login'; };
+let onUnauthorized = () => { window.location.href = '/login'; };
 export const setOnUnauthorized = (fn) => { onUnauthorized = fn; };
 
 let isRefreshing = false;

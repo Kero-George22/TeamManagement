@@ -27,7 +27,17 @@ const io = new Server(server, {
 // Security headers
 // ─────────────────────────────────────────
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'", process.env.CLIENT_URL || '*'],
+      imgSrc: ["'self'", "data:", "res.cloudinary.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
 const cookieParser = require('cookie-parser');
 app.use(cookieParser());
 
@@ -59,20 +69,35 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // API Routes — MUST be before static pages!
 // ─────────────────────────────────────────
 
-app.use('/auth',     require('./routers/auth.routes'));
-app.use('/admin',    require('./routers/admin.routes'));
-app.use('/projects', require('./routers/project.routes'));
-app.use('/tasks',    require('./routers/task.routes'));
-app.use('/profile',  require('./routers/profile.routes'));
-app.use('/office',   require('./routers/office.routes'));
-app.use('/dms',      require('./routers/dm.routes'));
-app.use('/posts',    require('./routers/post.routes'));
-app.use('/time',     require('./routers/time.routes'));
-app.use('/notifications', require('./routers/notification.routes'));
-app.use('/analytics',   require('./routers/analytics.routes'));
-app.use('/portfolio',   require('./routers/portfolio.routes'));
-app.use('/submissions', require('./routers/submission.routes'));
-app.use('/goals',       require('./routers/goal.routes'));
+const apiRouter = express.Router();
+apiRouter.use('/auth',     require('./routers/auth.routes'));
+apiRouter.use('/admin',    require('./routers/admin.routes'));
+apiRouter.use('/projects', require('./routers/project.routes'));
+apiRouter.use('/tasks',    require('./routers/task.routes'));
+apiRouter.use('/profile',  require('./routers/profile.routes'));
+apiRouter.use('/office',   require('./routers/office.routes'));
+apiRouter.use('/dms',      require('./routers/dm.routes'));
+apiRouter.use('/posts',    require('./routers/post.routes'));
+apiRouter.use('/time',     require('./routers/time.routes'));
+apiRouter.use('/notifications', require('./routers/notification.routes'));
+apiRouter.use('/analytics',   require('./routers/analytics.routes'));
+apiRouter.use('/portfolio',   require('./routers/portfolio.routes'));
+apiRouter.use('/submissions', require('./routers/submission.routes'));
+apiRouter.use('/goals',       require('./routers/goal.routes'));
+
+// Health check
+apiRouter.get('/health', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.json({
+    ok: true,
+    env: process.env.NODE_ENV,
+    uptime: process.uptime(),
+    database: dbStatus,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.use('/api/v1', apiRouter);
 app.get('/uploads/:filename', requireAuth, async (req, res, next) => {
   try {
     const filename = path.basename(req.params.filename);
@@ -105,36 +130,25 @@ const { setupSocket } = require('./services/socket.service');
 setupSocket(io);
 
 // ─────────────────────────────────────────
-// Static files & legacy HTML pages
+// Static files (React SPA)
 // ─────────────────────────────────────────
 
-const reactBuildPath = path.join(__dirname, 'public', 'app');
-const publicPath = path.join(__dirname, 'public');
+const reactBuildPath = path.join(__dirname, 'client', 'dist');
 const reactIndexPath = path.join(reactBuildPath, 'index.html');
-const hasReactIndex = require('fs').existsSync(reactIndexPath);
+const hasReactIndex = fs.existsSync(reactIndexPath);
 
-app.use(express.static(publicPath));
-app.use('/app', express.static(reactBuildPath));
-const sendPage = (page) => (req, res) => res.sendFile(path.join(publicPath, page));
+app.use(express.static(reactBuildPath));
 
-app.get('/',                   sendPage('index.html'));
-app.get('/dashboard',          sendPage('dashboard.html'));
-app.get('/pages/projects',     sendPage('projects.html'));
-app.get('/project',            sendPage('project.html'));
-app.get('/messages',           sendPage('messages.html'));
-app.get('/profile-page',       sendPage('profile.html'));
-app.get('/office',             sendPage('office.html'));
-app.get('/task',               sendPage('task.html'));
-app.get('/forgot-password',    sendPage('forgot-password.html'));
-
-app.get('/app/*path', (req, res) => {
-  hasReactIndex
-    ? res.sendFile(reactIndexPath)
-    : res.status(404).send('React app not built yet. Run: cd client && npm run build');
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/v1')) {
+    return res.status(404).json({ success: false, message: 'API Route Not Found' });
+  }
+  if (hasReactIndex) {
+    res.sendFile(reactIndexPath);
+  } else {
+    res.status(404).send('React app not built yet. Run: cd client && npm run build');
+  }
 });
-
-// Health check
-app.get('/health', (req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));
 
 // ─────────────────────────────────────────
 // Error handler — لازم يكون آخر حاجة

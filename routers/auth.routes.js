@@ -3,6 +3,8 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middlewares/auth.middleware');
+const validate = require('../middlewares/validation.middleware');
+const { signupValidation, loginValidation, resetPasswordValidation, changePasswordValidation } = require('../middlewares/validation/auth.validation');
 
 const loginLimiter = rateLimit({
 	windowMs: Number(process.env.LOGIN_WINDOW_MS) || 15 * 60 * 1000,
@@ -36,14 +38,14 @@ const passwordResetLimiter = rateLimit({
 	message: { success: false, message: 'Too many password reset attempts, try later.' },
 });
 
-router.post('/signup', signupLimiter, authController.signup);
+router.post('/signup', signupLimiter, signupValidation, validate, authController.signup);
 router.post('/verify', tokenLimiter, authController.verifyEmail);
-router.post('/login', loginLimiter, authController.login);
+router.post('/login', loginLimiter, loginValidation, validate, authController.login);
 router.post('/google', loginLimiter, authController.googleLogin);
 router.post('/refresh', tokenLimiter, authController.refreshToken);
 router.post('/logout', authController.logout);
 router.post('/forgot-password', passwordResetLimiter, authController.requestPasswordReset);
-router.post('/reset-password', tokenLimiter, authController.resetPassword);
-router.post('/change-password', requireAuth, authController.changePassword);
+router.post('/reset-password', tokenLimiter, resetPasswordValidation, validate, authController.resetPassword);
+router.post('/change-password', requireAuth, changePasswordValidation, validate, authController.changePassword);
 
 module.exports = router;

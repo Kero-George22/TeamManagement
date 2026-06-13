@@ -29,6 +29,10 @@ const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const ExplorePage = lazy(() => import('./pages/ExplorePage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
+const TermsPage = lazy(() => import('./pages/legal/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
+const CookiesPage = lazy(() => import('./pages/legal/CookiesPage'));
+const AUPPage = lazy(() => import('./pages/legal/AUPPage'));
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -88,38 +92,39 @@ export default function App() {
             <Suspense fallback={<RouteLoader />}>
               <Routes>
                 {/* Public routes */}
-                <Route path="/app"                 element={<LandingPage />} />
-                <Route path="/app/"                element={<LandingPage />} />
                 <Route path="/"                    element={<LandingPage />} />
-                <Route path="/app/login"           element={<LoginPage />} />
-                <Route path="/app/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/app/profile/:userId" element={<PublicProfilePage />} />
-                <Route path="/app/invite/:token"   element={<InvitePage />} />
+                <Route path="/login"               element={<LoginPage />} />
+                <Route path="/forgot-password"     element={<ForgotPasswordPage />} />
+                <Route path="/profile/:userId"     element={<PublicProfilePage />} />
+                <Route path="/invite/:token"       element={<InvitePage />} />
+                <Route path="/terms"               element={<TermsPage />} />
+                <Route path="/privacy"             element={<PrivacyPage />} />
+                <Route path="/cookies"             element={<CookiesPage />} />
+                <Route path="/aup"                 element={<AUPPage />} />
 
                 {/* Protected route — no shell (fullscreen) */}
-                <Route path="/app/onboard" element={<ProtectedRoute><OnboardPage /></ProtectedRoute>} />
+                <Route path="/onboard" element={<ProtectedRoute><OnboardPage /></ProtectedRoute>} />
 
                 {/* Protected routes with layout shell */}
                 <Route element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>
-                  <Route path="/app/dashboard"      element={<DashboardPage />} />
-                  <Route path="/app/projects"       element={<ProjectsPage />} />
-                  <Route path="/app/explore"       element={<ExplorePage />} />
-                  <Route path="/app/project/:id"    element={<ProjectPage />} />
-                  <Route path="/app/task/:id"       element={<TaskPage />} />
-                  <Route path="/app/tasks"          element={<MyTasksPageWrapper />} />
-                  <Route path="/app/board/:id"      element={<BoardPage />} />
-                  <Route path="/app/goals"          element={<GoalsPage />} />
-                  <Route path="/app/messages"       element={<MessagesPage />} />
-                  <Route path="/app/profile"        element={<ProfilePage />} />
-                  <Route path="/app/office/:id"     element={<OfficePage />} />
-                  <Route path="/app/admin"           element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
-                  <Route path="/app/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
-                  <Route path="/app/admin/reviews"   element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
+                  <Route path="/dashboard"      element={<DashboardPage />} />
+                  <Route path="/projects"       element={<ProjectsPage />} />
+                  <Route path="/explore"        element={<ExplorePage />} />
+                  <Route path="/project/:id"    element={<ProjectPage />} />
+                  <Route path="/task/:id"       element={<TaskPage />} />
+                  <Route path="/tasks"          element={<MyTasksPageWrapper />} />
+                  <Route path="/board/:id"      element={<BoardPage />} />
+                  <Route path="/goals"          element={<GoalsPage />} />
+                  <Route path="/messages"       element={<MessagesPage />} />
+                  <Route path="/profile"        element={<ProfilePage />} />
+                  <Route path="/office/:id"     element={<OfficePage />} />
+                  <Route path="/admin"          element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
+                  <Route path="/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
+                  <Route path="/admin/reviews"  element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
                 </Route>
 
                 {/* Catch-all */}
-                <Route path="/app/*" element={<Navigate to="/app/dashboard" replace />} />
-                <Route path="*"      element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>
