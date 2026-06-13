@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
-const Goal = require('../models/goal.model');
-const { GOAL_COLORS } = require('../models/goal.model');
+const { Goal, GOAL_COLORS } = require('../models/goal.model');
 const AppError = require('../utils/AppError');
 
 function validateObjectId(id, label = 'ID') {

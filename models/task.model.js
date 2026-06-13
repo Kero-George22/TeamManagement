@@ -34,18 +34,15 @@ const taskSchema = new mongoose.Schema({
     ref: 'Task',
   }],
   comments: [commentSchema],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+
 }, { timestamps: true });
 
 // Indexes
-taskSchema.index({ project: 1, createdAt: -1 });
-taskSchema.index({ project: 1, assignedTo: 1, createdAt: -1 });
-taskSchema.index({ project: 1, assignedRole: 1, createdAt: -1 });
-taskSchema.index({ parentTask: 1 });
-taskSchema.index({ dependsOn: 1 });
-taskSchema.index({ assignedTo: 1, createdAt: -1 }); // Dashboard queries
-taskSchema.index({ assignedRole: 1, createdAt: -1 }); // Role-based filtering
-taskSchema.index({ visibility: 1, assignedTo: 1 }); // Visibility queries
+taskSchema.index({ project: 1, status: 1, createdAt: -1 });      // covers all project-level queries
+taskSchema.index({ project: 1, assignedTo: 1, createdAt: -1 });   // dashboard: project + member filter
+taskSchema.index({ assignedTo: 1, createdAt: -1 });               // user dashboard queries
+taskSchema.index({ parentTask: 1 }, { sparse: true });             // subtask lookup
+taskSchema.index({ dependsOn: 1 }, { sparse: true });              // dependency lookup
+taskSchema.index({ deadline: 1, status: 1 }, { sparse: true });    // overdue / reminder queries
 
 module.exports = mongoose.model('Task', taskSchema);

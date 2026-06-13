@@ -25,13 +25,12 @@ const notificationSchema = new mongoose.Schema({
   // Reference data
   task: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },
   project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
-  comment: { type: mongoose.Schema.Types.ObjectId, ref: 'Task.comments' },
+  comment: { type: mongoose.Schema.Types.ObjectId },
   // Metadata
   metadata: { type: Object, default: {} },
 }, { timestamps: true });
 
 // Indexes
 notificationSchema.index({ recipient: 1, read: 1, createdAt: -1 });
-notificationSchema.index({ recipient: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

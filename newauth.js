@@ -43,7 +43,7 @@ function generateRefreshToken(user) {
   );
 }
 
-function  pruneAndAddRefreshToken(user, rawRefreshToken) {
+function pruneAndAddRefreshToken(user, rawRefreshToken) {
   user.refreshTokens = (user.refreshTokens || []).filter(t => {
     try {
       const decoded = jwt.decode(t);

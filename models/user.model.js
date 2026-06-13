@@ -42,10 +42,13 @@ const UserSchema = new mongoose.Schema(
 );
 
 // Indexes for search performance
-UserSchema.index({ username: 1 });
-UserSchema.index({ email: 1 });
-// Collation-based index for case-insensitive regex searches
-UserSchema.index({ username: 1, email: 1 });
+UserSchema.index({ username: 1 }, { sparse: true });
+UserSchema.index({ verificationToken: 1 }, { sparse: true });    // email verification flow
+UserSchema.index({ resetPasswordToken: 1 }, { sparse: true });   // password reset flow
+UserSchema.index({ refreshTokens: 1 }, { sparse: true });         // logout / token revocation
+// note: email index is auto-created by unique:true — do not add manually
+
+
 
 UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

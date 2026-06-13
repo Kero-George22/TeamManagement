@@ -10,10 +10,6 @@ const DMSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-DMSchema.index({ sender: 1, receiver: 1 });
-DMSchema.index({ sender: 1, createdAt: -1 });
-DMSchema.index({ receiver: 1, createdAt: -1 });
-DMSchema.index({ receiver: 1, read: 1 });
 DMSchema.index({ sender: 1, receiver: 1, createdAt: -1 }); // Conversation queries
 DMSchema.index({ receiver: 1, sender: 1, read: 1, createdAt: -1 }); // Unread + conversations
 

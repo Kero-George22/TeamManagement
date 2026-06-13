@@ -315,7 +315,7 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
-// Helper — update user completion stats on task approval
+// Helper — update user completion stats on task approval   remove it
 // ─────────────────────────────────────────
 
 async function _rewardUser(task) {

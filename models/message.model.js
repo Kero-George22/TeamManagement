@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
-  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, index: true },
+  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   username: { type: String },      // denormalized so we never need to populate
   avatar:   { type: String },      // denormalized avatar URL / base64

@@ -32,7 +32,7 @@ function prepareRoles(roles) {
 
 function normalizeTaskStatuses(statuses) {
   if (!Array.isArray(statuses)) return null;
-  const cleaned = statuses
+  const cleaned = statuses 
     .map((status) => String(status || '').trim())
     .filter(Boolean);
   const unique = [...new Set(cleaned)];
@@ -93,7 +93,7 @@ async function createProject(data, ownerId) {
 
 // ─────────────────────────────────────────
 // EXPLORE — public projects with category filtering
-// ─────────────────────────────────────────
+// ─────────────────────────────────────────2222222222222222222
 
 function countOpenSlots(project) {
   return (project.rolesRequired || []).reduce(
@@ -256,7 +256,7 @@ async function getProjectById(projectId, userId = null) {
   if (project.isPrivate && userId) {
     const isOwner  = String(project.owner._id) === String(userId);
     const isMember = project.members.some(
-      (m) => String(m.userId._id || m.userId) === String(userId)
+      (m) => String(m.userId._id || m.userId) === String(userId) // before and after populate
     );
     if (!isOwner && !isMember)
       throw new AppError('This project is private', 403);
