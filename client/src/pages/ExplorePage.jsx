@@ -113,7 +113,7 @@ export default function ExplorePage() {
     q: '',
     role: '',
     category: 'all',
-    status: 'Recruiting',
+    status: 'all',
     sort: 'newest',
     durationMin: '',
     durationMax: '',
@@ -150,8 +150,7 @@ export default function ExplorePage() {
         page,
         limit: 20,
       });
-      setProjects(data?.projects || []);
-      setTotalPages(data?.totalPages || 1);
+      setResult(data ?? { projects: [], totalPages: 1, total: 0 });
     } catch { toast.error('Failed to load projects'); }
     setLoading(false);
   }, [filters, page]);
@@ -359,10 +358,10 @@ export default function ExplorePage() {
               onChange={(e) => updateFilter('status', e.target.value)}
               style={{ flex: '0 1 140px' }}
             >
+              <option value="all">All statuses</option>
               <option value="Recruiting">Recruiting</option>
               <option value="In-Progress">In Progress</option>
               <option value="Completed">Completed</option>
-              <option value="all">All statuses</option>
             </select>
             <select
               className="form-input"

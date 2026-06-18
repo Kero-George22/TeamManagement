@@ -79,7 +79,7 @@ async function createTasksByAI(projectId, userId) {
   if (!isOwner)
     throw new AppError('Only the project owner can generate tasks by AI', 403);
 
-  const aiTasks = await aiManager.assignTasksByAI({
+  const plan = await aiManager.generateProjectPlan({
     title:         project.title,
     description:   project.description,
     rolesRequired: project.rolesRequired,
@@ -100,28 +100,34 @@ async function createTasksByAI(projectId, userId) {
     Date.now() + project.duration * 24 * 60 * 60 * 1000
   );
 
-  const taskDocs = aiTasks.map((taskData) => {
-    const roleKey    = normalizeRole(taskData.assignedRole);
-    const candidates = roleMembers.get(roleKey) || [];
-    let assignedTo   = null;
+  const taskDocs = [];
+  
+  // Flatten tasks from phases
+  for (const phase of plan.phases || []) {
+    for (const taskData of phase.tasks || []) {
+      const roleKey    = normalizeRole(taskData.assignedRole);
+      const candidates = roleMembers.get(roleKey) || [];
+      let assignedTo   = null;
 
-    if (candidates.length > 0) {
-      const cursor = roleCursor.get(roleKey) || 0;
-      assignedTo   = candidates[cursor % candidates.length];
-      roleCursor.set(roleKey, cursor + 1);
+      if (candidates.length > 0) {
+        const cursor = roleCursor.get(roleKey) || 0;
+        assignedTo   = candidates[cursor % candidates.length];
+        roleCursor.set(roleKey, cursor + 1);
+      }
+
+      taskDocs.push({
+        project:      projectId,
+        title:        `[${phase.name}] ${taskData.title}`,
+        description:  taskData.description,
+        assignedRole: taskData.assignedRole,
+        assignedTo:   assignedTo ? [assignedTo] : [],
+        priority:     taskData.priority  || 'Medium',
+        storyPoints:  taskData.storyPoints || 0,
+        status:       'Todo',
+        deadline,
+      });
     }
-
-    return {
-      project:      projectId,
-      title:        taskData.title,
-      description:  taskData.description,
-      assignedRole: taskData.assignedRole,
-      assignedTo:   assignedTo ? [assignedTo] : [],
-      priority:     taskData.priority  || 'Medium',
-      status:       'Todo',
-      deadline,
-    };
-  });
+  }
 
   return Task.insertMany(taskDocs);
 }
@@ -318,7 +324,7 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 // Helper — update user completion stats on task approval   remove it
 // ─────────────────────────────────────────
 
-async function _rewardUser(task) {
+/*async function _rewardUser(task) {
   if (!Array.isArray(task.assignedTo) || task.assignedTo.length === 0) return;
 
   const isOnTime = task.deadline && new Date() <= new Date(task.deadline);
@@ -337,6 +343,8 @@ async function _rewardUser(task) {
     }
   );
 }
+*/
+
 
 // ─────────────────────────────────────────
 // Exports

@@ -13,6 +13,7 @@ import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 import SectionPage from './SectionPage';
 import ProjectAnalyticsTab from '../components/ProjectAnalyticsTab';
+import AICopilotChat from '../components/ui/AICopilotChat';
 
 const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
@@ -62,6 +63,7 @@ export default function ProjectPage() {
   const [editingTask, setEditingTask] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
+  const [chatOpen, setChatOpen] = useState(false);
 
   const isOwner = !!project && (project.owner?._id === (user?.id || user?._id) || project.owner === (user?.id || user?._id));
   const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === (user?.id || user?._id));
@@ -774,6 +776,19 @@ export default function ProjectPage() {
           projectId={id}
           onTaskUpdate={handleTaskUpdate}
         />
+      )}
+
+      {isMember && (
+        <>
+          <button 
+            className="btn btn--blue" 
+            style={{ position: 'fixed', bottom: 24, right: 24, borderRadius: '50%', width: 56, height: 56, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 9998 }}
+            onClick={() => setChatOpen(!chatOpen)}
+          >
+            <i className={`fa-solid ${chatOpen ? 'fa-xmark' : 'fa-robot'}`} style={{ fontSize: '1.4rem' }} />
+          </button>
+          {chatOpen && <AICopilotChat projectId={id} onClose={() => setChatOpen(false)} />}
+        </>
       )}
     </>
   );

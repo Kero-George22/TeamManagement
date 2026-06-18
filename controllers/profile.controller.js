@@ -11,9 +11,9 @@ const getMyProfile = asyncWrapper(async (req, res) => {
 
 // PUT /profile/me
 const updateMyProfile = asyncWrapper(async (req, res) => {
-  const { username, avatar, bio, email, headline, location, skills, socials } = req.body;
+  const { username, avatar, bio, email, headline, location, skills, socials, role, interests, hasCompletedOnboarding } = req.body;
   const updated = await profileService.updateProfile(req.user._id, {
-    username, avatar, bio, email, headline, location, skills, socials
+    username, avatar, bio, email, headline, location, skills, socials, role, interests, hasCompletedOnboarding
   });
   return success(res, updated, 'Profile updated successfully');
 });

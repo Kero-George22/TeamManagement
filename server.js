@@ -84,6 +84,7 @@ apiRouter.use('/analytics',   require('./routers/analytics.routes'));
 apiRouter.use('/portfolio',   require('./routers/portfolio.routes'));
 apiRouter.use('/submissions', require('./routers/submission.routes'));
 apiRouter.use('/goals',       require('./routers/goal.routes'));
+apiRouter.use('/ai',          require('./routers/ai.routes'));
 
 // Health check
 apiRouter.get('/health', (req, res) => {
@@ -139,7 +140,7 @@ const hasReactIndex = fs.existsSync(reactIndexPath);
 
 app.use(express.static(reactBuildPath));
 
-app.get('*', (req, res, next) => {
+app.get(/.*/, (req, res, next) => {
   if (req.path.startsWith('/api/v1')) {
     return res.status(404).json({ success: false, message: 'API Route Not Found' });
   }

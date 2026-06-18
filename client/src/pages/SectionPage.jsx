@@ -554,6 +554,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     priority: 'Medium', status: 'Todo', deadline: '', assignee: 'me'
   };
   const [newTaskInput, setNewTaskInput] = useState(emptyComposer);
+  const [taskModalDate, setTaskModalDate] = useState(null);
   const [taskModal, setTaskModal] = useState(false);
   const [modalAssignees, setModalAssignees] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
@@ -729,6 +730,27 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     try { await API.tasks.status(taskIdToUse, targetStatus); }
     catch (err) {
       toast.error(err.message || 'Failed to move task');
+      loadTasks();
+    }
+    setDraggedTaskId(null);
+  }
+
+  async function handleDropDeadline(e, dateStr, overrideTaskId = null) {
+    if (e && e.preventDefault) e.preventDefault();
+    const taskIdToUse = overrideTaskId || draggedTaskIdRef.current;
+    if (!taskIdToUse) return;
+    const t = tasks.find(x => x._id === taskIdToUse);
+    if (!t) return;
+    
+    // format to ISO string of the date dropping onto
+    const newDate = new Date(dateStr);
+    newDate.setHours(12, 0, 0, 0); // set to noon to avoid timezone drifts
+    
+    const newDeadline = newDate.toISOString();
+    setTasks(ts => ts.map(x => x._id === taskIdToUse ? { ...x, deadline: newDeadline } : x));
+    try { await API.tasks.update(taskIdToUse, { deadline: newDeadline }); }
+    catch (err) {
+      toast.error(err.message || 'Failed to update task deadline');
       loadTasks();
     }
     setDraggedTaskId(null);
@@ -994,6 +1016,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       });
       toast.success('Task created!');
       setTaskModal(false);
+      setTaskModalDate(null);
       setModalAssignees([]);
       loadTasks();
     } catch (err) {
@@ -1335,6 +1358,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         }
         .cal-cell.dim { background: var(--bg); }
         body.dark .cal-cell.dim { background: rgba(255,255,255,.015); }
+        .cal-cell:hover { background: rgba(0,0,0,.01); }
+        body.dark .cal-cell:hover { background: rgba(255,255,255,.03); }
+        .cal-cell.drag-over { background: rgba(34,197,94,.06); border-color: var(--green) !important; }
         .cal-task {
           font-size: .68rem;
           padding: 5px 8px;
@@ -1962,13 +1988,22 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
             <div className="calendar-grid" style={{ flex: 1 }}>
               {CAL_DAYS.map(day => <div key={day} className="cal-header-cell">{day}</div>)}
               {calendarCells.map((c, i) => (
-                <div key={i} className={`cal-cell ${!c.current ? 'dim' : ''}`}>
+                <div key={i} className={`cal-cell ${!c.current ? 'dim' : ''}`}
+                  onDragOver={e => e.preventDefault()}
+                  onDragEnter={e => e.currentTarget.classList.add('drag-over')}
+                  onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                  onDrop={e => { e.currentTarget.classList.remove('drag-over'); handleDropDeadline(e, c.dateStr); }}
+                  onClick={() => { setTaskModalDate(c.dateStr); setTaskModal(true); }}
+                  style={{ cursor: 'pointer' }}>
                   <div style={{ fontWeight: c.dateStr === new Date().toDateString() ? 800 : 600, textAlign: 'right', background: c.dateStr === new Date().toDateString() ? 'var(--green)' : 'transparent', color: c.dateStr === new Date().toDateString() ? '#fff' : c.current ? 'var(--text-primary)' : 'var(--text-muted)', width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto', fontSize: '.75rem' }}>{c.day}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflowY: 'auto' }}>
                     {c.tasks.map(t => {
                       const cCol = getProjectColor(t.projectRef?._id);
                       return (
-                        <div key={t._id} className="cal-task" onClick={() => setSelectedTask(t)}
+                        <div key={t._id} className="cal-task"
+                          draggable
+                          onDragStart={(e) => { e.stopPropagation(); setDraggedTaskId(t._id); draggedTaskIdRef.current = t._id; }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }}
                           style={{ background: `var(--${cCol}-bg)`, color: `var(--${cCol})`, borderLeftColor: `var(--${cCol})` }} title={t.title}>
                           {t.title}
                         </div>
@@ -1999,7 +2034,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       )}
 
       {/* ── Create Task Modal ─────────────────────── */}
-      <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">
+      <Modal open={taskModal} onClose={() => { setTaskModal(false); setTaskModalDate(null); }} title="Add Task">
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {!activeProject?._id && (
             <div className="form-group">
@@ -2038,7 +2073,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-group">
               <label className="form-label">Deadline</label>
-              <input name="deadline" className="form-input" type="date" />
+              <input name="deadline" className="form-input" type="date" defaultValue={taskModalDate ? (() => { const d = new Date(taskModalDate); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })() : ''} />
             </div>
             <div className="form-group">
               <label className="form-label">Role</label>

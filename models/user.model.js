@@ -26,7 +26,10 @@ const UserSchema = new mongoose.Schema(
     location: { type: String, trim: true, maxlength: 100 },
     lastSeen: { type: Date, default: Date.now },
 
+    role:     { type: String, trim: true, maxlength: 50 },
     skills: [{ type: String, trim: true, maxlength: 50 }],
+    interests: [{ type: String, trim: true, maxlength: 50 }],
+    hasCompletedOnboarding: { type: Boolean, default: false },
 
     socials: {
       whatsapp: { type: String, trim: true, maxlength: 300 },
@@ -37,6 +40,21 @@ const UserSchema = new mongoose.Schema(
     },
 
     completedTasks: { type: Number, default: 0, min: 0 },
+
+    // ─── 2FA ───────────────────────────────
+    twoFA: {
+      enabled:     { type: Boolean, default: false },
+      secret:      { type: String, select: false },
+      backupCodes: [{ type: String, select: false }]
+    },
+
+    // ─── AI Usage & Plan ───────────────────
+    plan: { type: String, enum: ['free', 'pro', 'team'], default: 'free' },
+    aiUsage: {
+      credits:   { type: Number, default: 0 },
+      resetDate: { type: Date },
+      totalUsed: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );

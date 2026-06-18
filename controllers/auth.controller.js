@@ -234,6 +234,15 @@ exports.login = asyncWrapper(async (req, res) => {
     throw new AppError('Invalid credentials', 401);
   }
 
+  if (user.twoFA && user.twoFA.enabled) {
+    const tempToken = jwt.sign(
+      { sub: String(user._id), temp2FA: true },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    return success(res, { requires2FA: true, tempToken }, '2FA required');
+  }
+
   const token        = generateJwt(user);
   const refreshToken = generateRefreshToken(user);
 
@@ -258,6 +267,65 @@ exports.login = asyncWrapper(async (req, res) => {
       isAdmin:  user.isAdmin,
     },
   }, 'Logged in');
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
+exports.verify2FA = asyncWrapper(async (req, res) => {
+  const { tempToken, code } = req.body;
+  if (!tempToken || !code) throw new AppError('Token and code required', 400);
+
+  let payload;
+  try {
+    payload = jwt.verify(tempToken, process.env.JWT_SECRET);
+    if (!payload.temp2FA) throw new AppError('Invalid token type', 400);
+  } catch (err) {
+    throw new AppError('Invalid or expired token', 401);
+  }
+
+  const user = await User.findById(payload.sub).select('+twoFA.secret +twoFA.backupCodes');
+  if (!user || !user.twoFA || !user.twoFA.enabled) throw new AppError('2FA not enabled', 400);
+
+  const twoFAService = require('../services/twofa.service');
+  
+  let isValid = twoFAService.verifyToken(user.twoFA.secret, code);
+  
+  if (!isValid) {
+    // Try backup code
+    const backupResult = twoFAService.verifyBackupCode(user, code);
+    if (backupResult.valid) {
+      isValid = true;
+      // Consume the backup code
+      user.twoFA.backupCodes.splice(backupResult.index, 1);
+    }
+  }
+
+  if (!isValid) throw new AppError('Invalid code', 401);
+
+  const token        = generateJwt(user);
+  const refreshToken = generateRefreshToken(user);
+
+  pruneAndAddRefreshToken(user, refreshToken);
+  await user.save();
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+  });
+
+  return success(res, {
+    token,
+    user: {
+      id:       user._id,
+      _id:      user._id,
+      email:    user.email,
+      username: user.username,
+      avatar:   user.avatar,
+      isAdmin:  user.isAdmin,
+    },
+  }, '2FA verification successful');
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -302,6 +370,15 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
     if (!user.username && name)   { user.username = name;    modified = true; }
     if (!user.avatar   && picture){ user.avatar   = picture; modified = true; }
     if (modified) await user.save();
+  }
+
+  if (user.twoFA && user.twoFA.enabled) {
+    const tempToken = jwt.sign(
+      { sub: String(user._id), temp2FA: true },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    return success(res, { requires2FA: true, tempToken }, '2FA required');
   }
 
   const token        = generateJwt(user);

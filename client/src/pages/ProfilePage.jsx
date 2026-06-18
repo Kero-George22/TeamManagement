@@ -19,6 +19,7 @@ export default function ProfilePage() {
   const [projects, setProjects] = useState(() => globalProjects || []);
   const [allTasks, setAllTasks] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const [aiUsage, setAiUsage] = useState(null);
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -64,6 +65,9 @@ export default function ProfilePage() {
         setProjects(mine);
         setAllTasks(taskOverview?.tasks || []);
         setConversations(dmConversations?.conversations || dmConversations || []);
+
+        // Load AI usage
+        API.ai.usage().then(setAiUsage).catch(() => {});
       } catch {
         toast.error('Failed to load profile');
       }
@@ -439,7 +443,7 @@ export default function ProfilePage() {
                 <i className="fa-regular fa-folder-open" style={{ color: 'var(--text-muted)' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <button className="btn btn--green btn--sm" onClick={handleSaveProfile}>Save</button>
                 <button className="btn btn--outline btn--sm" onClick={() => {
                   setForm({
@@ -450,9 +454,81 @@ export default function ProfilePage() {
                     socials: profile.socials || { whatsapp: '', facebook: '', linkedin: '', twitter: '', github: '' },
                   });
                 }}>Reset</button>
+                <button className="btn btn--outline btn--sm" onClick={() => window.location.href = '/app/profile/2fa'} style={{ border: '1px solid var(--border)' }}>
+                  <i className="fa-solid fa-shield-halved" style={{ marginRight: 6 }} /> 2FA Settings
+                </button>
               </div>
             </div>
           </div>
+
+          {/* AI Credits Card */}
+          {aiUsage && (() => {
+            const used = aiUsage.used || 0;
+            const limit = aiUsage.limit;
+            const plan = aiUsage.plan || 'free';
+            const isUnlimited = limit === Infinity || limit === null;
+            const pct = isUnlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+            const resetsAt = aiUsage.resetsAt ? new Date(aiUsage.resetsAt) : null;
+            const daysLeftVal = resetsAt ? Math.ceil((resetsAt - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+            const isWarning = pct > 80;
+
+            return (
+              <div className="card" style={{ overflow: 'hidden' }}>
+                {/* Header gradient bar */}
+                <div style={{
+                  background: isWarning
+                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                    : 'linear-gradient(135deg, #16a34a 0%, #0d9488 100%)',
+                  margin: '-24px -24px 20px -24px',
+                  padding: '20px 24px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className="fa-solid fa-robot" style={{ color: '#fff', fontSize: '1rem' }} />
+                    </div>
+                    <div>
+                      <div style={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>AI Credits</div>
+                      <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.72rem' }}>{plan.charAt(0).toUpperCase() + plan.slice(1)} Plan</div>
+                    </div>
+                  </div>
+                  {plan === 'free' && (
+                    <button className="btn" style={{ background: '#fff', color: '#16a34a', fontWeight: 700, fontSize: '.75rem', padding: '6px 14px', borderRadius: 20, border: 'none' }}>
+                      <i className="fa-solid fa-arrow-up" style={{ marginRight: 4 }} />Upgrade
+                    </button>
+                  )}
+                </div>
+
+                {/* Usage stats */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <span style={{ fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>{used}</span>
+                  <span style={{ fontSize: '.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    / {isUnlimited ? '∞' : limit} credits used
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div style={{ height: 8, background: 'var(--border)', borderRadius: 99, overflow: 'hidden', marginBottom: 12 }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${isUnlimited ? 0 : pct}%`,
+                    background: isWarning
+                      ? 'linear-gradient(to right, #ef4444, #dc2626)'
+                      : 'linear-gradient(to right, #16a34a, #0d9488)',
+                    borderRadius: 99,
+                    transition: 'width 0.4s ease'
+                  }} />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                  <span>{isUnlimited ? 'Unlimited usage' : `${pct}% used`}</span>
+                  <span>{!isUnlimited && resetsAt ? `Resets in ${daysLeftVal} day${daysLeftVal !== 1 ? 's' : ''}` : ''}</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
 

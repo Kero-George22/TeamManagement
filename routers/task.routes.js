@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
+const aiLimiter = require('../middlewares/aiLimiter.middleware');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
@@ -59,6 +60,9 @@ router.delete('/task/:taskId',        requireAuth, taskController.deleteTask);
 
 // Upload attachment
 router.post('/task/:taskId/attachment', requireAuth, upload.single('file'), taskController.uploadAttachment);
+
+// AI features
+router.post('/task/:taskId/ai-instructions', requireAuth, aiLimiter(1), taskController.generateAIInstructions);
 
 // Comments
 router.get( '/task/:taskId/comments', requireAuth, taskController.getComments);

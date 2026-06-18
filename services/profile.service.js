@@ -40,8 +40,11 @@ async function getUserProfile(userId) {
     headline:    user.headline || null,
     location:    user.location || null,
     skills:      user.skills   || [],
+    interests:   user.interests|| [],
+    role:        user.role     || null,
     socials:     user.socials  || {},
     isAdmin:     user.isAdmin,
+    hasCompletedOnboarding: user.hasCompletedOnboarding || false,
     createdAt:   user.createdAt,
   };
 }
@@ -50,7 +53,7 @@ async function getUserPublicProfile(userId) {
   validateObjectId(userId, 'user ID');
 
   const user = await User.findById(userId)
-    .select('username avatar bio headline location skills socials lastSeen createdAt completedTasks')
+    .select('username avatar bio headline location skills interests role socials lastSeen createdAt completedTasks')
     .lean();
 
   if (!user) throw new AppError('User not found', 404);
@@ -63,6 +66,8 @@ async function getUserPublicProfile(userId) {
     headline:   user.headline || null,
     location:   user.location || null,
     skills:     user.skills   || [],
+    interests:  user.interests|| [],
+    role:       user.role     || null,
     socials:    user.socials  || {},
     lastSeen:   user.lastSeen || null,
     createdAt:  user.createdAt,
@@ -114,7 +119,6 @@ async function updateProfile(userId, updates = {}) {
       rawVerificationToken = verificationToken;
     }
   }
-
   if (updates.username !== undefined) {
     if (String(updates.username).trim().length < 2)
       throw new AppError('Username must be at least 2 characters', 400);
@@ -137,6 +141,12 @@ async function updateProfile(userId, updates = {}) {
     if (!Array.isArray(updates.skills)) throw new AppError('Skills must be an array', 400);
     payload.skills = updates.skills.map(s => String(s).trim()).filter(Boolean).slice(0, 30);
   }
+  if (updates.interests!== undefined) {
+    if (!Array.isArray(updates.interests)) throw new AppError('Interests must be an array', 400);
+    payload.interests = updates.interests.map(s => String(s).trim()).filter(Boolean).slice(0, 30);
+  }
+  if (updates.role     !== undefined) payload.role = String(updates.role || '').slice(0, 50);
+  if (updates.hasCompletedOnboarding !== undefined) payload.hasCompletedOnboarding = Boolean(updates.hasCompletedOnboarding);
   if (updates.socials !== undefined) {
     if (typeof updates.socials !== 'object') throw new AppError('Socials must be an object', 400);
     

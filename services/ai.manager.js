@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 const AppError = require('../utils/AppError');
 
 // ─────────────────────────────────────────
@@ -14,77 +14,90 @@ const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 // Helpers
 // ─────────────────────────────────────────
 
-function getModel(json = false) {
-  if (!genAI) throw new AppError('AI is not configured', 503);
-  return genAI.getGenerativeModel({
-    model: 'gemini-3-flash-preview',
-    ...(json && { generationConfig: { responseMimeType: 'application/json' } }),
-  });
-}
-
 function safeString(value, maxLength) {
   return String(value || '').slice(0, maxLength);
 }
 
-function parseJson(text, label) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new AppError(`AI returned invalid JSON for: ${label}`, 502);
-  }
-}
-
-function validateFields(obj, fields, label) {
-  for (const field of fields) {
-    if (!obj[field]) throw new AppError(`AI response missing "${field}" in ${label}`, 502);
-  }
-}
-
 // ─────────────────────────────────────────
-// ASSIGN TASKS
-// Returns plain task objects — DB logic stays in task.service
+// GENERATE PROJECT PLAN (Replaces assignTasksByAI)
 // ─────────────────────────────────────────
 
-async function assignTasksByAI(projectData) {
-  const model = getModel(true);
+async function generateProjectPlan(projectData) {
+  if (!genAI) throw new AppError('AI is not configured', 503);
 
   const title       = safeString(projectData.title, 200);
   const description = safeString(projectData.description, 1000);
   const roles       = (projectData.rolesRequired || [])
-    .map((r) => safeString(r.roleName, 50))
+    .map((r) => `${safeString(r.roleName, 50)} (Needs: ${r.totalSlots})`)
     .join(', ');
 
   const prompt = `
-You are a project manager. Based on the project details below, generate specific tasks for the team.
-Return a JSON array of tasks with this exact structure:
-[{"title": "...", "description": "...", "assignedRole": "...", "priority": "Low|Medium|High"}]
+PROJECT BRIEF:
+- Title: ${title}
+- Description: ${description}
+- Team Roles: ${roles}
+- Duration: ${projectData.duration} days
+- Category: ${projectData.category || 'Software'}
 
-Project: ${title}
-Description: ${description}
-Required Roles: ${roles}
-Duration: ${projectData.duration} days
-Status: ${projectData.status}
-
-Generate 3-5 concrete, actionable tasks that cover different roles. Make them specific and measurable.
-Return ONLY valid JSON, no extra text.
+Generate a complete, production-ready project plan based on this brief.
   `.trim();
 
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      phases: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: { type: SchemaType.STRING, description: "E.g., Phase 1 — Setup & Architecture (Week 1-2)" },
+            milestone: { type: SchemaType.STRING },
+            tasks: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  title: { type: SchemaType.STRING },
+                  description: { type: SchemaType.STRING, description: "Detailed description with acceptance criteria" },
+                  assignedRole: { type: SchemaType.STRING, description: "Must match one of the requested Team Roles exactly" },
+                  priority: { type: SchemaType.STRING, description: "High, Medium, or Low" },
+                  storyPoints: { type: SchemaType.NUMBER, description: "1, 3, 5, 8, or 13" },
+                  dependsOnIndex: { 
+                    type: SchemaType.ARRAY, 
+                    items: { type: SchemaType.NUMBER },
+                    description: "Indices of tasks THIS task depends on (0-based, within this same phase). Empty array if none."
+                  }
+                },
+                required: ["title", "description", "assignedRole", "priority", "storyPoints", "dependsOnIndex"]
+              }
+            }
+          },
+          required: ["name", "milestone", "tasks"]
+        }
+      },
+      summary: { type: SchemaType.STRING, description: "One paragraph overview of the plan and key risks" }
+    },
+    required: ["phases", "summary"]
+  };
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: `You are a Senior Technical Project Manager with 15 years of experience planning software projects.
+1. Break the project into 3-4 logical phases with clear milestones.
+2. For each phase, generate 4-8 specific, actionable tasks.
+3. Distribute work fairly across all available roles. Every role must have at least 2 tasks.
+4. High-priority tasks should come in earlier phases.
+5. Story points: 1=trivial, 3=small, 5=medium, 8=large, 13=epic.`,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: schema,
+      temperature: 0.6,
+      maxOutputTokens: 8192
+    }
+  });
+
   const result = await model.generateContent(prompt);
-  const tasks = parseJson(result.response.text(), 'assignTasksByAI');
-
-  if (!Array.isArray(tasks) || tasks.length === 0)
-    throw new AppError('AI returned an empty task list', 502);
-
-  for (const task of tasks) {
-    validateFields(task, ['title', 'description', 'assignedRole', 'priority'], 'task');
-  }
-
-  return tasks.map((task) => ({
-    title:        task.title,
-    description:  task.description,
-    assignedRole: task.assignedRole,
-    priority:     task.priority,
-  }));
+  return JSON.parse(result.response.text());
 }
 
 // ─────────────────────────────────────────
@@ -92,43 +105,46 @@ Return ONLY valid JSON, no extra text.
 // ─────────────────────────────────────────
 
 async function reviewWorkByAI(taskData) {
-  const model = getModel(true);
+  if (!genAI) throw new AppError('AI is not configured', 503);
 
   const title       = safeString(taskData.title, 200);
   const description = safeString(taskData.description, 1000);
   const content     = safeString(taskData.repoLink || taskData.submittedWork, 2000);
 
   const prompt = `
-You are a Senior Tech Lead reviewing a developer's submission.
 Task: ${title}
 Requirements: ${description}
 Submission Type: ${taskData.submissionType || 'text'}
 Content: ${content}
+  `.trim();
 
-Evaluate based on:
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      rating: { type: SchemaType.NUMBER, description: "0-100 score" },
+      review: { type: SchemaType.STRING, description: "Detailed feedback" },
+      feedback: { type: SchemaType.STRING, description: "Actionable improvements" },
+      codeQualityScore: { type: SchemaType.NUMBER, description: "0-10 score" }
+    },
+    required: ["rating", "review", "feedback", "codeQualityScore"]
+  };
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: `You are a Senior Tech Lead reviewing a developer's submission. Evaluate based on:
 1. Logic & Correctness
 2. Code Quality & Clean Code
 3. Security & Performance
-4. Best Practices
-
-Return ONLY this JSON structure:
-{"rating": 0-100, "review": "detailed feedback", "feedback": "actionable improvements", "codeQualityScore": 0-10}
-  `.trim();
+4. Best Practices`,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: schema,
+      temperature: 0.2
+    }
+  });
 
   const result = await model.generateContent(prompt);
-  const review = parseJson(result.response.text(), 'reviewWorkByAI');
-
-  validateFields(review, ['rating', 'review', 'feedback', 'codeQualityScore'], 'review');
-
-  if (typeof review.rating !== 'number' || review.rating < 0 || review.rating > 100)
-    throw new AppError('AI returned invalid rating value', 502);
-
-  return {
-    rating:           review.rating,
-    review:           review.review,
-    feedback:         review.feedback,
-    codeQualityScore: review.codeQualityScore,
-  };
+  return JSON.parse(result.response.text());
 }
 
 // ─────────────────────────────────────────
@@ -136,91 +152,146 @@ Return ONLY this JSON structure:
 // ─────────────────────────────────────────
 
 async function generateTaskInstructions(taskData) {
-  const model = getModel(false);
+  if (!genAI) throw new AppError('AI is not configured', 503);
 
   const title       = safeString(taskData.title, 200);
-  const description = safeString(taskData.description, 1000);
-  const role        = safeString(taskData.assignedRole, 50);
+  const description = safeString(taskData.description, 2000);
 
   const prompt = `
-You are a project manager creating detailed instructions for a task.
+Generate step-by-step instructions to complete this task.
 Task: ${title}
 Description: ${description}
-Role: ${role}
-Priority: ${taskData.priority}
-
-Create clear, step-by-step instructions a developer can follow.
-Include acceptance criteria and what the final deliverable should look like.
-Keep it practical and specific.
   `.trim();
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: "You are a helpful senior developer pairing with a junior. Provide methodical, step-by-step instructions. Use markdown formatting.",
+    generationConfig: { temperature: 0.3 }
+  });
 
   const result = await model.generateContent(prompt);
   return result.response.text();
 }
 
 // ─────────────────────────────────────────
-// ANALYZE TEAM PERFORMANCE
-// Sends aggregate numbers instead of raw task list to save tokens
+// TEAM PERFORMANCE ANALYSIS
 // ─────────────────────────────────────────
 
-async function analyzeTeamPerformance(tasksData) {
-  if (!tasksData || tasksData.length === 0) {
-    return { analysis: 'No tasks to analyze. Start assigning tasks to track performance.' };
-  }
+async function analyzeTeamPerformance(teamData) {
+  if (!genAI) throw new AppError('AI is not configured', 503);
 
-  const model = getModel(false);
+  const prompt = `Analyze this team data: ${JSON.stringify(teamData)}`;
 
-  // Aggregate stats instead of sending every task
-  const total     = tasksData.length;
-  const done      = tasksData.filter((t) => t.status === 'Done').length;
-  const inProgress = tasksData.filter((t) => t.status === 'In-Progress').length;
-  const inReview  = tasksData.filter((t) => t.status === 'Review').length;
-  const todo      = tasksData.filter((t) => t.status === 'Todo').length;
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      healthScore: { type: SchemaType.NUMBER, description: "0-100" },
+      bottlenecks: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      topPerformers: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } }
+    },
+    required: ["healthScore", "bottlenecks", "recommendations", "topPerformers"]
+  };
 
-  const rated     = tasksData.filter((t) => t.aiRating);
-  const avgRating = rated.length > 0
-    ? Math.round(rated.reduce((s, t) => s + t.aiRating, 0) / rated.length)
-    : null;
-
-  // Group by role for richer insight
-  const byRole = tasksData.reduce((acc, t) => {
-    const role = t.assignedRole || 'Unassigned';
-    if (!acc[role]) acc[role] = { total: 0, done: 0 };
-    acc[role].total += 1;
-    if (t.status === 'Done') acc[role].done += 1;
-    return acc;
-  }, {});
-
-  const prompt = `
-You are a project manager analyzing team performance.
-
-TASK STATS:
-Total: ${total} | Done: ${done} | In Progress: ${inProgress} | In Review: ${inReview} | To Do: ${todo}
-Average AI Rating: ${avgRating !== null ? `${avgRating}/100` : 'No rated tasks yet'}
-
-BREAKDOWN BY ROLE:
-${Object.entries(byRole).map(([role, s]) => `- ${role}: ${s.done}/${s.total} done`).join('\n')}
-
-Provide:
-1. Overall team performance summary
-2. Key strengths
-3. Areas for improvement
-4. Recommendations for the next sprint
-
-Keep it concise and actionable.
-  `.trim();
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: "You are an Agile Coach analyzing team performance metrics.",
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: schema,
+      temperature: 0.4
+    }
+  });
 
   const result = await model.generateContent(prompt);
-  return { analysis: result.response.text() };
+  return JSON.parse(result.response.text());
 }
 
 // ─────────────────────────────────────────
-// Exports
+// COPILOT CHAT
 // ─────────────────────────────────────────
 
+async function chatWithCopilot(context, message, history) {
+  if (!genAI) throw new AppError('AI is not configured', 503);
+
+  // context contains: title, description, status, duration, members, tasks, activity
+  const sysInst = `You are TeamForge Copilot, an AI project assistant.
+PROJECT CONTEXT:
+- Title: ${context.title}
+- Description: ${context.description}
+- Status: ${context.status}
+- Duration: ${context.duration} days
+
+TEAM (${context.members.length} members):
+${JSON.stringify(context.members)}
+
+TASKS (${context.tasks.length} total):
+${JSON.stringify(context.tasks)}
+
+RECENT ACTIVITY:
+${JSON.stringify(context.activity)}
+
+Respond to the user's question about this project. Be concise, specific, and actionable.
+If asked about progress, calculate real percentages from the task data.
+If asked about risks, analyze overdue tasks and bottlenecks.`;
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: sysInst,
+    generationConfig: { temperature: 0.5 }
+  });
+
+  const chat = model.startChat({ history });
+  const result = await chat.sendMessage(message);
+  return result.response.text();
+}
+
+// ─────────────────────────────────────────
+// GENERATE PROJECT STATUS (Moved from ai.service.js)
+// ─────────────────────────────────────────
+
+async function generateProjectStatus(project, taskStats) {
+  if (!genAI) throw new AppError('AI is not configured', 503);
+
+  const title       = safeString(project.title, 200);
+  const description = safeString(project.description, 500);
+  const roles       = (project.rolesRequired || [])
+    .map((r) => `${safeString(r.roleName, 50)} (${r.filledSlots}/${r.totalSlots} slots)`)
+    .join(', ');
+
+  const prompt = `
+PROJECT: ${title}
+DESCRIPTION: ${description}
+STATUS: ${project.status}  |  DURATION: ${project.duration} days
+MEMBERS: ${project.members?.length || 0} active  |  ROLES: ${roles}
+
+TASKS → Total: ${taskStats.total} | Done: ${taskStats.done} | In Progress: ${taskStats.inProgress} | Pending: ${taskStats.pending}
+`.trim();
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: `You are an AI Project Manager for TeamForge.
+Write a concise project status update (max 180 words) for the team dashboard. Include:
+1. Overall health indicator (🟢 On Track / 🟡 At Risk / 🔴 Behind)
+2. Quick progress summary with numbers
+3. One specific, actionable recommendation
+Use a direct, professional tone. Use bullet points or short paragraphs. Include relevant emoji for readability.`,
+    generationConfig: { temperature: 0.4 }
+  });
+
+  const result = await model.generateContent(prompt);
+  
+  return {
+    summary:     result.response.text(),
+    generatedAt: new Date(),
+  };
+}
+
 module.exports = {
-  assignTasksByAI,
+  generateProjectPlan,
   reviewWorkByAI,
   generateTaskInstructions,
   analyzeTeamPerformance,
+  chatWithCopilot,
+  generateProjectStatus
 };

@@ -4,7 +4,7 @@ const Project = require('../models/project.model');
 const Task = require('../models/task.model');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success, error } = require('../utils/apiResponse');
-const { generateProjectStatus } = require('../services/ai.service');
+const { generateProjectStatus } = require('../services/ai.manager');
 
 const ONLINE_WINDOW_MS = 2 * 60 * 1000;
 const REPORT_TTL_MS = 10 * 60 * 1000;

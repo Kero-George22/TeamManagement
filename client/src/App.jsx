@@ -17,6 +17,7 @@ const ProjectPage = lazy(() => import('./pages/ProjectPage'));
 const TaskPage = lazy(() => import('./pages/TaskPage'));
 const MessagesPage = lazy(() => import('./pages/MessagesPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const TwoFASetupPage = lazy(() => import('./pages/TwoFASetupPage'));
 const OfficePage = lazy(() => import('./pages/OfficePage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
 const MyTasksPageWrapper = lazy(() => import('./pages/MyTasksPageWrapper'));
@@ -94,6 +95,7 @@ export default function App() {
                 {/* Public routes */}
                 <Route path="/"                    element={<LandingPage />} />
                 <Route path="/login"               element={<LoginPage />} />
+                <Route path="/app/login"           element={<LoginPage />} />
                 <Route path="/forgot-password"     element={<ForgotPasswordPage />} />
                 <Route path="/profile/:userId"     element={<PublicProfilePage />} />
                 <Route path="/invite/:token"       element={<InvitePage />} />
@@ -103,28 +105,29 @@ export default function App() {
                 <Route path="/aup"                 element={<AUPPage />} />
 
                 {/* Protected route — no shell (fullscreen) */}
-                <Route path="/onboard" element={<ProtectedRoute><OnboardPage /></ProtectedRoute>} />
+                <Route path="/app/onboard" element={<ProtectedRoute><OnboardPage /></ProtectedRoute>} />
+                <Route path="/app/profile/2fa" element={<ProtectedRoute><TwoFASetupPage /></ProtectedRoute>} />
 
                 {/* Protected routes with layout shell */}
-                <Route element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>
-                  <Route path="/dashboard"      element={<DashboardPage />} />
-                  <Route path="/projects"       element={<ProjectsPage />} />
-                  <Route path="/explore"        element={<ExplorePage />} />
-                  <Route path="/project/:id"    element={<ProjectPage />} />
-                  <Route path="/task/:id"       element={<TaskPage />} />
-                  <Route path="/tasks"          element={<MyTasksPageWrapper />} />
-                  <Route path="/board/:id"      element={<BoardPage />} />
-                  <Route path="/goals"          element={<GoalsPage />} />
-                  <Route path="/messages"       element={<MessagesPage />} />
-                  <Route path="/profile"        element={<ProfilePage />} />
-                  <Route path="/office/:id"     element={<OfficePage />} />
-                  <Route path="/admin"          element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
-                  <Route path="/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
-                  <Route path="/admin/reviews"  element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
+                <Route path="/app" element={<ProtectedRoute><SocketProvider><ProjectProvider><AppShell /></ProjectProvider></SocketProvider></ProtectedRoute>}>
+                  <Route path="dashboard"      element={<DashboardPage />} />
+                  <Route path="projects"       element={<ProjectsPage />} />
+                  <Route path="explore"        element={<ExplorePage />} />
+                  <Route path="project/:id"    element={<ProjectPage />} />
+                  <Route path="task/:id"       element={<TaskPage />} />
+                  <Route path="tasks"          element={<MyTasksPageWrapper />} />
+                  <Route path="board/:id"      element={<BoardPage />} />
+                  <Route path="goals"          element={<GoalsPage />} />
+                  <Route path="messages"       element={<MessagesPage />} />
+                  <Route path="profile"        element={<ProfilePage />} />
+                  <Route path="office/:id"     element={<OfficePage />} />
+                  <Route path="admin"          element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
+                  <Route path="admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
+                  <Route path="admin/reviews"  element={<AdminRoute><AdminReviewsPage /></AdminRoute>} />
                 </Route>
 
                 {/* Catch-all */}
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>

@@ -71,25 +71,6 @@ export default function LoginPage() {
 
   if (isLoggedIn) return null;
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const fd = new FormData(e.target);
-      const data = await API.auth.login(fd.get('email'), fd.get('password'));
-      login(data);
-      toast.success('Logged in! Redirecting…');
-      setTimeout(() => {
-        if (!data.user.username) {
-          navigate('/app/onboard', { replace: true });
-        } else {
-          navigate('/app/dashboard', { replace: true });
-        }
-      }, 600);
-    } catch (err) { toast.error(err.message); }
-    finally { setLoading(false); }
-  }
-
   async function handleSignup(e) {
     e.preventDefault();
     setLoading(true);
@@ -111,6 +92,51 @@ export default function LoginPage() {
       setShowVerify(false);
       setTab('login');
     } catch (err) { toast.error(err.message); }
+  }
+
+  const [tempToken, setTempToken] = useState(null);
+  const [twoFACode, setTwoFACode] = useState('');
+  
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const fd = new FormData(e.target);
+      const data = await API.auth.login(fd.get('email'), fd.get('password'));
+      
+      if (data.requires2FA) {
+        setTempToken(data.tempToken);
+        setTab('2fa');
+        return;
+      }
+      
+      login(data);
+      toast.success('Logged in! Redirecting…');
+      setTimeout(() => {
+        if (!data.user.username) navigate('/app/onboard', { replace: true });
+        else navigate('/app/dashboard', { replace: true });
+      }, 600);
+    } catch (err) { toast.error(err.message); }
+    finally { setLoading(false); }
+  }
+
+  async function handleVerify2FA(e) {
+    e.preventDefault();
+    if (twoFACode.length !== 6) return;
+    setLoading(true);
+    try {
+      const data = await API.auth.verify2FA(tempToken, twoFACode);
+      login(data);
+      toast.success('Logged in successfully!');
+      setTimeout(() => {
+        if (!data.user.username) navigate('/app/onboard', { replace: true });
+        else navigate('/app/dashboard', { replace: true });
+      }, 600);
+    } catch (err) {
+      toast.error(err.message || 'Invalid 2FA code');
+    } finally {
+      setLoading(false);
+    }
   }
 
 
@@ -196,6 +222,36 @@ export default function LoginPage() {
               <button className="btn btn--green" disabled={loading} style={{ width: '100%', padding: 13 }}>
                 {loading ? <span className="spinner" /> : 'Create Account'}
               </button>
+            </form>
+          )}
+
+          {/* 2FA Verification */}
+          {tab === '2fa' && (
+            <form className="auth-form" onSubmit={handleVerify2FA} style={{ textAlign: 'center', padding: '20px 0' }}>
+              <i className="fa-solid fa-shield-halved" style={{ fontSize: '3rem', color: 'var(--green)', marginBottom: 16, display: 'block' }} />
+              <h3 style={{ fontWeight: 700, marginBottom: 8 }}>Two-Factor Authentication</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '.875rem', marginBottom: 24 }}>Enter the 6-digit code from your authenticator app.</p>
+              <div className="form-group" style={{ textAlign: 'left' }}>
+                <label className="form-label">Authenticator Code</label>
+                <input 
+                  type="text"
+                  value={twoFACode}
+                  onChange={e => setTwoFACode(e.target.value.replace(/\D/g, ''))}
+                  className="form-input" 
+                  placeholder="000000" 
+                  required 
+                  style={{ letterSpacing: '5px', textAlign: 'center', fontSize: '1.25rem', fontWeight: 600 }} 
+                  maxLength={6} 
+                />
+              </div>
+              <button className="btn btn--green" disabled={loading || twoFACode.length !== 6} style={{ width: '100%', marginTop: 12 }}>
+                {loading ? <span className="spinner" /> : 'Verify Code'}
+              </button>
+              <div style={{ marginTop: 16 }}>
+                <button type="button" onClick={() => setTab('login')} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  Cancel
+                </button>
+              </div>
             </form>
           )}
 

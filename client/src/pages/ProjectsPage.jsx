@@ -10,6 +10,8 @@ import Modal from '../components/ui/Modal';
 import { ProgressBar } from '../components/ui/Primitives';
 import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
 
+import { projectTemplates } from '../data/projectTemplates';
+
 const STATUS_COLORS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'pink' };
 
 const DEFAULT_TASK_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
@@ -34,6 +36,8 @@ export default function ProjectsPage() {
   const [search, setSearch]     = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [formData, setFormData] = useState({ title: '', description: '', duration: '', category: 'Other' });
   const [roles, setRoles]         = useState([{ roleName: '', totalSlots: 1 }]);
   const [taskStatuses, setTaskStatuses] = useState([...DEFAULT_TASK_STATUSES]);
   const [showStatusEditor, setShowStatusEditor] = useState(false);
@@ -86,9 +90,18 @@ export default function ProjectsPage() {
 
   function handleModalClose() {
     setModalOpen(false);
+    setSelectedTemplate(null);
+    setFormData({ title: '', description: '', duration: '', category: 'Other' });
     setRoles([{ roleName: '', totalSlots: 1 }]);
     setTaskStatuses([...DEFAULT_TASK_STATUSES]);
     setShowStatusEditor(false);
+  }
+
+  function handleSelectTemplate(t) {
+    setSelectedTemplate(t.id);
+    setFormData({ title: t.title, description: t.description, duration: t.duration, category: t.category });
+    setRoles(t.rolesRequired.map(r => ({ ...r })));
+    setTaskStatuses([...t.taskStatuses]);
   }
 
   function addTaskStatus() {
@@ -205,18 +218,40 @@ export default function ProjectsPage() {
       </div>
 
       {/* Create Modal */}
-      <Modal open={modalOpen} onClose={handleModalClose} title="New Project" maxWidth={560}>
+      <Modal open={modalOpen} onClose={handleModalClose} title="New Project" maxWidth={700}>
+        <div style={{ marginBottom: 20 }}>
+          <label className="form-label">Or start with a Template</label>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'thin' }}>
+            {projectTemplates.map(t => (
+              <div 
+                key={t.id} 
+                onClick={() => handleSelectTemplate(t)}
+                style={{ 
+                  minWidth: 200, 
+                  padding: 12, 
+                  border: `2px solid ${selectedTemplate === t.id ? 'var(--green)' : 'var(--border)'}`, 
+                  borderRadius: 12, 
+                  cursor: 'pointer',
+                  background: selectedTemplate === t.id ? 'var(--green-bg)' : 'transparent'
+                }}>
+                <div style={{ fontWeight: 600, fontSize: '.9rem', marginBottom: 4 }}>{t.title}</div>
+                <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{t.duration} days · {t.rolesRequired.length} roles</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="form-group"><label className="form-label">Title *</label><input name="title" className="form-input" required placeholder="e.g. E-commerce Platform" /></div>
-          <div className="form-group"><label className="form-label">Description *</label><textarea name="description" className="form-input" rows={3} required placeholder="What's this project about?" /></div>
+          <div className="form-group"><label className="form-label">Title *</label><input name="title" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="form-input" required placeholder="e.g. E-commerce Platform" /></div>
+          <div className="form-group"><label className="form-label">Description *</label><textarea name="description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="form-input" rows={3} required placeholder="What's this project about?" /></div>
           <div className="grid-2">
             <div className="form-group"><label className="form-label">Start Date *</label><input name="startDate" type="date" className="form-input" required defaultValue={new Date().toISOString().split('T')[0]} /></div>
-            <div className="form-group"><label className="form-label">Duration (days) *</label><input name="duration" type="number" className="form-input" min="1" required placeholder="30" /></div>
+            <div className="form-group"><label className="form-label">Duration (days) *</label><input name="duration" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} type="number" className="form-input" min="1" required placeholder="30" /></div>
           </div>
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">Category</label>
-              <select name="category" className="form-input" defaultValue="Other">
+              <select name="category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="form-input">
                 {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>

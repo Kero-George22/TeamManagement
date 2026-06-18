@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
+const twoFAController = require('../controllers/twofa.controller');
 const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../middlewares/auth.middleware');
 const validate = require('../middlewares/validation.middleware');
@@ -47,5 +48,10 @@ router.post('/logout', authController.logout);
 router.post('/forgot-password', passwordResetLimiter, authController.requestPasswordReset);
 router.post('/reset-password', tokenLimiter, resetPasswordValidation, validate, authController.resetPassword);
 router.post('/change-password', requireAuth, changePasswordValidation, validate, authController.changePassword);
+
+router.post('/verify-2fa', authController.verify2FA);
+router.post('/2fa/setup', requireAuth, twoFAController.setup2FA);
+router.post('/2fa/enable', requireAuth, twoFAController.enable2FA);
+router.post('/2fa/disable', requireAuth, twoFAController.disable2FA);
 
 module.exports = router;

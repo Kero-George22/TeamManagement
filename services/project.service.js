@@ -105,20 +105,13 @@ function countOpenSlots(project) {
 async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null) {
   const query = { isPrivate: false };
 
-  const status = filters.status || 'Recruiting';
+  // Default to 'all' so users see everything on first load
+  const status = filters.status || 'all';
   if (status !== 'all') {
     const valid = ['Recruiting', 'In-Progress', 'Completed'];
     if (!valid.includes(status))
       throw new AppError(`Invalid status. Use: ${valid.join(', ')}, or all`, 400);
     query.status = status;
-  }
-
-  if (userId) {
-    const uid = new mongoose.Types.ObjectId(String(userId));
-    query.$and = [
-      { owner: { $ne: uid } },
-      { members: { $not: { $elemMatch: { userId: uid } } } },
-    ];
   }
 
   if (filters.category && filters.category !== 'all') {
@@ -155,7 +148,10 @@ async function exploreProjects(filters = {}, page = 1, limit = 12, userId = null
     .limit(MAX_PROJECTS)
     .lean();
 
-  projects = projects.filter((p) => countOpenSlots(p) > 0);
+  // Only filter by open slots when explicitly browsing Recruiting projects
+  if (status === 'Recruiting') {
+    projects = projects.filter((p) => countOpenSlots(p) > 0);
+  }
 
   let enriched = projects.map((p) => {
     const end = new Date(p.startDate);

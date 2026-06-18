@@ -2,6 +2,7 @@ const projectService = require('../services/project.service');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
+const aiManager = require('../services/ai.manager');
 
 // ─────────────────────────────────────────
 // CREATE PROJECT
@@ -240,6 +241,33 @@ const toggleBookmark = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// AI TEAM ANALYSIS
+// ─────────────────────────────────────────
+
+const analyzeProjectPerformance = asyncWrapper(async (req, res) => {
+  const project = await projectService.getProjectById(req.params.projectId, req.user._id);
+  const tasks = await require('../models/task.model').find({ project: project._id }).lean();
+  
+  const teamData = {
+    project: {
+      title: project.title,
+      status: project.status,
+      duration: project.duration,
+      memberCount: (project.members || []).length
+    },
+    tasks: {
+      total: tasks.length,
+      done: tasks.filter(t => t.status === 'Done' || t.status === 'Approved').length,
+      inProgress: tasks.filter(t => t.status === 'In-Progress').length,
+      pending: tasks.filter(t => t.status === 'Todo' || t.status === 'Review').length
+    }
+  };
+
+  const analysis = await aiManager.analyzeTeamPerformance(teamData);
+  return success(res, analysis, 'Project performance analyzed');
+});
+
+// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
@@ -259,4 +287,5 @@ module.exports = {
   removeMember,
   toggleLike,
   toggleBookmark,
+  analyzeProjectPerformance,
 };

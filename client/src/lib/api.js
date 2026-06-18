@@ -112,6 +112,10 @@ const auth = {
   forgotPw:    (email)              => post('/auth/forgot-password', { email }),
   resetPw:     (token, newPassword, confirmPassword) => post('/auth/reset-password',  { token, newPassword, confirmPassword }),
   changePw:    (oldPassword, newPw) => post('/auth/change-password', { oldPassword, newPassword: newPw }),
+  verify2FA:   (tempToken, code)    => post('/auth/verify-2fa', { tempToken, code }),
+  setup2FA:    ()                   => post('/auth/2fa/setup'),
+  enable2FA:   (code)               => post('/auth/2fa/enable', { token: code }),
+  disable2FA:  (password, code)     => post('/auth/2fa/disable', { password, token: code }),
 };
 
 /* Profile */
@@ -326,6 +330,14 @@ const goals = {
   importLocal:  (goalsList) => post('/goals/import-local', { goals: goalsList }).then((r) => { invalidateCachePrefix('goals'); return r; }),
 };
 
+/* AI */
+const ai = {
+  usage: () => get('/ai/usage'),
+  chat: (projectId, message, history) => post('/ai/chat', { projectId, message, history }),
+  analyzeProject: (projectId) => post(`/projects/${projectId}/ai-analysis`),
+  generateTaskInstructions: (taskId) => post(`/tasks/task/${taskId}/ai-instructions`),
+};
+
 /* Admin */
 const admin = {
   stats:         () => get('/admin/stats'),
@@ -339,7 +351,7 @@ const admin = {
 const API = {
   getToken, getUser, saveAuth, clearAuth, isLoggedIn,
   auth, profile, projects, tasks, dms, office, notifications, time,
-  analytics, portfolio, submissions, goals, admin
+  analytics, portfolio, submissions, goals, ai, admin
 };
 
 export default API;

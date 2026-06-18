@@ -1,4 +1,5 @@
 const taskService = require('../services/task.service');
+const aiManager = require('../services/ai.manager');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
@@ -168,6 +169,16 @@ const getBoardView = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// AI INSTRUCTIONS
+// ─────────────────────────────────────────
+
+const generateAIInstructions = asyncWrapper(async (req, res) => {
+  const task = await taskService.getTaskById(req.params.taskId, req.user._id, req.user.isAdmin);
+  const instructions = await aiManager.generateTaskInstructions(task);
+  return success(res, { instructions }, 'AI instructions generated');
+});
+
+// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
@@ -185,4 +196,5 @@ module.exports = {
   getSubtasks,
   uploadAttachment,
   getBoardView,
+  generateAIInstructions,
 };

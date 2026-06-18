@@ -41,6 +41,12 @@ router.get( '/:projectId/join-requests',               requireAuth, projectContr
 router.patch('/:projectId/join-requests/:requestId',   requireAuth, projectController.handleJoinRequest);
 
 // ─────────────────────────────────────────
+// AI Analysis
+// ─────────────────────────────────────────
+const aiLimiter = require('../middlewares/aiLimiter.middleware');
+router.post('/:projectId/ai-analysis', requireAuth, aiLimiter(1), projectController.analyzeProjectPerformance);
+
+// ─────────────────────────────────────────
 // Like & Bookmark
 // ─────────────────────────────────────────
 router.post('/:id/like',      requireAuth, projectController.toggleLike);
