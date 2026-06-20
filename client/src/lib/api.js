@@ -3,7 +3,7 @@ import { getCache, setCache, invalidateCachePrefix } from './cache.js';
 
 const BASE = '/api/v1';
 
-const getToken = () => localStorage.getItem('tf_token') || localStorage.getItem('jxp_token');
+const getToken = () => null; // Now handled via httpOnly cookies
 const getUser  = () => {
   try {
     return JSON.parse(localStorage.getItem('tf_user') || localStorage.getItem('jxp_user') || 'null');
@@ -12,10 +12,6 @@ const getUser  = () => {
 };
 
 const saveAuth = (data) => {
-  if (data?.token) {
-    localStorage.setItem('tf_token', data.token);
-    localStorage.removeItem('jxp_token');
-  }
   if (data?.user) {
     localStorage.setItem('tf_user', JSON.stringify(data.user));
     localStorage.removeItem('jxp_user');
@@ -23,13 +19,11 @@ const saveAuth = (data) => {
 };
 
 const clearAuth = () => {
-  localStorage.removeItem('tf_token');
   localStorage.removeItem('tf_user');
-  localStorage.removeItem('jxp_token');
   localStorage.removeItem('jxp_user');
 };
 
-const isLoggedIn = () => !!getToken();
+const isLoggedIn = () => !!getUser();
 
 /* core fetch */
 let onUnauthorized = () => { window.location.href = '/login'; };
@@ -43,8 +37,8 @@ const onRefreshed = (accessToken) => { refreshSubscribers.map(cb => cb(accessTok
 
 const request = async (method, path, body = null, isRetry = false) => {
   const headers = { 'Content-Type': 'application/json' };
-  const token = getToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Token is now sent automatically via httpOnly cookie
+
 
   const opts = { method, headers, credentials: 'include' };
   if (body) opts.body = JSON.stringify(body);
@@ -62,8 +56,7 @@ const request = async (method, path, body = null, isRetry = false) => {
           throw new Error('Refresh failed');
         }
         
-        const newToken = json.data?.token || json.token;
-        saveAuth({ token: newToken });
+        // Tokens are now set by backend via httpOnly cookies
         
         isRefreshing = false;
         onRefreshed(newToken);
@@ -127,10 +120,7 @@ const profile = {
   uploadAvatar: async (file) => {
     const formData = new FormData();
     formData.append('avatar', file);
-    const token = getToken();
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(BASE + '/profile/me/avatar', { method: 'POST', headers, body: formData });
+    const res = await fetch(BASE + '/profile/me/avatar', { method: 'POST', body: formData, credentials: 'include' });
     if (res.status === 401) { clearAuth(); onUnauthorized(); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || `Request failed (${res.status})`);
@@ -215,12 +205,11 @@ const tasks = {
   addComment:(taskId, text)   => post(`/tasks/task/${taskId}/comments`, { text }),
   subtasks: (taskId)          => get(`/tasks/task/${taskId}/subtasks`),
   uploadAttachment: async (taskId, file) => {
-    const token = getToken();
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(BASE + `/tasks/task/${taskId}/attachment`, {
       method: 'POST',
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      credentials: 'include',
       body: formData,
     });
     if (!res.ok) {
@@ -281,9 +270,8 @@ const portfolio = {
   public:       (userId) => fetch(BASE + `/portfolio/public/${userId}`).then((r) => r.json()).then((j) => j?.data ?? j),
   exportJson:   () => get('/portfolio/export/json'),
   exportMarkdown: async () => {
-    const token = getToken();
     const res = await fetch(BASE + '/portfolio/export/markdown', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
     });
     if (!res.ok) throw new Error('Export failed');
     return res.text();

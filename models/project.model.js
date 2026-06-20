@@ -87,6 +87,14 @@ const ProjectSchema = new mongoose.Schema(
     bookmarks:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     lookingFor:   { type: String, default: '' }, // e.g., "Frontend developer, UI designer"
+
+    // ─── Custom Fields Templates ──────────
+    customFields: [
+      {
+        name: { type: String, required: true },
+        type: { type: String, enum: ['text', 'number', 'date', 'boolean'], default: 'text' },
+      }
+    ],
   },
   { timestamps: true }
 );

@@ -3,6 +3,7 @@ const User = require('../models/user.model');
 const Project = require('../models/project.model');
 const Task = require('../models/task.model');
 const Submission = require('../models/submission.model');
+const TimeEntry = require('../models/timeEntry.model');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
@@ -123,91 +124,157 @@ const getProjectAnalytics = asyncWrapper(async (req, res) => {
 
   const pid = new mongoose.Types.ObjectId(projectId);
 
-  const [taskStats, [submissionStats, memberPerformance]] = await Promise.all([
-    // Task counts in one aggregate
+  const [
+    [taskStats],
+    velocityData,
+    aiTrendData,
+    timeDataByUser,
+    timeDataByTask,
+    memberContributions
+  ] = await Promise.all([
+    // 1. Overall Task Stats
     Task.aggregate([
       { $match: { project: pid } },
       {
         $group: {
           _id: null,
-          total:     { $sum: 1 },
-          completed: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } },
-        },
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $in: ['$status', ['Done', 'Approved']] }, 1, 0] } },
+          totalPoints: { $sum: '$storyPoints' },
+          completedPoints: { $sum: { $cond: [{ $in: ['$status', ['Done', 'Approved']] }, '$storyPoints', 0] } }
+        }
+      }
+    ]),
+
+    // 2. Velocity / Burnup Data (grouped by ISO week)
+    Task.aggregate([
+      { $match: { project: pid, status: { $in: ['Done', 'Approved'] }, updatedAt: { $exists: true } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-W%V', date: '$updatedAt' } },
+          completedTasks: { $sum: 1 },
+          completedPoints: { $sum: '$storyPoints' }
+        }
       },
+      { $sort: { _id: 1 } }
     ]),
 
-    Promise.all([
-      // Submission counts in one aggregate
-      Submission.aggregate([
-        { $match: { project: pid } },
-        {
-          $group: {
-            _id: null,
-            total:    { $sum: 1 },
-            accepted: { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
-          },
-        },
-      ]),
-
-      // Member performance
-      Submission.aggregate([
-        { $match: { project: pid } },
-        {
-          $group: {
-            _id:         '$user',
-            submissions: { $sum: 1 },
-            accepted:    { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
-            avgScore:    { $avg: '$score' },
-          },
-        },
-        { $sort: { accepted: -1 } },
-        {
-          $lookup: {
-            from:         'users',
-            localField:   '_id',
-            foreignField: '_id',
-            as:           'userDetails',
-            pipeline:     [{ $project: { username: 1, email: 1, completedTasks: 1 } }],
-          },
-        },
-        {
-          $project: {
-            user:        { $first: '$userDetails' },
-            submissions: 1,
-            accepted:    1,
-            avgScore:    { $round: [{ $ifNull: ['$avgScore', 0] }, 0] },
-          },
-        },
-      ]),
+    // 3. AI Trend Data (grouped by day)
+    Task.aggregate([
+      { $match: { project: pid, aiRating: { $ne: null } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$updatedAt' } },
+          avgScore: { $avg: '$aiRating' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
     ]),
+
+    // 4. Time Tracking by User
+    TimeEntry.aggregate([
+      { 
+        $lookup: {
+          from: 'tasks',
+          localField: 'task',
+          foreignField: '_id',
+          as: 'taskDetails'
+        }
+      },
+      { $unwind: '$taskDetails' },
+      { $match: { 'taskDetails.project': pid } },
+      {
+        $group: {
+          _id: '$user',
+          totalDuration: { $sum: '$duration' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userDetails',
+          pipeline: [{ $project: { username: 1, email: 1, avatar: 1 } }]
+        }
+      },
+      { $unwind: '$userDetails' },
+      { $project: { user: '$userDetails', totalDuration: 1 } },
+      { $sort: { totalDuration: -1 } }
+    ]),
+
+    // 5. Time Tracking by Task
+    TimeEntry.aggregate([
+      { 
+        $lookup: {
+          from: 'tasks',
+          localField: 'task',
+          foreignField: '_id',
+          as: 'taskDetails'
+        }
+      },
+      { $unwind: '$taskDetails' },
+      { $match: { 'taskDetails.project': pid } },
+      {
+        $group: {
+          _id: '$task',
+          taskTitle: { $first: '$taskDetails.title' },
+          totalDuration: { $sum: '$duration' }
+        }
+      },
+      { $sort: { totalDuration: -1 } },
+      { $limit: 10 } // Top 10 tasks by time
+    ]),
+
+    // 6. Member Contribution (Story points & tasks per user)
+    Task.aggregate([
+      { $match: { project: pid, status: { $in: ['Done', 'Approved'] } } },
+      { $unwind: { path: '$assignedTo', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$assignedTo',
+          completedTasks: { $sum: 1 },
+          completedPoints: { $sum: '$storyPoints' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userDetails',
+          pipeline: [{ $project: { username: 1, email: 1, avatar: 1 } }]
+        }
+      },
+      { $unwind: { path: '$userDetails', preserveNullAndEmptyArrays: true } },
+      { $project: { user: '$userDetails', completedTasks: 1, completedPoints: 1 } },
+      { $sort: { completedPoints: -1 } }
+    ])
   ]);
 
-  const tStats  = taskStats[0]  || {};
-  const sStats  = submissionStats[0] || {};
-  const total   = tStats.total     || 0;
-  const completed = tStats.completed || 0;
-  const totalSubs   = sStats.total    || 0;
-  const acceptedSubs = sStats.accepted || 0;
+  const tStats = taskStats || { total: 0, completed: 0, totalPoints: 0, completedPoints: 0 };
 
   return success(res, {
     project: {
-      id:      project._id,
-      title:   project.title,
-      status:  project.status,
+      id: project._id,
+      title: project.title,
+      status: project.status,
       members: project.members.length,
     },
     tasks: {
-      total,
-      completed,
-      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+      total: tStats.total,
+      completed: tStats.completed,
+      completionRate: tStats.total > 0 ? Math.round((tStats.completed / tStats.total) * 100) : 0,
+      totalPoints: tStats.totalPoints,
+      completedPoints: tStats.completedPoints
     },
-    submissions: {
-      total:          totalSubs,
-      accepted:       acceptedSubs,
-      acceptanceRate: totalSubs > 0 ? Math.round((acceptedSubs / totalSubs) * 100) : 0,
-    },
-    memberPerformance,
-  }, 'Project analytics retrieved successfully');
+    velocity: velocityData.map(v => ({ week: v._id, points: v.completedPoints, tasks: v.completedTasks })),
+    aiTrend: aiTrendData.map(a => ({ date: a._id, score: Math.round(a.avgScore), count: a.count })),
+    timeByUser: timeDataByUser,
+    timeByTask: timeDataByTask,
+    memberContributions: memberContributions
+  }, 'Advanced Project analytics retrieved successfully');
 });
 
 // ─────────────────────────────────────────

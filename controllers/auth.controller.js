@@ -256,6 +256,13 @@ exports.login = asyncWrapper(async (req, res) => {
     maxAge:   7 * 24 * 60 * 60 * 1000,
   });
 
+  res.cookie('accessToken', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge:   15 * 60 * 1000, // Matches JWT_EXPIRES_IN (15m) or similar
+  });
+
   return success(res, {
     token,
     user: {
@@ -265,6 +272,7 @@ exports.login = asyncWrapper(async (req, res) => {
       username: user.username,
       avatar:   user.avatar,
       isAdmin:  user.isAdmin,
+      hasCompletedOnboarding: user.hasCompletedOnboarding,
     },
   }, 'Logged in');
 });
@@ -315,6 +323,13 @@ exports.verify2FA = asyncWrapper(async (req, res) => {
     maxAge:   7 * 24 * 60 * 60 * 1000,
   });
 
+  res.cookie('accessToken', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge:   15 * 60 * 1000,
+  });
+
   return success(res, {
     token,
     user: {
@@ -324,6 +339,7 @@ exports.verify2FA = asyncWrapper(async (req, res) => {
       username: user.username,
       avatar:   user.avatar,
       isAdmin:  user.isAdmin,
+      hasCompletedOnboarding: user.hasCompletedOnboarding,
     },
   }, '2FA verification successful');
 });
@@ -394,6 +410,13 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
     maxAge:   7 * 24 * 60 * 60 * 1000,
   });
 
+  res.cookie('accessToken', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge:   15 * 60 * 1000,
+  });
+
   return success(res, {
     token,
     user: {
@@ -403,6 +426,7 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
       username: user.username,
       avatar:   user.avatar,
       isAdmin:  user.isAdmin,
+      hasCompletedOnboarding: user.hasCompletedOnboarding,
     },
   }, 'Logged in with Google');
 });
@@ -430,6 +454,7 @@ exports.logout = asyncWrapper(async (req, res) => {
   }
 
   res.clearCookie('refreshToken');
+  res.clearCookie('accessToken');
   return success(res, {}, 'Logged out');
 });
 
@@ -448,6 +473,14 @@ exports.refreshToken = asyncWrapper(async (req, res) => {
     }
 
     const token = generateJwt(user);
+    
+    res.cookie('accessToken', token, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge:   15 * 60 * 1000,
+    });
+
     return success(res, { token }, 'Token refreshed');
   } catch (err) {
     throw new AppError('Invalid or expired refresh token', 401);
@@ -539,5 +572,6 @@ exports.changePassword = asyncWrapper(async (req, res) => {
    * المفروض الـ frontend يعرف ده ويوجه المستخدم لـ login page.
    */
   res.clearCookie('refreshToken');
+  res.clearCookie('accessToken');
   return success(res, {}, 'Password changed. You have been logged out from all devices.');
 });

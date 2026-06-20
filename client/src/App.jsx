@@ -1,4 +1,4 @@
-import { Suspense, lazy, Component } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import AppShell from './components/layout/AppShell';
 import { ProjectProvider } from './contexts/ProjectContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -35,37 +36,7 @@ const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
 const CookiesPage = lazy(() => import('./pages/legal/CookiesPage'));
 const AUPPage = lazy(() => import('./pages/legal/AUPPage'));
 
-class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
 
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error('Lazy load error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
-          <div className="card" style={{ padding: '24px 32px', textAlign: 'center' }}>
-            <h3 style={{ marginBottom: 8 }}>Failed to load page</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>{this.state.error?.message || 'Unknown error'}</p>
-            <button className="btn btn--green" onClick={() => { this.setState({ hasError: false }); window.location.reload(); }}>
-              Reload
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 function RouteLoader() {
   return (

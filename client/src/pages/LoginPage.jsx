@@ -16,6 +16,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [showPw, setShowPw] = useState({});
   const togglePw = (id) => setShowPw(p => ({ ...p, [id]: !p[id] }));
+  const [tempToken, setTempToken] = useState(null);
+  const [twoFACode, setTwoFACode] = useState('');
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -37,7 +39,7 @@ export default function LoginPage() {
       login(data);
       toast.success('Signed in with Google!');
       setTimeout(() => {
-        if (!data.user.username) {
+        if (!data.user.hasCompletedOnboarding) {
           navigate('/app/onboard', { replace: true });
         } else {
           navigate('/app/dashboard', { replace: true });
@@ -94,9 +96,6 @@ export default function LoginPage() {
     } catch (err) { toast.error(err.message); }
   }
 
-  const [tempToken, setTempToken] = useState(null);
-  const [twoFACode, setTwoFACode] = useState('');
-  
   async function handleLogin(e) {
     e.preventDefault();
     setLoading(true);
@@ -113,7 +112,7 @@ export default function LoginPage() {
       login(data);
       toast.success('Logged in! Redirecting…');
       setTimeout(() => {
-        if (!data.user.username) navigate('/app/onboard', { replace: true });
+        if (!data.user.hasCompletedOnboarding) navigate('/app/onboard', { replace: true });
         else navigate('/app/dashboard', { replace: true });
       }, 600);
     } catch (err) { toast.error(err.message); }
@@ -129,7 +128,7 @@ export default function LoginPage() {
       login(data);
       toast.success('Logged in successfully!');
       setTimeout(() => {
-        if (!data.user.username) navigate('/app/onboard', { replace: true });
+        if (!data.user.hasCompletedOnboarding) navigate('/app/onboard', { replace: true });
         else navigate('/app/dashboard', { replace: true });
       }, 600);
     } catch (err) {

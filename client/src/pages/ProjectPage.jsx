@@ -535,6 +535,51 @@ export default function ProjectPage() {
                 )}
               </div>
             </section>
+
+            <section className="workspace-panel" style={{ marginTop: 24 }}>
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>Custom Fields</h3>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Project-wide custom fields for tasks.</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '12px 20px' }}>
+                {(project.customFields || []).length === 0 ? (
+                  <div className="empty-state" style={{ padding: '18px 0', alignItems: 'flex-start' }}>
+                    <h4>No custom fields defined</h4>
+                    <p>Add fields like Budget or Sprint Number to your tasks.</p>
+                  </div>
+                ) : (
+                  (project.customFields || []).map((cf, index) => (
+                    <span key={index} className="chip" style={{ padding: '8px 12px' }}>
+                      <i className="fa-solid fa-tag" />
+                      {cf.name}
+                      <span style={{ fontSize: '.7rem', marginLeft: 6, opacity: 0.7 }}>({cf.type})</span>
+                    </span>
+                  ))
+                )}
+                {isOwner && (
+                  <button 
+                    className="btn btn--outline btn--sm" 
+                    style={{ width: '100%', marginTop: 12 }}
+                    onClick={async () => {
+                      const fieldName = window.prompt('Enter new custom field name (e.g. Sprint Number):');
+                      if (!fieldName || !fieldName.trim()) return;
+                      try {
+                        const updatedFields = [...(project.customFields || []), { name: fieldName.trim(), type: 'text' }];
+                        const updated = await API.projects.update(id, { customFields: updatedFields });
+                        setProject(updated);
+                        toast.success('Custom field added');
+                      } catch (err) {
+                        toast.error(err.message || 'Failed to add custom field');
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-plus" style={{ marginRight: 6 }}></i> Add Field
+                  </button>
+                )}
+              </div>
+            </section>
           </aside>
 
           <aside className="workspace-sidebar">
@@ -774,6 +819,7 @@ export default function ProjectPage() {
           isMember={isMember}
           userId={user?.id || user?._id}
           projectId={id}
+          projectCustomFields={project?.customFields || []}
           onTaskUpdate={handleTaskUpdate}
         />
       )}

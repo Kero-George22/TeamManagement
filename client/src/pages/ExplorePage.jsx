@@ -527,14 +527,16 @@ export default function ExplorePage() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--sm"
-                      style={{ flex: 1 }}
-                      onClick={() => openJoinModal(p)}
-                    >
-                      Request to join
-                    </button>
+                    {p.owner?._id !== user?._id && p.owner !== user?._id && (
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        style={{ flex: 1 }}
+                        onClick={() => openJoinModal(p)}
+                      >
+                        Request to join
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"

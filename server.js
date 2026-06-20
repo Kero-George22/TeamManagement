@@ -45,6 +45,10 @@ app.use(cookieParser());
 // CORS — must come before routes
 // ─────────────────────────────────────────
 
+if (process.env.NODE_ENV === 'production' && !process.env.CLIENT_URL) {
+  throw new Error('CLIENT_URL env variable must be set in production');
+}
+
 const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
   : true; // true = allow all in dev
@@ -69,7 +73,17 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // API Routes — MUST be before static pages!
 // ─────────────────────────────────────────
 
+const rateLimit = require('express-rate-limit');
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300, // 300 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+});
+
 const apiRouter = express.Router();
+apiRouter.use(globalLimiter);
 apiRouter.use('/auth',     require('./routers/auth.routes'));
 apiRouter.use('/admin',    require('./routers/admin.routes'));
 apiRouter.use('/projects', require('./routers/project.routes'));
@@ -161,8 +175,12 @@ app.use(errorHandler);
 // Database + Server
 // ─────────────────────────────────────────
 
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'CLIENT_URL', 'GMAIL_USER', 'GMAIL_PASS', 'GOOGLE_CLIENT_ID'];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) throw new Error(`Missing required env var: ${envVar}`);
+}
+
 const mongoUri = process.env.MONGODB_URI;
-if (!mongoUri) throw new Error('MONGODB_URI env variable is not set');
 
 mongoose
   .connect(mongoUri, {

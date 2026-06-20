@@ -410,6 +410,7 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
     deadline: taskData.deadline || taskData.endDate || null,
     storyPoints: Number.isFinite(Number(taskData.storyPoints)) ? Number(taskData.storyPoints) : 0,
     labels,
+    customFields: taskData.customFields || {},
   });
 
   await task.save();
@@ -484,6 +485,9 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
           .split(',')
           .map((label) => label.trim())
           .filter(Boolean);
+  }
+  if (updates.customFields !== undefined) {
+    task.customFields = updates.customFields;
   }
   if (updates.assignedRole !== undefined) task.assignedRole = updates.assignedRole;
   if (updates.dependsOn !== undefined) {

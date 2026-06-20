@@ -591,6 +591,17 @@ async function updateProject(projectId, updates, userId) {
     payload.taskStatuses = normalizeTaskStatuses(updates.taskStatuses);
   }
 
+  if (updates.customFields !== undefined) {
+    if (!Array.isArray(updates.customFields))
+      throw new AppError('customFields must be an array', 400);
+    // Validate each field has a name
+    for (const cf of updates.customFields) {
+      if (!cf.name || typeof cf.name !== 'string')
+        throw new AppError('Each custom field must have a name', 400);
+    }
+    payload.customFields = updates.customFields;
+  }
+
   return Project.findByIdAndUpdate(projectId, { $set: payload }, { new: true })
     .populate('owner', 'email username avatar');
 }

@@ -181,6 +181,35 @@ export default function TaskPage() {
             ))}
           </div>
 
+          {/* Custom Fields */}
+          {task.customFields && Object.keys(task.customFields).length > 0 && (
+            <div className="card">
+              <h3 className="section-title"><i className="fa-solid fa-tags" style={{ marginRight: 8 }} />Custom Fields</h3>
+              {Object.entries(task.customFields).map(([key, val]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{key}</span>
+                  {canEdit ? (
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ padding: '2px 8px', fontSize: '.85rem', maxWidth: 140, textAlign: 'right' }}
+                      defaultValue={String(val || '')}
+                      onBlur={async (e) => {
+                        const newFields = { ...task.customFields, [key]: e.target.value };
+                        try {
+                          await API.tasks.update(taskId, { customFields: newFields });
+                          setTask({ ...task, customFields: newFields });
+                        } catch (err) { toast.error(err.message); }
+                      }}
+                    />
+                  ) : (
+                    <span style={{ fontWeight: 600, fontSize: '.9rem' }}>{String(val || '—')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {projectId && <a href={`/app/office/${projectId}`} className="btn btn--ghost" style={{ width: '100%' }}><i className="fa-solid fa-comments" /> Project Office</a>}
         </div>
       </div>

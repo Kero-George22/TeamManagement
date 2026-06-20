@@ -10,7 +10,7 @@ const PCOL = { Low: 'green', Medium: 'yellow', High: 'pink' };
 const SCOL = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
 const PDOT = { Low: '#22c55e', Medium: '#f59e0b', High: '#ef4444' };
 
-export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId, projectId, onTaskUpdate }) {
+export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId, projectId, projectCustomFields, onTaskUpdate }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -224,6 +224,52 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
             <span className="task-panel__label">Role</span>
             <span className="chip">{task.assignedRole}</span>
           </div>
+
+          {/* Custom Fields */}
+          {(() => {
+            const allFields = { ...task.customFields };
+            // Ensure project-defined fields exist
+            (projectCustomFields || []).forEach(cf => {
+              if (allFields[cf.name] === undefined) allFields[cf.name] = '';
+            });
+            return Object.entries(allFields).map(([key, val]) => (
+              <div className="task-panel__field" key={key}>
+                <span className="task-panel__label">{key}</span>
+                {canChangeStatus ? (
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    style={{ padding: '2px 6px', fontSize: '.85rem' }} 
+                    value={val || ''} 
+                    onChange={e => {
+                      const newFields = { ...(task.customFields || {}), [key]: e.target.value };
+                      changeField('customFields', newFields);
+                    }}
+                    disabled={loading} 
+                  />
+                ) : (
+                  <span style={{ fontWeight: 500, fontSize: '.875rem' }}>{String(val || '—')}</span>
+                )}
+              </div>
+            ));
+          })()}
+          {canChangeStatus && (
+            <div className="task-panel__field" style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+              <button 
+                className="btn btn--outline btn--sm" 
+                onClick={() => {
+                  const key = window.prompt('Enter new custom field name (e.g. Budget, Client Name):');
+                  if (key && key.trim()) {
+                    const newFields = { ...(task.customFields || {}), [key.trim()]: '' };
+                    changeField('customFields', newFields);
+                  }
+                }}
+                disabled={loading}
+              >
+                <i className="fa-solid fa-plus" style={{ marginRight: 6 }}></i> Add Custom Field
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Description */}

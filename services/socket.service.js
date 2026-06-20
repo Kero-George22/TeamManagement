@@ -33,7 +33,11 @@ function setupSocket(io) {
 
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      let token = socket.handshake.auth?.token || socket.handshake.query?.token;
+      if (!token && socket.request.headers.cookie) {
+        const match = socket.request.headers.cookie.match(/(?:^|;\s*)accessToken=([^;]+)/);
+        if (match) token = match[1];
+      }
       if (!token) return next(new Error('Authentication required'));
 
       const decoded = jwt.verify(token, JWT_SECRET);

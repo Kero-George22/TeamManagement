@@ -34,6 +34,8 @@ const taskSchema = new mongoose.Schema({
     ref: 'Task',
   }],
   comments: [commentSchema],
+  
+  customFields: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
 
 }, { timestamps: true });
 
