@@ -27,7 +27,7 @@ function decrypt(hash) {
 function generateSecret(user) {
   const secret = new OTPAuth.Secret({ size: 20 });
   const totp = new OTPAuth.TOTP({
-    issuer: 'TeamForge',
+    issuer: 'SyncUp',
     label: user.email,
     algorithm: 'SHA1',
     digits: 6,
@@ -48,7 +48,7 @@ function verifyToken(encryptedSecret, token) {
   try {
     const secret = decrypt(encryptedSecret);
     const totp = new OTPAuth.TOTP({
-      issuer: 'TeamForge',
+      issuer: 'SyncUp',
       algorithm: 'SHA1',
       digits: 6,
       period: 30,

@@ -91,7 +91,6 @@ apiRouter.use('/tasks',    require('./routers/task.routes'));
 apiRouter.use('/profile',  require('./routers/profile.routes'));
 apiRouter.use('/office',   require('./routers/office.routes'));
 apiRouter.use('/dms',      require('./routers/dm.routes'));
-apiRouter.use('/posts',    require('./routers/post.routes'));
 apiRouter.use('/time',     require('./routers/time.routes'));
 apiRouter.use('/notifications', require('./routers/notification.routes'));
 apiRouter.use('/analytics',   require('./routers/analytics.routes'));

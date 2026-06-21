@@ -215,7 +215,7 @@ async function chatWithCopilot(context, message, history) {
   if (!genAI) throw new AppError('AI is not configured', 503);
 
   // context contains: title, description, status, duration, members, tasks, activity
-  const sysInst = `You are TeamForge Copilot, an AI project assistant.
+  const sysInst = `You are SyncUp Copilot, an AI project assistant.
 PROJECT CONTEXT:
 - Title: ${context.title}
 - Description: ${context.description}
@@ -270,7 +270,7 @@ TASKS → Total: ${taskStats.total} | Done: ${taskStats.done} | In Progress: ${t
 
   const model = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
-    systemInstruction: `You are an AI Project Manager for TeamForge.
+    systemInstruction: `You are an AI Project Manager for SyncUp.
 Write a concise project status update (max 180 words) for the team dashboard. Include:
 1. Overall health indicator (🟢 On Track / 🟡 At Risk / 🔴 Behind)
 2. Quick progress summary with numbers

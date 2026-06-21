@@ -9,7 +9,7 @@ const cloudinary = require('cloudinary').v2;
 const avatarStorage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder:            'teamforge/avatars',
+    folder:            'syncup/avatars',
     allowed_formats:   ['jpg', 'jpeg', 'png', 'webp', 'gif'],
     transformation:    [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
     format:            'webp', // normalize to webp for smaller files
@@ -20,7 +20,7 @@ const avatarStorage = new CloudinaryStorage({
 const attachmentStorage = new CloudinaryStorage({
   cloudinary,
   params: (req, file) => ({
-    folder:          'teamforge/attachments',
+    folder:          'syncup/attachments',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'zip', 'txt', 'md'],
     resource_type:   file.mimetype.startsWith('image/') ? 'image' : 'raw',
   }),

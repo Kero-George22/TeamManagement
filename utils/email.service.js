@@ -69,7 +69,7 @@ function passwordResetEmail(to, token) {
       </p>
     </div>
   `;
-  return sendMail({ to, subject: 'Reset your TeamForge password', html, text: `Reset your password: ${resetUrl}` });
+  return sendMail({ to, subject: 'Reset your SyncUp password', html, text: `Reset your password: ${resetUrl}` });
 }
 
 function passwordChangedEmail(to) {
@@ -82,14 +82,14 @@ function passwordChangedEmail(to) {
       </div>
       <h2 style="font-size: 1.2rem; font-weight: 700; margin: 0 0 8px;">Password changed</h2>
       <p style="font-size: .9rem; color: #64748b; line-height: 1.6; margin: 0 0 24px;">
-        Your TeamForge password was changed successfully. If this wasn't you, please contact support immediately.
+        Your SyncUp password was changed successfully. If this wasn't you, please contact support immediately.
       </p>
       <a href="${url}" style="display: inline-block; padding: 12px 28px; background: #3b82f6; color: #fff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: .95rem;">
         Sign In
       </a>
     </div>
   `;
-  return sendMail({ to, subject: 'Your TeamForge password was changed', html, text: `Your password was changed. Sign in: ${url}` });
+  return sendMail({ to, subject: 'Your SyncUp password was changed', html, text: `Your password was changed. Sign in: ${url}` });
 }
 
 module.exports = { sendMail, verificationEmail, passwordResetEmail, passwordChangedEmail };

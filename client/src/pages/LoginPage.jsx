@@ -166,7 +166,7 @@ export default function LoginPage() {
           {/* Login */}
           {tab === 'login' && !showVerify && (
             <form className="auth-form" onSubmit={handleLogin}>
-              <div><h2 className="auth-title">Welcome back</h2><p className="auth-sub">Sign in to your TeamForge account</p></div>
+              <div><h2 className="auth-title">Welcome back</h2><p className="auth-sub">Sign in to your SyncUp account</p></div>
               <div id="google-btn-container" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', opacity: googleLoading ? 0.7 : 1, pointerEvents: googleLoading ? 'none' : 'auto' }}></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
@@ -198,7 +198,7 @@ export default function LoginPage() {
           {/* Signup */}
           {tab === 'signup' && !showVerify && (
             <form className="auth-form" onSubmit={handleSignup}>
-              <div><h2 className="auth-title">Create account</h2><p className="auth-sub">Join TeamForge — it's free</p></div>
+              <div><h2 className="auth-title">Create account</h2><p className="auth-sub">Join SyncUp — it's free</p></div>
               <div id="google-btn-container" style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', opacity: googleLoading ? 0.7 : 1, pointerEvents: googleLoading ? 'none' : 'auto' }}></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />

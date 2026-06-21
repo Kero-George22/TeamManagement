@@ -12,7 +12,7 @@ const logFormat = winston.format.combine(
 const logger = winston.createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   format: logFormat,
-  defaultMeta: { service: 'teamforge-api' },
+  defaultMeta: { service: 'syncup-api' },
   transports: [
     // Write all logs with importance level of `error` or less to `error.log`
     new winston.transports.File({ filename: path.join(__dirname, '../logs/error.log'), level: 'error' }),

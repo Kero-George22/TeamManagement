@@ -179,7 +179,7 @@ export default function OnboardPage() {
         toast.success('Invitations queued successfully!');
       }
 
-      toast.success('Welcome to TeamForge!');
+      toast.success('Welcome to SyncUp!');
       navigate('/app/dashboard', { replace: true });
     } catch (err) {
       toast.error(err.message || 'Failed to complete setup');
@@ -206,7 +206,7 @@ export default function OnboardPage() {
         {step === 1 && (
           <div className="onboard-step">
             <div className="onboard-icon-wrap"><i className="fa-solid fa-hand-wave" /></div>
-            <h1 className="onboard-title">Welcome to TeamForge</h1>
+            <h1 className="onboard-title">Welcome to SyncUp</h1>
             <p className="onboard-desc">To personalize your experience, what is your primary role?</p>
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, width: '100%' }}>
@@ -295,7 +295,7 @@ export default function OnboardPage() {
 
             <div className="form-group">
               <label className="form-label">Project Name</label>
-              <input className="form-input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="e.g. TeamForge V2" autoFocus />
+              <input className="form-input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="e.g. SyncUp V2" autoFocus />
             </div>
             
             <div className="form-group">
@@ -316,7 +316,7 @@ export default function OnboardPage() {
         {/* Step 4: Quick Tutorial */}
         {step === 4 && (
           <div className="onboard-step">
-            <h2 className="onboard-title">How TeamForge Works</h2>
+            <h2 className="onboard-title">How SyncUp Works</h2>
             <p className="onboard-desc">Master the platform in 3 simple steps.</p>
             
             <div className="tutorial-carousel">
@@ -349,7 +349,7 @@ export default function OnboardPage() {
           <div className="onboard-step">
             <div className="onboard-icon-wrap"><i className="fa-solid fa-user-plus" /></div>
             <h2 className="onboard-title">Invite your Team</h2>
-            <p className="onboard-desc">TeamForge is better with friends. Send them an invite link to join your workspace.</p>
+            <p className="onboard-desc">SyncUp is better with friends. Send them an invite link to join your workspace.</p>
 
             <div className="form-group">
               <label className="form-label">Email Addresses (comma separated)</label>

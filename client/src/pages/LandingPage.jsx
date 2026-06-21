@@ -5,9 +5,9 @@ export default function LandingPage() {
   const [activeFaq, setActiveFaq] = useState(null);
 
   const faqs = [
-    { q: "Is TeamForge really free?", a: "Yes! Our Free plan gives you everything you need to manage your first project, up to 3 team members and 5 AI reviews per month." },
+    { q: "Is SyncUp really free?", a: "Yes! Our Free plan gives you everything you need to manage your first project, up to 3 team members and 5 AI reviews per month." },
     { q: "Can I use my own domain?", a: "Custom domains are available on the Team plan. You can map your portfolio or project pages directly." },
-    { q: "How does the AI Review work?", a: "TeamForge uses Google's Gemini AI to analyze code and written submissions against your task requirements, scoring them 0-100 and providing actionable feedback." },
+    { q: "How does the AI Review work?", a: "SyncUp uses Google's Gemini AI to analyze code and written submissions against your task requirements, scoring them 0-100 and providing actionable feedback." },
     { q: "Can I cancel my subscription anytime?", a: "Absolutely. You can cancel your Pro or Team subscription at any time from your billing dashboard. No questions asked." }
   ];
 
@@ -49,7 +49,7 @@ export default function LandingPage() {
             The ultimate OS for <br/> <span style={{ color: 'var(--green)', backgroundImage: 'linear-gradient(to right, #22c55e, #10b981)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Modern SaaS Teams</span>
           </h1>
           <p style={{ fontSize: '1.3rem', color: 'var(--text-secondary)', maxWidth: 650, margin: '0 auto 48px', lineHeight: 1.6 }}>
-            Recruit talent, generate AI tasks, track time, and review submissions—all in one place. TeamForge replaces Jira, Slack, and GitHub PRs for agile teams.
+            Recruit talent, generate AI tasks, track time, and review submissions—all in one place. SyncUp replaces Jira, Slack, and GitHub PRs for agile teams.
           </p>
           <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
             <Link to="/login" className="btn btn--green" style={{ fontSize: '1.2rem', padding: '18px 40px', borderRadius: 12, textDecoration: 'none', fontWeight: 600, boxShadow: '0 8px 32px rgba(34,197,94,0.3)' }}>Start Building Free</Link>
@@ -179,9 +179,9 @@ export default function LandingPage() {
           <h2 style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: 64 }}>Loved by engineering teams</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 32 }}>
              {[
-               { quote: "TeamForge replaced Jira and Slack for us. The AI task generation alone saves my PM 10 hours a week.", name: "Sarah J.", role: "CTO @ TechFlow" },
+               { quote: "SyncUp replaced Jira and Slack for us. The AI task generation alone saves my PM 10 hours a week.", name: "Sarah J.", role: "CTO @ TechFlow" },
                { quote: "The automated code reviews are incredibly accurate. It's like having a senior engineer review every PR instantly.", name: "Mark D.", role: "Lead Developer" },
-               { quote: "I built my entire freelance portfolio using TeamForge's export feature. Clients love the transparency.", name: "Elena R.", role: "Freelance Designer" }
+               { quote: "I built my entire freelance portfolio using SyncUp's export feature. Clients love the transparency.", name: "Elena R.", role: "Freelance Designer" }
              ].map((t, i) => (
                <div key={i} style={{ padding: 40, background: '#111', borderRadius: 24, border: '1px solid rgba(255,255,255,0.05)', textAlign: 'left' }}>
                   <div style={{ color: 'var(--green)', fontSize: '1.5rem', marginBottom: 24 }}><i className="fa-solid fa-quote-left"></i></div>
@@ -260,7 +260,7 @@ export default function LandingPage() {
            </div>
         </div>
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
-           <p>&copy; {new Date().getFullYear()} TeamForge. All rights reserved.</p>
+           <p>&copy; {new Date().getFullYear()} SyncUp. All rights reserved.</p>
         </div>
       </footer>
     </div>

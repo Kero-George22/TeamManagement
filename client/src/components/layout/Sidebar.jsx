@@ -31,7 +31,7 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar__logo">TeamForge</div>
+      <div className="sidebar__logo">SyncUp</div>
       <nav className="sidebar__nav" role="navigation" aria-label="Main navigation">
         {NAV.map(n => (
           <NavLink
@@ -111,16 +111,6 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar__bottom">
-        {user?.avatar ? (
-          <img src={user.avatar} alt="Avatar" className="sidebar__avatar" />
-        ) : (
-          <div className="sidebar__avatar" style={{
-              background: 'var(--green-bg)', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 700, fontSize: '.9rem', flexShrink: 0
-            }}>
-              {(user?.username || user?.email || '?')[0].toUpperCase()}
-          </div>
-        )}
         <button className="sidebar__logout" onClick={logout} aria-label="Logout" title="Logout">
           <i className="fa-solid fa-right-from-bracket" />
         </button>

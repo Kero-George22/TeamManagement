@@ -1,4 +1,4 @@
-/* ── TeamForge API Client (ES Module) ─────── */
+/* ── SyncUp API Client (ES Module) ─────── */
 import { getCache, setCache, invalidateCachePrefix } from './cache.js';
 
 const BASE = '/api/v1';
@@ -57,7 +57,7 @@ const request = async (method, path, body = null, isRetry = false) => {
         }
         
         // Tokens are now set by backend via httpOnly cookies
-        
+        const newToken = json.data?.token || json.token;
         isRefreshing = false;
         onRefreshed(newToken);
       } catch (err) {

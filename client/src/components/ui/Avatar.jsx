@@ -14,7 +14,7 @@ export default function Avatar({ user, size = 'md', className = '', onClick }) {
     if (id) {
       e.stopPropagation();
       e.preventDefault();
-      navigate(`/app/profile/${id}`);
+      navigate(`/profile/${id}`);
     }
   };
 

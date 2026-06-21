@@ -4,7 +4,7 @@ const User = require('./models/user.model');
 const Project = require('./models/project.model');
 const Task = require('./models/task.model');
 
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/teamforge';
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/syncup';
 
 async function seed() {
     try {
@@ -20,7 +20,7 @@ async function seed() {
 
         // Create Admin
         const admin = await User.create({
-            email: 'admin@teamforge.com',
+            email: 'admin@syncup.com',
             password: 'admin123',
             username: 'SystemAdmin',
             isAdmin: true,

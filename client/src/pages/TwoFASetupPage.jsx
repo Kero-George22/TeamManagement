@@ -81,7 +81,7 @@ export default function TwoFASetupPage() {
   const downloadCodes = () => {
     const el = document.createElement('a');
     el.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(backupCodes.join('\n')));
-    el.setAttribute('download', 'teamforge-backup-codes.txt');
+    el.setAttribute('download', 'syncup-backup-codes.txt');
     el.style.display = 'none';
     document.body.appendChild(el);
     el.click();
