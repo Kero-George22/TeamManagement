@@ -4,6 +4,7 @@ const { success } = require('../utils/apiResponse');
 const Project = require('../models/project.model');
 const Task = require('../models/task.model');
 const AppError = require('../utils/AppError');
+const aiUsageService = require('../services/aiUsage.service');
 
 /**
  * POST /api/v1/ai/chat
@@ -50,6 +51,7 @@ const chat = asyncWrapper(async (req, res) => {
   };
 
   const reply = await aiManager.chatWithCopilot(context, message, history);
+  await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
   return success(res, { reply }, 'Copilot responded');
 });
 

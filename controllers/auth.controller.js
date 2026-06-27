@@ -264,7 +264,6 @@ exports.login = asyncWrapper(async (req, res) => {
   });
 
   return success(res, {
-    token,
     user: {
       id:       user._id,
       _id:      user._id,
@@ -331,7 +330,6 @@ exports.verify2FA = asyncWrapper(async (req, res) => {
   });
 
   return success(res, {
-    token,
     user: {
       id:       user._id,
       _id:      user._id,
@@ -418,7 +416,6 @@ exports.googleLogin = asyncWrapper(async (req, res) => {
   });
 
   return success(res, {
-    token,
     user: {
       id:       user._id,
       _id:      user._id,
@@ -481,7 +478,7 @@ exports.refreshToken = asyncWrapper(async (req, res) => {
       maxAge:   15 * 60 * 1000,
     });
 
-    return success(res, { token }, 'Token refreshed');
+    return success(res, {}, 'Token refreshed');
   } catch (err) {
     throw new AppError('Invalid or expired refresh token', 401);
   }

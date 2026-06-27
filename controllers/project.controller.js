@@ -3,6 +3,7 @@ const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
 const aiManager = require('../services/ai.manager');
+const aiUsageService = require('../services/aiUsage.service');
 
 // ─────────────────────────────────────────
 // CREATE PROJECT
@@ -264,6 +265,7 @@ const analyzeProjectPerformance = asyncWrapper(async (req, res) => {
   };
 
   const analysis = await aiManager.analyzeTeamPerformance(teamData);
+  await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
   return success(res, analysis, 'Project performance analyzed');
 });
 

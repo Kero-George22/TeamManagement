@@ -16,10 +16,20 @@ const app = express();
 const server = http.createServer(app);
 const uploadsPath = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadsPath, { recursive: true });
+
+if (process.env.NODE_ENV === 'production' && !process.env.CLIENT_URL) {
+  throw new Error('CLIENT_URL env variable must be set in production');
+}
+
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
+  : true; // true = allow all in dev
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || '*',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
@@ -31,10 +41,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", process.env.CLIENT_URL || '*'],
+      connectSrc: ["'self'", ...(Array.isArray(allowedOrigins) ? allowedOrigins : []), 'https://accounts.google.com'],
       imgSrc: ["'self'", "data:", "res.cloudinary.com"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com'],
+      fontSrc: ["'self'", "data:", 'https://cdnjs.cloudflare.com'],
+      frameSrc: ["'self'", 'https://accounts.google.com'],
     },
   },
 }));
@@ -44,14 +56,6 @@ app.use(cookieParser());
 // ─────────────────────────────────────────
 // CORS — must come before routes
 // ─────────────────────────────────────────
-
-if (process.env.NODE_ENV === 'production' && !process.env.CLIENT_URL) {
-  throw new Error('CLIENT_URL env variable must be set in production');
-}
-
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(',').map((o) => o.trim())
-  : true; // true = allow all in dev
 
 app.use(
   cors({
@@ -98,6 +102,7 @@ apiRouter.use('/portfolio',   require('./routers/portfolio.routes'));
 apiRouter.use('/submissions', require('./routers/submission.routes'));
 apiRouter.use('/goals',       require('./routers/goal.routes'));
 apiRouter.use('/ai',          require('./routers/ai.routes'));
+apiRouter.use('/team-features', require('./routers/teamFeature.routes'));
 
 // Health check
 apiRouter.get('/health', (req, res) => {
@@ -142,6 +147,7 @@ app.get('/uploads/:filename', requireAuth, async (req, res, next) => {
 
 const { setupSocket } = require('./services/socket.service');
 setupSocket(io);
+const { initCronJobs } = require('./services/cron.service');
 
 // ─────────────────────────────────────────
 // Static files (React SPA)
@@ -191,7 +197,7 @@ mongoose
     console.log('✓ Connected to MongoDB');
 
     try {
-      // Skills initialization removed
+      initCronJobs();
     } catch (err) {
       console.warn('Init skipped:', err.message);
     }

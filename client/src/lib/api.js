@@ -52,14 +52,12 @@ const request = async (method, path, body = null, isRetry = false) => {
         const refreshRes = await fetch(BASE + '/auth/refresh', { method: 'POST', credentials: 'include' });
         const json = await refreshRes.json().catch(() => ({}));
         
-        if (!refreshRes.ok || (!json.data?.token && !json.token)) {
+        if (!refreshRes.ok) {
           throw new Error('Refresh failed');
         }
         
-        // Tokens are now set by backend via httpOnly cookies
-        const newToken = json.data?.token || json.token;
         isRefreshing = false;
-        onRefreshed(newToken);
+        onRefreshed();
       } catch (err) {
         isRefreshing = false;
         clearAuth();
@@ -336,10 +334,37 @@ const admin = {
   deleteProject: (id) => del(`/admin/projects/${id}`),
 };
 
+/* Team Features */
+const teamFeatures = {
+  // Polls
+  createPoll: (projectId, data) => post(`/team-features/${projectId}/polls`, data),
+  getPolls: (projectId) => get(`/team-features/${projectId}/polls`),
+  votePoll: (projectId, pollId, optionId) => post(`/team-features/${projectId}/polls/${pollId}/vote`, { optionId }),
+
+  // Suggestions
+  createSuggestion: (projectId, data) => post(`/team-features/${projectId}/suggestions`, data),
+  getSuggestions: (projectId) => get(`/team-features/${projectId}/suggestions`),
+  voteSuggestion: (projectId, suggestionId, type) => patch(`/team-features/${projectId}/suggestions/${suggestionId}/vote`, { type }),
+  updateSuggestionStatus: (projectId, suggestionId, status) => patch(`/team-features/${projectId}/suggestions/${suggestionId}/status`, { status }),
+
+  // Decisions
+  createDecision: (projectId, data) => post(`/team-features/${projectId}/decisions`, data),
+  getDecisions: (projectId) => get(`/team-features/${projectId}/decisions`),
+
+  // Instructions
+  createInstruction: (projectId, data) => post(`/team-features/${projectId}/instructions`, data),
+  getInstructions: (projectId) => get(`/team-features/${projectId}/instructions`),
+
+  // Notes
+  createNote: (data) => post('/team-features/notes', data),
+  getNotes: (projectId) => get(`/team-features/notes${projectId ? `?projectId=${projectId}` : ''}`),
+  deleteNote: (noteId) => del(`/team-features/notes/${noteId}`),
+};
+
 const API = {
   getToken, getUser, saveAuth, clearAuth, isLoggedIn,
   auth, profile, projects, tasks, dms, office, notifications, time,
-  analytics, portfolio, submissions, goals, ai, admin
+  analytics, portfolio, submissions, goals, ai, admin, teamFeatures
 };
 
 export default API;

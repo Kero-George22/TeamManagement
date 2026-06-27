@@ -5,7 +5,7 @@ const { success } = require('../utils/apiResponse');
 const startTracking = asyncWrapper(async (req, res) => {
   const { taskId } = req.params;
   const { description } = req.body;
-  const entry = await timeService.startTracking(taskId, req.user._id, description);
+  const entry = await timeService.startTracking(taskId, req.user._id, description, req.user.isAdmin);
   return success(res, entry, 'Timer started', 201);
 });
 
@@ -29,13 +29,13 @@ const resumeTracking = asyncWrapper(async (req, res) => {
 
 const getTaskTimeEntries = asyncWrapper(async (req, res) => {
   const { taskId } = req.params;
-  const entries = await timeService.getTaskTimeEntries(taskId, req.user._id);
+  const entries = await timeService.getTaskTimeEntries(taskId, req.user._id, req.user.isAdmin);
   return success(res, entries, 'Time entries retrieved');
 });
 
 const getTotalTrackedTime = asyncWrapper(async (req, res) => {
   const { taskId } = req.params;
-  const result = await timeService.getTotalTrackedTime(taskId, req.user._id);
+  const result = await timeService.getTotalTrackedTime(taskId, req.user._id, req.user.isAdmin);
   return success(res, result, 'Total tracked time retrieved');
 });
 

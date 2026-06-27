@@ -9,14 +9,14 @@ export function useSocket() {
 }
 
 export function SocketProvider({ children }) {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [typingUsers, setTypingUsers] = useState({});
   const typingTimers = useRef({});
 
   useEffect(() => {
-    if (!token || !user) {
+    if (!user) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -26,8 +26,8 @@ export function SocketProvider({ children }) {
     }
 
     const socket = io({
-      auth: { token },
       transports: ['websocket', 'polling'],
+      withCredentials: true,
     });
 
     socket.on('connect', () => {
@@ -89,7 +89,7 @@ export function SocketProvider({ children }) {
       socketRef.current = null;
       setConnected(false);
     };
-  }, [token, user]);
+  }, [user]);
 
   const joinProject = useCallback((projectId) => {
     socketRef.current?.emit('join:project', projectId);

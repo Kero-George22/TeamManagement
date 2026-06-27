@@ -1,59 +1,55 @@
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
 
-// cloudinary.v2 auto-configures from CLOUDINARY_URL env var
-// No explicit config() call needed when CLOUDINARY_URL is set.
+const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ATTACHMENT_MIMES = new Set([
+  ...IMAGE_MIMES,
+  'application/pdf',
+  'application/zip',
+  'text/plain',
+  'text/markdown',
+]);
 
-// ─── Avatar Storage ────────────────────────────────────────────────────────
-const avatarStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder:            'syncup/avatars',
-    allowed_formats:   ['jpg', 'jpeg', 'png', 'webp', 'gif'],
-    transformation:    [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
-    format:            'webp', // normalize to webp for smaller files
-  },
-});
-
-// ─── Attachment Storage ────────────────────────────────────────────────────
-const attachmentStorage = new CloudinaryStorage({
-  cloudinary,
-  params: (req, file) => ({
-    folder:          'syncup/attachments',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'zip', 'txt', 'md'],
-    resource_type:   file.mimetype.startsWith('image/') ? 'image' : 'raw',
-  }),
-});
-
-// ─── File filter ───────────────────────────────────────────────────────────
 function imageFilter(req, file, cb) {
-  if (!file.mimetype.startsWith('image/')) {
+  if (!IMAGE_MIMES.has(file.mimetype)) {
     return cb(new Error('Only image files are allowed'), false);
   }
   cb(null, true);
 }
 
-// ─── Exports ───────────────────────────────────────────────────────────────
-const uploadAvatar = multer({
-  storage: avatarStorage,
-  limits:  { fileSize: 5 * 1024 * 1024 }, // 5 MB
+function attachmentFilter(req, file, cb) {
+  if (!ATTACHMENT_MIMES.has(file.mimetype)) {
+    return cb(new Error(`File type ${file.mimetype} is not allowed`), false);
+  }
+  cb(null, true);
+}
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: imageFilter,
 }).single('avatar');
 
-const uploadAttachment = multer({
-  storage: attachmentStorage,
-  limits:  { fileSize: 20 * 1024 * 1024 }, // 20 MB
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: attachmentFilter,
 }).single('attachment');
 
-/**
- * Wraps multer in a promise so errors get caught by asyncWrapper / error handler
- */
-function wrapUpload(uploadFn) {
+function uploadToCloudinary(buffer, options) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+    stream.end(buffer);
+  });
+}
+
+function wrapMulter(uploadFn) {
   return (req, res, next) => {
     uploadFn(req, res, (err) => {
       if (!err) return next();
-      // multer errors
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ success: false, message: 'File too large' });
       }
@@ -62,8 +58,51 @@ function wrapUpload(uploadFn) {
   };
 }
 
+function uploadAvatar(req, res, next) {
+  wrapMulter(avatarUpload)(req, res, async (err) => {
+    if (err) return next(err);
+    if (!req.file) return next();
+
+    try {
+      const result = await uploadToCloudinary(req.file.buffer, {
+        folder: 'syncup/avatars',
+        resource_type: 'image',
+        transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
+        format: 'webp',
+      });
+
+      req.file.path = result.secure_url;
+      req.file.filename = result.public_id;
+      return next();
+    } catch (uploadErr) {
+      return next(uploadErr);
+    }
+  });
+}
+
+function uploadAttachment(req, res, next) {
+  wrapMulter(attachmentUpload)(req, res, async (err) => {
+    if (err) return next(err);
+    if (!req.file) return next();
+
+    try {
+      const isImage = req.file.mimetype.startsWith('image/');
+      const result = await uploadToCloudinary(req.file.buffer, {
+        folder: 'syncup/attachments',
+        resource_type: isImage ? 'image' : 'raw',
+      });
+
+      req.file.path = result.secure_url;
+      req.file.filename = result.public_id;
+      return next();
+    } catch (uploadErr) {
+      return next(uploadErr);
+    }
+  });
+}
+
 module.exports = {
-  uploadAvatar:     wrapUpload(uploadAvatar),
-  uploadAttachment: wrapUpload(uploadAttachment),
-  cloudinary,       // export for direct use (e.g. deleting old images)
+  uploadAvatar,
+  uploadAttachment,
+  cloudinary,
 };

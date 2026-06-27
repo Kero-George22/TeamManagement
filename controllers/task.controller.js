@@ -3,6 +3,7 @@ const aiManager = require('../services/ai.manager');
 const asyncWrapper = require('../utils/asyncWrapper');
 const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
+const aiUsageService = require('../services/aiUsage.service');
 
 // ─────────────────────────────────────────
 // CREATE TASKS — AI generates per role
@@ -13,6 +14,7 @@ const createTasksByAI = asyncWrapper(async (req, res) => {
     req.params.projectId,
     req.user._id
   );
+  await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
   return success(res, tasks, 'Tasks created by AI', 201);
 });
 
@@ -175,6 +177,7 @@ const getBoardView = asyncWrapper(async (req, res) => {
 const generateAIInstructions = asyncWrapper(async (req, res) => {
   const task = await taskService.getTaskById(req.params.taskId, req.user._id, req.user.isAdmin);
   const instructions = await aiManager.generateTaskInstructions(task);
+  await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
   return success(res, { instructions }, 'AI instructions generated');
 });
 

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const TimeEntry = require('../models/timeEntry.model');
 const Task = require('../models/task.model');
+const Project = require('../models/project.model');
 const AppError = require('../utils/AppError');
 
 function validateObjectId(id, label = 'ID') {
@@ -8,11 +9,31 @@ function validateObjectId(id, label = 'ID') {
     throw new AppError(`Invalid ${label}`, 400);
 }
 
-async function startTracking(taskId, userId, description) {
+async function ensureTaskAccess(taskId, userId, isAdmin = false) {
   validateObjectId(taskId, 'task ID');
 
-  const task = await Task.findById(taskId);
+  const task = await Task.findById(taskId).select('project assignedTo');
   if (!task) throw new AppError('Task not found', 404);
+
+  if (isAdmin) return task;
+
+  const project = await Project.findById(task.project).select('owner members').lean();
+  if (!project) throw new AppError('Project not found', 404);
+
+  const uid = String(userId);
+  const isOwner = String(project.owner) === uid;
+  const isMember = (project.members || []).some((m) => String(m.userId) === uid);
+  const isAssigned = (task.assignedTo || []).some((id) => String(id) === uid);
+
+  if (!isOwner && !isMember && !isAssigned) {
+    throw new AppError('You do not have access to this task', 403);
+  }
+
+  return task;
+}
+
+async function startTracking(taskId, userId, description, isAdmin = false) {
+  await ensureTaskAccess(taskId, userId, isAdmin);
 
   // Check for existing running entry
   const running = await TimeEntry.findOne({ user: userId, status: 'running' });
@@ -78,8 +99,8 @@ async function resumeTracking(entryId, userId) {
   return entry;
 }
 
-async function getTaskTimeEntries(taskId, userId) {
-  validateObjectId(taskId, 'task ID');
+async function getTaskTimeEntries(taskId, userId, isAdmin = false) {
+  await ensureTaskAccess(taskId, userId, isAdmin);
 
   const entries = await TimeEntry.find({ task: taskId, user: userId })
     .sort({ startTime: -1 })
@@ -88,8 +109,8 @@ async function getTaskTimeEntries(taskId, userId) {
   return entries;
 }
 
-async function getTotalTrackedTime(taskId, userId) {
-  validateObjectId(taskId, 'task ID');
+async function getTotalTrackedTime(taskId, userId, isAdmin = false) {
+  await ensureTaskAccess(taskId, userId, isAdmin);
 
   const result = await TimeEntry.aggregate([
     { $match: { task: new mongoose.Types.ObjectId(String(taskId)), user: new mongoose.Types.ObjectId(String(userId)) } },
