@@ -9,6 +9,8 @@ router.use(requireAuth);
 router.post('/:projectId/polls', teamFeatureController.createPoll);
 router.get('/:projectId/polls', teamFeatureController.getPolls);
 router.post('/:projectId/polls/:pollId/vote', teamFeatureController.votePoll);
+router.patch('/:projectId/polls/:pollId/close', teamFeatureController.closePoll);
+router.delete('/:projectId/polls/:pollId', teamFeatureController.deletePoll);
 
 // Suggestions
 router.post('/:projectId/suggestions', teamFeatureController.createSuggestion);

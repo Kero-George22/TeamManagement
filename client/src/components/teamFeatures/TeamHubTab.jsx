@@ -21,6 +21,7 @@ export default function TeamHubTab({ projectId, isOwner }) {
   // UI states
   const [loading, setLoading] = useState(true);
   const [votesModal, setVotesModal] = useState({ open: false, optionText: '', voters: [] });
+  const [showClosedPolls, setShowClosedPolls] = useState(false);
   
   // Form states
   const [pollForm, setPollForm] = useState({ question: '', options: ['', ''] });
@@ -87,6 +88,28 @@ export default function TeamHubTab({ projectId, isOwner }) {
   async function handleVotePoll(pollId, optionId) {
     try {
       await API.teamFeatures.votePoll(projectId, pollId, optionId);
+      loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function handleClosePoll(pollId) {
+    if (!window.confirm('Are you sure you want to close this poll?')) return;
+    try {
+      await API.teamFeatures.closePoll(projectId, pollId);
+      toast.success('Poll closed');
+      loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function handleDeletePoll(pollId) {
+    if (!window.confirm('Are you sure you want to delete this poll?')) return;
+    try {
+      await API.teamFeatures.deletePoll(projectId, pollId);
+      toast.success('Poll deleted');
       loadData();
     } catch (err) {
       toast.error(err.message);
@@ -229,14 +252,27 @@ export default function TeamHubTab({ projectId, isOwner }) {
                 </form>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-                  {polls.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No polls available.</p>}
-                  {polls.map(poll => {
+                  {polls.filter(p => p.isActive).length === 0 && <p style={{ color: 'var(--text-muted)' }}>No active polls available.</p>}
+                  {polls.filter(p => p.isActive).map(poll => {
                     const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes.length, 0);
+                    const canManage = isOwner || (poll.creator && String(poll.creator._id || poll.creator) === userIdStr);
                     return (
                       <div key={poll._id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 15 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                          <Avatar user={poll.creator} size="sm" />
-                          <div style={{ fontWeight: 600 }}>{poll.question}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <Avatar user={poll.creator} size="sm" />
+                            <div style={{ fontWeight: 600 }}>{poll.question}</div>
+                          </div>
+                          {canManage && (
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button className="btn btn--ghost btn--sm" onClick={() => handleClosePoll(poll._id)} title="Close Poll">
+                                <i className="fa-solid fa-lock" />
+                              </button>
+                              <button className="btn btn--ghost btn--sm" onClick={() => handleDeletePoll(poll._id)} title="Delete Poll" style={{ color: 'var(--red)' }}>
+                                <i className="fa-solid fa-trash" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                         {poll.options.map(opt => {
                           const isVoted = opt.votes.some(v => String(v._id || v) === userIdStr);
@@ -300,6 +336,66 @@ export default function TeamHubTab({ projectId, isOwner }) {
                       </div>
                     );
                   })}
+                  
+                  {polls.some(p => !p.isActive) && (
+                    <div style={{ marginTop: 10 }}>
+                      <button 
+                        className="btn btn--ghost" 
+                        style={{ width: '100%', justifyContent: 'space-between', padding: '12px 15px', background: 'var(--bg)' }}
+                        onClick={() => setShowClosedPolls(!showClosedPolls)}
+                      >
+                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Closed Polls ({polls.filter(p => !p.isActive).length})</span>
+                        <i className={`fa-solid fa-chevron-${showClosedPolls ? 'up' : 'down'}`} style={{ color: 'var(--text-muted)' }} />
+                      </button>
+                      
+                      {showClosedPolls && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 15, marginTop: 15 }}>
+                          {polls.filter(p => !p.isActive).map(poll => {
+                            const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes.length, 0);
+                            const canManage = isOwner || (poll.creator && String(poll.creator._id || poll.creator) === userIdStr);
+                            return (
+                              <div key={poll._id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 15, opacity: 0.8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <Avatar user={poll.creator} size="sm" />
+                                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{poll.question} (Closed)</div>
+                                  </div>
+                                  {canManage && (
+                                    <button className="btn btn--ghost btn--sm" onClick={() => handleDeletePoll(poll._id)} title="Delete Poll" style={{ color: 'var(--red)' }}>
+                                      <i className="fa-solid fa-trash" />
+                                    </button>
+                                  )}
+                                </div>
+                                {poll.options.map(opt => {
+                                  const percentage = totalVotes ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
+                                  return (
+                                    <div key={opt._id} style={{ marginBottom: 15 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                          <div style={{ width: 20, height: 20, flexShrink: 0 }} />
+                                          <span style={{ fontWeight: 500, fontSize: '.95rem', color: 'var(--text-secondary)' }}>{opt.text}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                          <span style={{ fontSize: '.85rem', color: 'var(--text-muted)', fontWeight: 600, minWidth: 20, textAlign: 'right' }}>
+                                            {opt.votes.length}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div style={{ paddingLeft: 32 }}>
+                                        <div style={{ width: '100%', height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                                          <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--text-muted)', transition: 'width 0.3s ease' }} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -82,6 +82,45 @@ exports.votePoll = asyncWrapper(async (req, res) => {
   return success(res, poll, 'Vote recorded successfully');
 });
 
+exports.closePoll = asyncWrapper(async (req, res) => {
+  const { projectId, pollId } = req.params;
+  const project = await verifyMembership(projectId, req.user._id);
+
+  const poll = await Poll.findById(pollId);
+  if (!poll) throw new AppError('Poll not found', 404);
+
+  const isOwner = project.owner.toString() === req.user._id.toString();
+  const isCreator = poll.creator.toString() === req.user._id.toString();
+
+  if (!isOwner && !isCreator) {
+    throw new AppError('Only the creator or project owner can close this poll', 403);
+  }
+
+  poll.isActive = false;
+  await poll.save();
+
+  return success(res, poll, 'Poll closed successfully');
+});
+
+exports.deletePoll = asyncWrapper(async (req, res) => {
+  const { projectId, pollId } = req.params;
+  const project = await verifyMembership(projectId, req.user._id);
+
+  const poll = await Poll.findById(pollId);
+  if (!poll) throw new AppError('Poll not found', 404);
+
+  const isOwner = project.owner.toString() === req.user._id.toString();
+  const isCreator = poll.creator.toString() === req.user._id.toString();
+
+  if (!isOwner && !isCreator) {
+    throw new AppError('Only the creator or project owner can delete this poll', 403);
+  }
+
+  await Poll.findByIdAndDelete(pollId);
+
+  return success(res, {}, 'Poll deleted successfully');
+});
+
 // ─────────────────────────────────────────
 // SUGGESTIONS
 // ─────────────────────────────────────────

@@ -340,6 +340,8 @@ const teamFeatures = {
   createPoll: (projectId, data) => post(`/team-features/${projectId}/polls`, data),
   getPolls: (projectId) => get(`/team-features/${projectId}/polls`),
   votePoll: (projectId, pollId, optionId) => post(`/team-features/${projectId}/polls/${pollId}/vote`, { optionId }),
+  closePoll: (projectId, pollId) => patch(`/team-features/${projectId}/polls/${pollId}/close`),
+  deletePoll: (projectId, pollId) => del(`/team-features/${projectId}/polls/${pollId}`),
 
   // Suggestions
   createSuggestion: (projectId, data) => post(`/team-features/${projectId}/suggestions`, data),

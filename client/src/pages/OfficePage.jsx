@@ -20,34 +20,24 @@ export default function OfficePage() {
   const [proj, setProj]       = useState(null);
   const [msgs, setMsgs]       = useState(null);
   const [input, setInput]     = useState('');
-  const [aiStatus, setAiStatus] = useState(null);
-  const [overview, setOverview] = useState(null);
-  const [team, setTeam]         = useState(null);
 
   useEffect(() => {
     (async () => {
       try { const p = await API.projects.get(projectId); setProj(p); } catch { toast.error('Could not load project'); }
       loadMessages();
-      loadAI();
-      loadOverview();
-      loadTeam();
     })();
   }, [projectId]);
 
   async function loadMessages() {
-    try { setMsgs(await API.office.messages(projectId) || []); setTimeout(() => msgsEndRef.current?.scrollIntoView(), 100); } catch { toast.error('Failed to load messages'); }
-  }
-
-  async function loadAI() {
-    try { setAiStatus(await API.office.status(projectId)); } catch { setAiStatus({ message: 'AI status unavailable' }); }
-  }
-
-  async function loadOverview() {
-    try { setOverview(await API.office.overview(projectId)); } catch { setOverview(null); }
-  }
-
-  async function loadTeam() {
-    try { setTeam(await API.projects.members(projectId) || []); } catch {}
+    try {
+      const data = await API.office.messages(projectId);
+      const arr = Array.isArray(data) ? data : (Array.isArray(data?.messages) ? data.messages : []);
+      setMsgs(arr);
+      setTimeout(() => msgsEndRef.current?.scrollIntoView(), 100);
+    } catch {
+      toast.error('Failed to load messages');
+      setMsgs([]);
+    }
   }
 
   async function sendMsg() {
@@ -75,7 +65,6 @@ export default function OfficePage() {
               <div style={{ fontWeight: 700, fontSize: '1rem' }}>{title}</div>
               <div style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>Team communication channel</div>
             </div>
-            <button className="icon-btn" onClick={loadAI} title="Refresh AI status"><i className="fa-solid fa-rotate" /></button>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -115,52 +104,33 @@ export default function OfficePage() {
 
         {/* Right sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* AI Manager */}
-          <div style={{ background: 'var(--sidebar-bg)', color: '#fff', borderRadius: 'var(--card-radius)', padding: 20 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', animation: 'pulse 1.5s infinite' }} />
-              AI Manager
-            </div>
-            <p style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.5)', marginBottom: 12 }}>Monitoring your project</p>
-            <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.8)', lineHeight: 1.55 }}>
-              {aiStatus?.summary || aiStatus?.message || 'AI manager is monitoring project progress.'}
-            </div>
-          </div>
-
-          {/* Overview */}
-          <div className="card">
-            <h3 className="section-title">Overview</h3>
-            {overview ? (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Status</span>
-                  <Badge variant={BADGE_STATUS[overview.project?.status] || 'gray'}>{overview.project?.status || '—'}</Badge>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Tasks Done</span>
-                  <span style={{ fontWeight: 600 }}>{overview.report?.taskStats?.done ?? 0} / {overview.report?.taskStats?.total ?? 0}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0' }}>
-                  <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>Time Left</span>
-                  <span style={{ fontWeight: 600 }}>{proj ? daysLeft(proj.startDate, proj.duration) : '—'}</span>
-                </div>
-              </>
-            ) : <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', padding: '12px 0' }}>Overview unavailable</div>}
-          </div>
-
           {/* Team */}
           <div className="card">
-            <h3 className="section-title">Team</h3>
-            {(team || []).map((m, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                <Avatar user={m.user || m} size="sm" />
+            <h3 className="section-title">Team Members</h3>
+            {proj && proj.owner && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <Avatar user={proj.owner} size="sm" />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{m.user?.username || m.user?.email?.split('@')[0] || 'User'}</div>
-                  <div style={{ fontSize: '.73rem', color: 'var(--text-muted)' }}>{m.roleName}</div>
+                  <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{proj.owner?.username || proj.owner?.email?.split('@')[0] || 'User'}</div>
+                  <div style={{ fontSize: '.73rem', color: 'var(--text-muted)' }}>Project Owner</div>
                 </div>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
               </div>
-            ))}
+            )}
+            {proj && (proj.members || []).map((m, i) => {
+              const userObj = m.userId || m;
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <Avatar user={userObj} size="sm" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{userObj?.username || userObj?.email?.split('@')[0] || 'User'}</div>
+                    <div style={{ fontSize: '.73rem', color: 'var(--text-muted)' }}>{m.roleName || 'Member'}</div>
+                  </div>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
+                </div>
+              );
+            })}
+            {!proj && <div style={{ color: 'var(--text-muted)', fontSize: '.85rem', padding: '12px 0' }}>Loading team...</div>}
           </div>
         </div>
       </div>
