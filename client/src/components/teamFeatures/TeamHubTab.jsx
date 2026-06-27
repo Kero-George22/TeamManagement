@@ -3,6 +3,7 @@ import API from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../lib/toast';
 import Avatar from '../ui/Avatar';
+import Modal from '../ui/Modal';
 
 export default function TeamHubTab({ projectId, isOwner }) {
   const { user } = useAuth();
@@ -19,9 +20,10 @@ export default function TeamHubTab({ projectId, isOwner }) {
   
   // UI states
   const [loading, setLoading] = useState(true);
+  const [votesModal, setVotesModal] = useState({ open: false, optionText: '', voters: [] });
   
   // Form states
-  const [pollForm, setPollForm] = useState({ question: '', option1: '', option2: '' });
+  const [pollForm, setPollForm] = useState({ question: '', options: ['', ''] });
   const [suggestionForm, setSuggestionForm] = useState({ title: '', description: '' });
   const [noteForm, setNoteForm] = useState({ title: '', content: '' });
   const [decisionForm, setDecisionForm] = useState({ title: '', description: '' });
@@ -62,15 +64,19 @@ export default function TeamHubTab({ projectId, isOwner }) {
   // Poll Handlers
   async function handleCreatePoll(e) {
     e.preventDefault();
-    if (!pollForm.question || !pollForm.option1 || !pollForm.option2) {
-      return toast.error('Fill required poll fields');
+    const validOptions = pollForm.options.filter(o => o.trim());
+    if (!pollForm.question || validOptions.length < 2) {
+      return toast.error('Question and at least 2 options are required');
+    }
+    if (validOptions.length > 10) {
+      return toast.error('Maximum 10 options allowed');
     }
     try {
       await API.teamFeatures.createPoll(projectId, {
         question: pollForm.question,
-        options: [pollForm.option1, pollForm.option2]
+        options: validOptions
       });
-      setPollForm({ question: '', option1: '', option2: '' });
+      setPollForm({ question: '', options: ['', ''] });
       toast.success('Poll created');
       loadData();
     } catch (err) {
@@ -195,11 +201,31 @@ export default function TeamHubTab({ projectId, isOwner }) {
                 <h4>Active Polls</h4>
                 <form onSubmit={handleCreatePoll} style={{ marginBottom: 20, padding: 15, background: 'var(--bg)', borderRadius: 10 }}>
                   <input className="form-input" placeholder="Question" value={pollForm.question} onChange={e => setPollForm({...pollForm, question: e.target.value})} style={{ marginBottom: 10 }} />
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                    <input className="form-input" placeholder="Option 1" value={pollForm.option1} onChange={e => setPollForm({...pollForm, option1: e.target.value})} />
-                    <input className="form-input" placeholder="Option 2" value={pollForm.option2} onChange={e => setPollForm({...pollForm, option2: e.target.value})} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
+                    {pollForm.options.map((opt, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 10 }}>
+                        <input className="form-input" placeholder={`Option ${i + 1}`} value={opt} onChange={e => {
+                          const newOpts = [...pollForm.options];
+                          newOpts[i] = e.target.value;
+                          setPollForm({...pollForm, options: newOpts});
+                        }} />
+                        {pollForm.options.length > 2 && (
+                          <button type="button" className="btn btn--ghost" onClick={() => {
+                            const newOpts = pollForm.options.filter((_, idx) => idx !== i);
+                            setPollForm({...pollForm, options: newOpts});
+                          }}>
+                            <i className="fa-solid fa-xmark" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <button className="btn btn--outline btn--sm" type="submit">Create Poll</button>
+                  {pollForm.options.length < 10 && (
+                    <button type="button" className="btn btn--ghost btn--sm" style={{ marginBottom: 10 }} onClick={() => setPollForm({...pollForm, options: [...pollForm.options, '']})}>
+                      <i className="fa-solid fa-plus" /> Add Option
+                    </button>
+                  )}
+                  <button className="btn btn--outline btn--sm" type="submit" style={{ display: 'block' }}>Create Poll</button>
                 </form>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
@@ -213,20 +239,60 @@ export default function TeamHubTab({ projectId, isOwner }) {
                           <div style={{ fontWeight: 600 }}>{poll.question}</div>
                         </div>
                         {poll.options.map(opt => {
-                          const isVoted = opt.votes.some(v => String(v) === userIdStr);
+                          const isVoted = opt.votes.some(v => String(v._id || v) === userIdStr);
                           const percentage = totalVotes ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
                           return (
-                            <div key={opt._id} style={{ marginBottom: 10 }}>
-                              <button 
-                                className={`btn btn--sm ${isVoted ? 'btn--green' : 'btn--ghost'}`} 
-                                style={{ width: '100%', justifyContent: 'space-between', marginBottom: 5 }}
-                                onClick={() => handleVotePoll(poll._id, opt._id)}
-                              >
-                                <span>{opt.text}</span>
-                                <span>{opt.votes.length} ({percentage}%)</span>
-                              </button>
-                              <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-                                <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--green)' }} />
+                            <div key={opt._id} style={{ marginBottom: 15, cursor: 'pointer' }} onClick={() => handleVotePoll(poll._id, opt._id)}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <div style={{ 
+                                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                                    border: `2px solid ${isVoted ? 'var(--green)' : 'var(--border)'}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                                  }}>
+                                    {isVoted && <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--green)' }} />}
+                                  </div>
+                                  <span style={{ fontWeight: 500, fontSize: '.95rem', color: isVoted ? 'var(--text)' : 'var(--text-secondary)' }}>{opt.text}</span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  {opt.votes.length > 0 && (
+                                    <div 
+                                      style={{ display: 'flex', alignItems: 'center' }} 
+                                      onClick={(e) => {
+                                         e.stopPropagation();
+                                         setVotesModal({ open: true, optionText: opt.text, voters: opt.votes });
+                                      }}
+                                    >
+                                      {opt.votes.slice(0, 3).map((voter, idx) => (
+                                        <div key={voter._id || idx} style={{ marginLeft: idx === 0 ? 0 : -8, border: '2px solid var(--bg)', borderRadius: '50%', zIndex: 3 - idx, overflow: 'hidden', width: 26, height: 26 }} title={voter.username || 'User'}>
+                                          {voter.avatar ? (
+                                            <img src={voter.avatar} alt={voter.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                          ) : (
+                                            <div style={{ display: 'flex', width: '100%', height: '100%', background: 'var(--border)', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 'bold' }}>
+                                              {(voter.username || voter.email || '?')[0].toUpperCase()}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {opt.votes.length > 3 && (
+                                        <div style={{ marginLeft: -8, width: 26, height: 26, borderRadius: '50%', background: 'var(--border)', border: '2px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.65rem', fontWeight: 'bold', zIndex: 0 }}>
+                                          +{opt.votes.length - 3}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  <span style={{ fontSize: '.85rem', color: 'var(--text-muted)', fontWeight: 600, minWidth: 20, textAlign: 'right' }}>
+                                    {opt.votes.length}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div style={{ paddingLeft: 32 }}>
+                                <div style={{ width: '100%', height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--green)', transition: 'width 0.3s ease' }} />
+                                </div>
                               </div>
                             </div>
                           );
@@ -361,6 +427,18 @@ export default function TeamHubTab({ projectId, isOwner }) {
           
         </div>
       )}
+
+      <Modal open={votesModal.open} onClose={() => setVotesModal({ ...votesModal, open: false })} title={`Votes for "${votesModal.optionText}"`}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
+          {votesModal.voters.map((v, i) => (
+            <div key={v._id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <Avatar user={v} size="sm" />
+              <div style={{ fontWeight: 600 }}>{v.username || v.email || 'User'}</div>
+            </div>
+          ))}
+          {votesModal.voters.length === 0 && <p style={{ color: 'var(--text-muted)' }}>No one has voted for this option yet.</p>}
+        </div>
+      </Modal>
     </div>
   );
 }

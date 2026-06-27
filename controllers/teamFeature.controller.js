@@ -32,6 +32,9 @@ exports.createPoll = asyncWrapper(async (req, res) => {
   if (!question || !options || options.length < 2) {
     throw new AppError('Question and at least 2 options are required', 400);
   }
+  if (options.length > 10) {
+    throw new AppError('Maximum 10 options allowed', 400);
+  }
 
   const poll = await Poll.create({
     project: projectId,
@@ -50,6 +53,7 @@ exports.getPolls = asyncWrapper(async (req, res) => {
 
   const polls = await Poll.find({ project: projectId })
     .populate('creator', 'username avatar')
+    .populate('options.votes', 'username avatar')
     .sort({ createdAt: -1 });
 
   return success(res, polls, 'Polls retrieved successfully');
