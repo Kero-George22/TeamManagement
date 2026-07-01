@@ -29,7 +29,7 @@ function getMembership(project, userId) {
 }
 
 async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFields = []) {
-  const fields = ['owner', 'members', ...extraFields].join(' ');
+  const fields = ['owner', 'members', 'permissions', ...extraFields].join(' ');
   const project = await Project.findById(projectId).select(fields);
   if (!project) throw new AppError('Project not found', 404);
   if (isAdmin) return project;
@@ -56,6 +56,7 @@ async function ensureTaskAccess(taskId, userId, isAdmin = false, extraProjectFie
   return { task, project };
 }
 
+/*
 function isTaskVisibleToMember(task, userId, memberRole) {
   const assignedToMe = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
   const roleMatch =
@@ -63,6 +64,7 @@ function isTaskVisibleToMember(task, userId, memberRole) {
     normalizeRole(task.assignedRole) === normalizeRole(memberRole);
   return assignedToMe || roleMatch;
 }
+  */
 
 // ─────────────────────────────────────────
 // CREATE TASKS — AI generates & assigns per role
@@ -223,7 +225,6 @@ async function getTaskById(taskId, userId, isAdmin = false) {
 
 // ─────────────────────────────────────────
 // UPDATE TASK STATUS
-// Member بيحدث الـ status — owner بيعمل approve لما تبقى Done
 // ─────────────────────────────────────────
 
 const BLOCKED_FOR_MEMBERS = ['Approved'];
@@ -281,20 +282,25 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
     const oldStatus = task.status;
     task.status = newStatus;
     await task.save();
+
     if (newStatus === 'Approved' && Array.isArray(task.assignedTo) && task.assignedTo.length > 0) {
       await _rewardUser(task);
       try {
         const { notifyTaskApproved } = require('./notification.service');
-        task.assignedTo.forEach(async (u) => {
-          await notifyTaskApproved(task._id, u, userId, task.project);
-        });
+        try {
+          await Promise.all(
+            task.assignedTo.map((u) => notifyTaskApproved(task._id, u, userId, task.project))
+          );
+        } catch {}
       } catch {}
+
     } else if (Array.isArray(task.assignedTo) && !task.assignedTo.some(u => String(u) === String(userId))) {
       try {
         const { notifyStatusChanged } = require('./notification.service');
         await notifyStatusChanged(task._id, userId, newStatus, task.project);
       } catch {}
     }
+
     await _syncLinkedGoals(task._id, newStatus);
     return task;
   }
@@ -304,14 +310,17 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
     throw new AppError('You must be a project member to update tasks', 403);
 
   const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+  const perms = project.permissions || {};
 
-  // Member يقدر يغير الـ tasks المسندة له بس أو اللي مش مسندة لحد
-  if (!isAssigned && !isUnassigned)
+  // Member يقدر يغير الـ tasks المسندة له بس أو اللي مش مسندة لحد أو لو الصلاحية مفتوحة
+  if (!isAssigned && !isUnassigned && !perms.memberCanEditAnyTask)
     throw new AppError('You can only update tasks assigned to you or unassigned tasks', 403);
 
-  // Member ممنوع يحط task في Done أو Approved
-  if (BLOCKED_FOR_MEMBERS.includes(newStatus))
-    throw new AppError('Only the project owner or admin can mark tasks as Approved', 403);
+  if (!perms.memberCanChangeToAnyStatus) {
+    const restricted = perms.memberRestrictedStatuses || ['Approved'];
+    if (restricted.includes(newStatus))
+      throw new AppError(`Members cannot change tasks to "${newStatus}" status`, 403);
+  }
 
   await checkDependencies(task, newStatus);
   task.status = newStatus;
@@ -350,9 +359,17 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 // Exports
 // ─────────────────────────────────────────
 
-// ─────────────────────────────────────────
+// ───  ──────────────────────────────────────
 // CREATE SINGLE TASK
 // ─────────────────────────────────────────
+
+async function _rewardUser(task) {
+  if (!Array.isArray(task.assignedTo) || task.assignedTo.length === 0) return;
+  await User.updateMany(
+    { _id: { $in: task.assignedTo } },
+    { $inc: { completedTasks: 1 } }
+  );
+}
 
 async function createTask(projectId, userId, taskData, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
@@ -361,14 +378,20 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
   const allowedStatuses = project?.taskStatuses?.length
     ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
+
+
   const requestedStatus = taskData.status === 'Doing'
     ? 'In-Progress'
     : taskData.status === 'To do'
       ? 'Todo'
       : taskData.status;
+
+
   const normalizedStatus = requestedStatus && allowedStatuses.includes(requestedStatus)
     ? requestedStatus
     : 'Todo';
+
+
   const labels = Array.isArray(taskData.labels)
     ? taskData.labels
     : String(taskData.labels || '')
@@ -379,18 +402,22 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
   let resolvedAssignedTo = taskData.assignedTo || taskData.assigneeId || null;
   if (resolvedAssignedTo === 'me') {
     resolvedAssignedTo = [userId];
+
   } else if (Array.isArray(resolvedAssignedTo)) {
     resolvedAssignedTo = resolvedAssignedTo.filter(id => mongoose.Types.ObjectId.isValid(id));
+
   } else if (resolvedAssignedTo && mongoose.Types.ObjectId.isValid(resolvedAssignedTo)) {
     resolvedAssignedTo = [resolvedAssignedTo];
+    
   } else {
     resolvedAssignedTo = [];
   }
 
-  // Only owner/admin can assign tasks to others
+  // Only owner/admin can assign tasks to others (or members with permission)
   const isOwner = String(project.owner || '') === String(userId);
-  if (!isAdmin && !isOwner && resolvedAssignedTo.length > 0 && !resolvedAssignedTo.every(id => String(id) === String(userId))) {
-    resolvedAssignedTo = [userId]; // Default to self if member tries to assign to others
+  const perms = project.permissions || {};
+  if (!isAdmin && !isOwner && !perms.memberCanAssignOthers && resolvedAssignedTo.length > 0 && !resolvedAssignedTo.every(id => String(id) === String(userId))) {
+    resolvedAssignedTo = [userId]; // Default to self if member tries to assign to others without permission
   }
 
   const task = new Task({
@@ -447,13 +474,14 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
     ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
-  // Non-admins can only edit if assigned to them, or if it is unassigned
+  // Non-admins can only edit if assigned to them, or if it is unassigned (or if permitted)
   if (!isAdmin) {
     const isOwner = String(project.owner || '') === String(userId);
     const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
     const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+    const perms = project.permissions || {};
     
-    if (!isOwner && !isAssigned && !isUnassigned)
+    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask)
       throw new AppError('You can only edit tasks assigned to you, unassigned tasks, or owned projects', 403);
   }
 
@@ -528,11 +556,14 @@ async function deleteTask(taskId, userId, isAdmin = false) {
 
   const project = await ensureProjectAccess(task.project, userId, isAdmin);
 
-  // Only project owner or admin can delete
+  // Only project owner or admin can delete (or members with permission)
   if (!isAdmin) {
     const isOwner = String(project.owner || '') === String(userId);
-    if (!isOwner)
-      throw new AppError('Only project owner can delete tasks', 403);
+    if (!isOwner) {
+      const perms = project.permissions || {};
+      if (!perms.memberCanDeleteTask)
+        throw new AppError('Only project owner can delete tasks', 403);
+    }
   }
 
   await Task.findByIdAndDelete(taskId);
@@ -645,8 +676,8 @@ async function getSubtasksForUser(taskId, userId, isAdmin = false) {
     .sort({ createdAt: 1 });
 }
 
-async function attachFile(taskId, userId, filename, isAdmin = false) {
-  if (!filename) throw new AppError('No file uploaded', 400);
+async function attachFile(taskId, userId, fileData, isAdmin = false) {
+  if (!fileData || !fileData.url) throw new AppError('No file uploaded', 400);
 
   const { task, project } = await ensureTaskAccess(taskId, userId, isAdmin);
 
@@ -654,15 +685,47 @@ async function attachFile(taskId, userId, filename, isAdmin = false) {
     const isOwner = String(project.owner || '') === String(userId);
     const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
     const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+    const perms = project.permissions || {};
     
-    if (!isOwner && !isAssigned && !isUnassigned) {
+    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
       throw new AppError('You can only upload attachments to tasks assigned to you, unassigned tasks, or owned projects', 403);
     }
   }
 
-  task.attachment = `/uploads/${filename}`;
+  if (!task.attachments) task.attachments = [];
+  if (task.attachments.length >= 5) {
+    throw new AppError('Maximum 5 attachments per task', 400);
+  }
+
+  task.attachments.push({
+    url:   fileData.url,
+    name:  fileData.name,
+    type:  fileData.type,
+    size:  fileData.size,
+  });
   await task.save();
-  return { attachment: task.attachment };
+  return { attachments: task.attachments };
+}
+
+async function removeAttachment(taskId, userId, attachmentId, isAdmin = false) {
+  const { task, project } = await ensureTaskAccess(taskId, userId, isAdmin);
+
+  if (!isAdmin) {
+    const isOwner = String(project.owner || '') === String(userId);
+    const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
+    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+    const perms = project.permissions || {};
+    
+    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
+      throw new AppError('You can only remove attachments from tasks assigned to you, unassigned tasks, or owned projects', 403);
+    }
+  }
+
+  if (task.attachments) {
+    task.attachments = task.attachments.filter(a => String(a._id) !== String(attachmentId));
+    await task.save();
+  }
+  return { attachments: task.attachments };
 }
 
 module.exports = {
@@ -679,4 +742,5 @@ module.exports = {
   getComments,
   getSubtasksForUser,
   attachFile,
+  removeAttachment
 };

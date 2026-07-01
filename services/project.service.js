@@ -551,7 +551,7 @@ async function getJoinRequests(projectId, ownerId) {
 async function updateProject(projectId, updates, userId) {
   validateObjectId(projectId, 'project ID');
 
-  const project = await Project.findById(projectId).select('owner status rolesRequired');
+  const project = await Project.findById(projectId).select('owner status rolesRequired permissions');
   if (!project) throw new AppError('Project not found', 404);
 
   if (project.owner.toString() !== userId.toString())
@@ -600,6 +600,11 @@ async function updateProject(projectId, updates, userId) {
         throw new AppError('Each custom field must have a name', 400);
     }
     payload.customFields = updates.customFields;
+  }
+
+  // Permissions — owner only
+  if (updates.permissions !== undefined) {
+    payload.permissions = { ...(project.permissions || {}), ...updates.permissions };
   }
 
   return Project.findByIdAndUpdate(projectId, { $set: payload }, { new: true })
@@ -688,9 +693,10 @@ async function toggleBookmark(projectId, userId) {
 async function getProjectMembers(projectId, requesterId, isAdmin = false) {
   validateObjectId(projectId, 'project ID');
 
+  const User = require('../models/user.model');
   const project = await Project.findById(projectId).populate(
     'members.userId',
-    'email username avatar reliabilityScore'
+    'email username avatar reliabilityScore isAdmin'
   );
   if (!project) throw new AppError('Project not found', 404);
 
@@ -701,29 +707,65 @@ async function getProjectMembers(projectId, requesterId, isAdmin = false) {
     throw new AppError('Only project members can view the member list', 403);
   }
 
-  return project.members.map((m) => ({
+  const memberList = project.members.map((m) => ({
     user:     m.userId,
     role:     m.roleName,
+    roleName: m.roleName,
     joinedAt: m.joinedAt,
+    isOwner:  false,
   }));
+
+  // Always include the project owner even if not in the members subdocument
+  const ownerAlreadyInList = project.members.some(
+    (m) => String(m.userId?._id || m.userId) === String(project.owner)
+  );
+  if (!ownerAlreadyInList) {
+    const ownerUser = await User.findById(project.owner).select('email username avatar reliabilityScore isAdmin');
+    if (ownerUser) {
+      memberList.unshift({
+        user:     ownerUser,
+        role:     'Owner',
+        roleName: 'Owner',
+        joinedAt: project.createdAt,
+        isOwner:  true,
+      });
+    }
+  }
+
+  return memberList;
 }
 
 // ─────────────────────────────────────────
 // REMOVE MEMBER
 // ─────────────────────────────────────────
 
-async function removeMember(projectId, memberUserId, requesterId) {
+async function removeMember(projectId, memberUserId, requesterId, isRequesterAdmin = false) {
   validateObjectId(projectId, 'project ID');
   validateObjectId(memberUserId, 'member user ID');
 
+  const User = require('../models/user.model');
   const project = await Project.findById(projectId).select('owner members rolesRequired');
   if (!project) throw new AppError('Project not found', 404);
 
-  if (project.owner.toString() !== requesterId.toString())
-    throw new AppError('Only the project owner can remove members', 403);
+  const isOwner = project.owner.toString() === requesterId.toString();
+  const isSelf  = memberUserId.toString() === requesterId.toString();
 
-  if (project.owner.toString() === memberUserId.toString())
+  if (!isOwner && !isSelf && !isRequesterAdmin) {
+    throw new AppError('Only the project owner, an admin, or the member themselves can remove members', 403);
+  }
+
+  // Others cannot forcibly remove the project owner, but the owner can leave themselves
+  if (project.owner.toString() === memberUserId.toString() && !isSelf) {
     throw new AppError('Cannot remove the project owner', 400);
+  }
+
+  // Platform admins cannot be forcibly removed by a project owner (they can still leave themselves)
+  if (!isSelf) {
+    const targetUser = await User.findById(memberUserId).select('isAdmin');
+    if (targetUser?.isAdmin) {
+      throw new AppError('Cannot remove a platform admin from the project', 403);
+    }
+  }
 
   const member = project.members.find(
     (m) => m.userId.toString() === memberUserId.toString()
@@ -738,6 +780,132 @@ async function removeMember(projectId, memberUserId, requesterId) {
   });
 
   return { removedUserId: memberUserId, roleName: member.roleName };
+}
+
+// ─────────────────────────────────────────
+// PERMISSIONS
+// ─────────────────────────────────────────
+
+async function getPermissions(projectId, userId) {
+  validateObjectId(projectId, 'project ID');
+  const project = await Project.findById(projectId).select('owner members permissions');
+  if (!project) throw new AppError('Project not found', 404);
+
+  const isOwner = String(project.owner) === String(userId);
+  if (!isOwner) {
+    const isMember = project.members.some((m) => String(m.userId) === String(userId));
+    if (!isMember) throw new AppError('Not a project member', 403);
+  }
+
+  return project.permissions || {};
+}
+
+async function updatePermissions(projectId, updates, userId) {
+  validateObjectId(projectId, 'project ID');
+  const project = await Project.findById(projectId).select('owner permissions');
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (String(project.owner) !== String(userId))
+    throw new AppError('Only the project owner can update permissions', 403);
+
+  project.permissions = { ...(project.permissions || {}), ...updates };
+  await project.save();
+  return project.permissions;
+}
+
+// ─────────────────────────────────────────
+// TASK STATUS MANAGEMENT
+// ─────────────────────────────────────────
+
+async function addTaskStatus(projectId, userId, statusName) {
+  validateObjectId(projectId, 'project ID');
+  if (!statusName?.trim()) throw new AppError('Status name is required', 400);
+
+  const project = await Project.findById(projectId).select('owner members permissions taskStatuses');
+  if (!project) throw new AppError('Project not found', 404);
+
+  const isOwner = String(project.owner) === String(userId);
+  if (!isOwner) {
+    const isMember = project.members.some((m) => String(m.userId) === String(userId));
+    if (!isMember) throw new AppError('Not a project member', 403);
+    const perms = project.permissions || {};
+    if (!perms.memberCanCreateStatus)
+      throw new AppError('Members are not allowed to create statuses', 403);
+  }
+
+  const name = statusName.trim();
+  if (project.taskStatuses.includes(name))
+    throw new AppError('Status already exists', 400);
+
+  project.taskStatuses.push(name);
+  await project.save();
+  return project.taskStatuses;
+}
+
+async function editTaskStatus(projectId, userId, oldName, newName) {
+  validateObjectId(projectId, 'project ID');
+  if (!oldName?.trim() || !newName?.trim()) throw new AppError('Status names are required', 400);
+
+  const project = await Project.findById(projectId).select('owner members permissions taskStatuses');
+  if (!project) throw new AppError('Project not found', 404);
+
+  const isOwner = String(project.owner) === String(userId);
+  if (!isOwner) {
+    const isMember = project.members.some((m) => String(m.userId) === String(userId));
+    if (!isMember) throw new AppError('Not a project member', 403);
+    const perms = project.permissions || {};
+    if (!perms.memberCanEditStatus)
+      throw new AppError('Members are not allowed to edit statuses', 403);
+  }
+
+  const index = project.taskStatuses.indexOf(oldName.trim());
+  if (index === -1) throw new AppError('Status not found', 404);
+  
+  if (project.taskStatuses.includes(newName.trim()))
+    throw new AppError('New status name already exists', 400);
+
+  project.taskStatuses[index] = newName.trim();
+  await project.save();
+  
+  // Update all tasks with the old status
+  const Task = require('../models/task.model');
+  await Task.updateMany({ project: projectId, status: oldName.trim() }, { status: newName.trim() });
+  
+  return project.taskStatuses;
+}
+
+async function removeTaskStatus(projectId, userId, statusName) {
+  validateObjectId(projectId, 'project ID');
+  if (!statusName?.trim()) throw new AppError('Status name is required', 400);
+
+  const project = await Project.findById(projectId).select('owner members permissions taskStatuses');
+  if (!project) throw new AppError('Project not found', 404);
+
+  const isOwner = String(project.owner) === String(userId);
+  if (!isOwner) {
+    const isMember = project.members.some((m) => String(m.userId) === String(userId));
+    if (!isMember) throw new AppError('Not a project member', 403);
+    const perms = project.permissions || {};
+    if (!perms.memberCanDeleteStatus)
+      throw new AppError('Members are not allowed to delete statuses', 403);
+  }
+
+  const name = statusName.trim();
+  if (!project.taskStatuses.includes(name))
+    throw new AppError('Status not found', 404);
+    
+  if (project.taskStatuses.length <= 1)
+    throw new AppError('Project must have at least one status', 400);
+
+  // Check if any tasks use this status
+  const Task = require('../models/task.model');
+  const count = await Task.countDocuments({ project: projectId, status: name });
+  if (count > 0)
+    throw new AppError(`Cannot delete status "${name}" because it is in use by ${count} tasks`, 400);
+
+  project.taskStatuses = project.taskStatuses.filter(s => s !== name);
+  await project.save();
+  return project.taskStatuses;
 }
 
 // ─────────────────────────────────────────
@@ -760,4 +928,9 @@ module.exports = {
   removeMember,
   toggleLike,
   toggleBookmark,
+  getPermissions,
+  updatePermissions,
+  addTaskStatus,
+  editTaskStatus,
+  removeTaskStatus,
 };

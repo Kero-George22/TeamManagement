@@ -106,7 +106,9 @@ export default function ProjectPage() {
   async function loadMembers() {
     try {
       setMembers(await API.projects.members(id) || []);
-    } catch {
+    } catch (err) {
+      console.error('[loadMembers] failed:', err);
+      toast.error('Failed to load members: ' + (err.message || 'Unknown error'));
       setMembers([]);
     }
   }
@@ -493,15 +495,20 @@ export default function ProjectPage() {
                     <div style={{ fontWeight: 700, fontSize: '.92rem' }}>{member.user?.username || member.user?.email?.split('@')[0] || 'User'}</div>
                     <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', marginTop: 2 }}>{member.roleName}</div>
                   </div>
-                  <Badge variant="gray">Member</Badge>
-                  {isOwner && member.user?._id !== (user?.id || user?._id) && (project.owner?._id || project.owner) !== member.user?._id && (
+                  {member.isOwner
+                    ? <Badge variant="blue">Owner</Badge>
+                    : member.user?.isAdmin
+                      ? <Badge variant="yellow">Admin</Badge>
+                      : <Badge variant="gray">Member</Badge>
+                  }
+                  {isOwner && !member.isOwner && !member.user?.isAdmin && (
                     <button
                       className="tool-btn"
                       onClick={() => handleRemoveMember(member.user._id, member.user?.username || 'this member')}
                       style={{ color: '#ef4444', fontSize: '.72rem', padding: '4px 8px', marginLeft: 4 }}
-                      title="Remove from project"
+                      title={member.user?._id === (user?.id || user?._id) ? 'Leave project' : 'Remove from project'}
                     >
-                      <i className="fa-solid fa-xmark" />
+                      <i className={member.user?._id === (user?.id || user?._id) ? 'fa-solid fa-right-from-bracket' : 'fa-solid fa-xmark'} />
                     </button>
                   )}
                 </div>

@@ -15,6 +15,7 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectPage = lazy(() => import('./pages/ProjectPage'));
+const ProjectSettingsPage = lazy(() => import('./pages/ProjectSettingsPage'));
 const TaskPage = lazy(() => import('./pages/TaskPage'));
 const MessagesPage = lazy(() => import('./pages/MessagesPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
@@ -85,6 +86,7 @@ export default function App() {
                   <Route path="projects"       element={<ProjectsPage />} />
                   <Route path="explore"        element={<ExplorePage />} />
                   <Route path="project/:id"    element={<ProjectPage />} />
+                  <Route path="project/:id/settings" element={<ProjectSettingsPage />} />
                   <Route path="task/:id"       element={<TaskPage />} />
                   <Route path="tasks"          element={<MyTasksPageWrapper />} />
                   <Route path="board/:id"      element={<BoardPage />} />

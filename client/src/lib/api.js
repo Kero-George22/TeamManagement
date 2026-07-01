@@ -169,6 +169,15 @@ const projects = {
   joinViaInvite: (token, roleName) => post(`/projects/invite/${token}/join`, { roleName }),
   like:          (id)           => post(`/projects/${id}/like`),
   bookmark:      (id)           => post(`/projects/${id}/bookmark`),
+  
+  // Permissions
+  getPermissions: (id) => get(`/projects/${id}/permissions`),
+  updatePermissions: (id, perms) => patch(`/projects/${id}/permissions`, perms),
+  
+  // Task Status Management
+  addTaskStatus: (id, data) => post(`/projects/${id}/task-statuses`, data),
+  editTaskStatus: (id, oldName, data) => patch(`/projects/${id}/task-statuses/${encodeURIComponent(oldName)}`, data),
+  removeTaskStatus: (id, name) => del(`/projects/${id}/task-statuses/${encodeURIComponent(name)}`),
 };
 
 /* Tasks */
@@ -216,6 +225,7 @@ const tasks = {
     }
     return res.json();
   },
+  removeAttachment: (taskId, attachmentId) => del(`/tasks/task/${taskId}/attachment/${attachmentId}`),
 };
 
 /* DMs */

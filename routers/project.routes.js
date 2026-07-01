@@ -52,4 +52,17 @@ router.post('/:projectId/ai-analysis', requireAuth, aiLimiter(1), projectControl
 router.post('/:id/like',      requireAuth, projectController.toggleLike);
 router.post('/:id/bookmark',  requireAuth, projectController.toggleBookmark);
 
+// ─────────────────────────────────────────
+// Permissions
+// ─────────────────────────────────────────
+router.get(  '/:id/permissions', requireAuth, projectController.getPermissions);
+router.patch('/:id/permissions', requireAuth, projectController.updatePermissions);
+
+// ─────────────────────────────────────────
+// Task Status Management (with permission checks)
+// ─────────────────────────────────────────
+router.post(  '/:id/task-statuses',              requireAuth, projectController.addTaskStatus);
+router.patch( '/:id/task-statuses/:statusName',  requireAuth, projectController.editTaskStatus);
+router.delete('/:id/task-statuses/:statusName',  requireAuth, projectController.removeTaskStatus);
+
 module.exports = router;

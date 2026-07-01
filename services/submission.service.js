@@ -52,7 +52,10 @@ async function createSubmission(userId, body) {
   task.submissionType = type;
   if (submittedWork) task.submittedWork = submittedWork;
   if (repoLink) task.repoLink = repoLink;
-  if (attachment) task.attachment = attachment;
+  if (attachment) {
+    if (!task.attachments) task.attachments = [];
+    task.attachments.push({ url: attachment, name: 'Submission Attachment', type: 'unknown', size: 0 });
+  }
   task.status = 'Review';
   task.updatedAt = new Date();
   await task.save();
@@ -80,7 +83,7 @@ async function createSubmission(userId, body) {
     submittedWork: submittedWork || '',
     repoLink: repoLink || task.repoLink || '',
     submissionLink: submissionLink || '',
-    attachment: attachment || task.attachment || '',
+    attachment: attachment || (task.attachments && task.attachments.length > 0 ? task.attachments[task.attachments.length - 1].url : ''),
     status: 'pending',
   });
 

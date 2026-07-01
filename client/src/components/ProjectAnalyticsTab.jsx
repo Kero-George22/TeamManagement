@@ -6,7 +6,6 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   AreaChart, Area 
 } from 'recharts';
-import html2pdf from 'html2pdf.js';
 
 export default function ProjectAnalyticsTab({ projectId }) {
   const toast = useToast();
@@ -31,17 +30,40 @@ export default function ProjectAnalyticsTab({ projectId }) {
   const handleExportPDF = () => {
     const element = dashboardRef.current;
     if (!element) return;
-    
-    const opt = {
-      margin:       [0.5, 0.5, 0.5, 0.5],
-      filename:     `Project_Analytics_${projectId}.pdf`,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
-    };
 
-    toast.success('Generating PDF...');
-    html2pdf().set(opt).from(element).save();
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!printWindow) {
+      toast.error('Please allow popups to export the report.');
+      return;
+    }
+
+    const styles = Array.from(document.styleSheets)
+      .map((sheet) => {
+        try {
+          return Array.from(sheet.cssRules || []).map((rule) => rule.cssText).join('\n');
+        } catch {
+          return '';
+        }
+      })
+      .join('\n');
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Project Analytics ${projectId}</title>
+          <style>
+            ${styles}
+            body { padding: 24px; background: #fff; color: #111; }
+            @media print { button { display: none !important; } }
+          </style>
+        </head>
+        <body>${element.outerHTML}</body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   if (loading) return <div className="skeleton" style={{ height: 400, borderRadius: 'var(--card-radius)' }} />;

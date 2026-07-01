@@ -10,7 +10,7 @@ const PCOL = { Low: 'green', Medium: 'yellow', High: 'pink' };
 const SCOL = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
 const PDOT = { Low: '#22c55e', Medium: '#f59e0b', High: '#ef4444' };
 
-export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId, projectId, projectCustomFields, onTaskUpdate }) {
+export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId, projectId, projectCustomFields, projectPermissions, onTaskUpdate }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -30,7 +30,10 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
 
   const isAssignee = Array.isArray(task.assignedTo) && task.assignedTo.some(u => (u._id || u) === userId);
   const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
-  const canChangeStatus = isOwner || isAssignee || isUnassigned;
+  
+  const perms = projectPermissions || {};
+  const canEditAnyTask = !!perms.memberCanEditAnyTask;
+  const canChangeStatus = isOwner || isAssignee || isUnassigned || canEditAnyTask;
   const canMarkDone = isOwner; // Only owner can mark as Done/Approved
 
   async function changeField(field, value) {
@@ -80,7 +83,20 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
   function renderStatusAction() {
     const s = task.status;
     const allStatuses = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
-    const allowedStatuses = canMarkDone ? allStatuses : allStatuses.filter(st => st !== 'Done' && st !== 'Approved');
+    
+    // Determine allowed statuses based on permissions
+    const perms = projectPermissions || {};
+    let allowedStatuses = allStatuses;
+    
+    if (!isOwner) {
+      if (!canMarkDone) {
+        allowedStatuses = allowedStatuses.filter(st => st !== 'Done' && st !== 'Approved');
+      }
+      if (perms.memberCanChangeToAnyStatus === false) {
+        const restricted = perms.memberRestrictedStatuses || ['Approved'];
+        allowedStatuses = allowedStatuses.filter(st => !restricted.includes(st));
+      }
+    }
 
     // Owner actions on Done tasks
     if (isOwner && s === 'Done') {

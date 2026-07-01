@@ -219,7 +219,7 @@ const getProjectMembers = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const removeMember = asyncWrapper(async (req, res) => {
-  const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id);
+  const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id, req.user.isAdmin);
   return success(res, result, 'Member removed from project');
 });
 
@@ -270,6 +270,41 @@ const analyzeProjectPerformance = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// PERMISSIONS
+// ─────────────────────────────────────────
+
+const getPermissions = asyncWrapper(async (req, res) => {
+  const permissions = await projectService.getPermissions(req.params.id, req.user._id);
+  return success(res, permissions, 'Permissions retrieved');
+});
+
+const updatePermissions = asyncWrapper(async (req, res) => {
+  const permissions = await projectService.updatePermissions(req.params.id, req.body, req.user._id);
+  return success(res, permissions, 'Permissions updated');
+});
+
+// ─────────────────────────────────────────
+// TASK STATUS MANAGEMENT
+// ─────────────────────────────────────────
+
+const addTaskStatus = asyncWrapper(async (req, res) => {
+  const { name } = req.body;
+  const statuses = await projectService.addTaskStatus(req.params.id, req.user._id, name);
+  return success(res, statuses, 'Status added successfully', 201);
+});
+
+const editTaskStatus = asyncWrapper(async (req, res) => {
+  const { newName } = req.body;
+  const statuses = await projectService.editTaskStatus(req.params.id, req.user._id, req.params.statusName, newName);
+  return success(res, statuses, 'Status updated successfully');
+});
+
+const removeTaskStatus = asyncWrapper(async (req, res) => {
+  const statuses = await projectService.removeTaskStatus(req.params.id, req.user._id, req.params.statusName);
+  return success(res, statuses, 'Status removed successfully');
+});
+
+// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
@@ -290,4 +325,9 @@ module.exports = {
   toggleLike,
   toggleBookmark,
   analyzeProjectPerformance,
+  getPermissions,
+  updatePermissions,
+  addTaskStatus,
+  editTaskStatus,
+  removeTaskStatus,
 };

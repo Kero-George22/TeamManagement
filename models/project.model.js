@@ -95,6 +95,18 @@ const ProjectSchema = new mongoose.Schema(
         type: { type: String, enum: ['text', 'number', 'date', 'boolean'], default: 'text' },
       }
     ],
+
+    // ─── Member Permissions ──────────────────
+    permissions: {
+      memberCanEditAnyTask:       { type: Boolean, default: false },
+      memberCanDeleteTask:        { type: Boolean, default: false },
+      memberCanChangeToAnyStatus: { type: Boolean, default: true },
+      memberRestrictedStatuses:   { type: [String], default: ['Approved'] },
+      memberCanCreateStatus:      { type: Boolean, default: false },
+      memberCanEditStatus:        { type: Boolean, default: false },
+      memberCanDeleteStatus:      { type: Boolean, default: false },
+      memberCanAssignOthers:      { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );

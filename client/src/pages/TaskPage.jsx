@@ -21,6 +21,7 @@ export default function TaskPage() {
   const [task, setTask] = useState(null);
   const [subType, setSubType] = useState('text');
   const [uploading, setUploading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -43,7 +44,7 @@ export default function TaskPage() {
     };
     if (subType === 'text') payload.submittedWork = document.getElementById('sub-text')?.value.trim();
     else payload.repoLink = document.getElementById('sub-link')?.value.trim();
-    if (task.attachment) payload.attachment = task.attachment;
+    if (task.attachments) payload.attachments = task.attachments;
     try {
       const sub = await API.submissions.create(payload);
       setTask({ ...task, status: 'Review', ...(sub || {}) });
@@ -57,13 +58,47 @@ export default function TaskPage() {
     setUploading(true);
     try {
       const res = await API.tasks.uploadAttachment(taskId, file);
-      setTask({ ...task, attachment: res?.data?.attachment });
+      setTask({ ...task, attachments: res?.data?.attachments || [] });
       toast.success('File uploaded!');
     } catch (err) {
       toast.error(err.message || 'Upload failed');
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleAttachmentDeleteClick(attachmentId) {
+    setConfirmDeleteId(attachmentId);
+  }
+
+  async function confirmAttachmentDelete() {
+    if (!confirmDeleteId) return;
+    const attachmentId = confirmDeleteId;
+    setConfirmDeleteId(null);
+    try {
+      const res = await API.tasks.removeAttachment(taskId, attachmentId);
+      setTask({ ...task, attachments: res?.attachments || [] });
+      toast.success('Attachment removed');
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove attachment');
+    }
+  }
+
+  function getFileIcon(type) {
+    if (!type) return 'fa-file';
+    if (type.startsWith('image/')) return 'fa-file-image';
+    if (type.includes('pdf')) return 'fa-file-pdf';
+    if (type.includes('zip') || type.includes('compressed')) return 'fa-file-zipper';
+    if (type.includes('text') || type.includes('json')) return 'fa-file-code';
+    if (type.includes('word')) return 'fa-file-word';
+    return 'fa-file';
+  }
+
+  function formatSize(bytes) {
+    if (!bytes) return 'Unknown size';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
   }
 
   if (!task) return <><Topbar title="Task" /><div className="skeleton" style={{ height: 100, borderRadius: 'var(--card-radius)' }} /></>;
@@ -139,16 +174,35 @@ export default function TaskPage() {
 
           {canEdit && (
             <div className="card">
-              <h3 className="section-title">Attachment</h3>
+              <h3 className="section-title">Attachments</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <label className="btn btn--secondary" style={{ cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.7 : 1 }}>
-                  <i className="fa-solid fa-paperclip" /> {uploading ? 'Uploading...' : 'Upload File'}
-                  <input type="file" onChange={handleAttachmentUpload} disabled={uploading} style={{ display: 'none' }} />
-                </label>
-                {task.attachment && (
-                  <a href={task.attachment} target="_blank" rel="noopener noreferrer" className="chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--blue)' }}>
-                    <i className="fa-solid fa-file" /> View Attachment
-                  </a>
+                
+                {task.attachments && task.attachments.length > 0 && (
+                  <div className="attachment-list">
+                    {task.attachments.map(att => (
+                      <div key={att._id} className="attachment-item">
+                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="attachment-info" style={{ textDecoration: 'none', flex: 1 }}>
+                          <i className={`fa-solid ${getFileIcon(att.type)} attachment-icon`} />
+                          <div className="attachment-details">
+                            <span className="attachment-name" title={att.name}>{att.name}</span>
+                            <span className="attachment-size">{formatSize(att.size)}</span>
+                          </div>
+                        </a>
+                        <button className="attachment-delete" onClick={() => handleAttachmentDeleteClick(att._id)} title="Remove file">
+                          <i className="fa-solid fa-xmark" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(task.attachments || []).length < 5 ? (
+                  <label className="btn btn--secondary" style={{ cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.7 : 1, alignSelf: 'flex-start' }}>
+                    <i className="fa-solid fa-paperclip" /> {uploading ? 'Uploading...' : `Upload File (${(task.attachments || []).length}/5)`}
+                    <input type="file" onChange={handleAttachmentUpload} disabled={uploading} style={{ display: 'none' }} />
+                  </label>
+                ) : (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Maximum of 5 attachments reached.</div>
                 )}
               </div>
             </div>
@@ -213,6 +267,29 @@ export default function TaskPage() {
           {projectId && <a href={`/app/office/${projectId}`} className="btn btn--ghost" style={{ width: '100%' }}><i className="fa-solid fa-comments" /> Project Office</a>}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDeleteId && (
+        <div className="modal-overlay open" onClick={() => setConfirmDeleteId(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <div className="modal__header">
+              <h2 className="modal__title">Confirm Deletion</h2>
+              <button className="modal__close" onClick={() => setConfirmDeleteId(null)}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div style={{ padding: '20px 24px', fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+              Are you sure you want to remove this attachment? This action cannot be undone.
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn--secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+              <button className="btn btn--danger" style={{ background: 'var(--red)', color: 'white' }} onClick={confirmAttachmentDelete}>
+                <i className="fa-solid fa-trash" /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

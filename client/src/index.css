@@ -1520,3 +1520,22 @@ body.dark .task-list-section-header { background: rgba(255,255,255,.05); }
   transition: box-shadow .2s, transform .15s;
 }
 .asana-board-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+
+/* Attachment List */
+.attachment-list { display: flex; flex-direction: column; gap: 8px; }
+.attachment-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 12px; transition: var(--transition); text-decoration: none; color: var(--text-primary);
+}
+.attachment-item:hover { border-color: var(--blue); background: var(--blue-bg); }
+.attachment-info { display: flex; align-items: center; gap: 12px; overflow: hidden; }
+.attachment-icon { font-size: 1.2rem; color: var(--blue); }
+.attachment-details { display: flex; flex-direction: column; overflow: hidden; }
+.attachment-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attachment-size { font-size: 0.75rem; color: var(--text-secondary); }
+.attachment-delete {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  padding: 4px; border-radius: 6px; transition: var(--transition);
+}
+.attachment-delete:hover { color: var(--red); background: var(--red-bg); }

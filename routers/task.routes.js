@@ -3,33 +3,7 @@ const router = express.Router();
 const taskController = require('../controllers/task.controller');
 const { requireAuth } = require('../middlewares/auth.middleware');
 const aiLimiter = require('../middlewares/aiLimiter.middleware');
-const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
-
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'application/zip', 'application/json'];
-const EXT_BY_MIME = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'application/pdf': '.pdf',
-  'text/plain': '.txt',
-  'application/zip': '.zip',
-  'application/json': '.json',
-};
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
-  filename: (req, file, cb) => {
-    const ext = EXT_BY_MIME[file.mimetype];
-    cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
-  },
-});
-const fileFilter = (req, file, cb) => {
-  if (ALLOWED_MIMES.includes(file.mimetype)) return cb(null, true);
-  cb(new Error(`File type ${file.mimetype} is not allowed`));
-};
-const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
+const { uploadAttachment } = require('../middlewares/upload.middleware');
 
 // ─────────────────────────────────────────
 // Project tasks
@@ -58,8 +32,9 @@ router.patch('/task/:taskId/status',  requireAuth, taskController.updateTaskStat
 router.put(  '/task/:taskId',         requireAuth, taskController.updateTask);
 router.delete('/task/:taskId',        requireAuth, taskController.deleteTask);
 
-// Upload attachment
-router.post('/task/:taskId/attachment', requireAuth, upload.single('file'), taskController.uploadAttachment);
+// Upload & delete attachment
+router.post('/task/:taskId/attachment', requireAuth, uploadAttachment, taskController.uploadAttachment);
+router.delete('/task/:taskId/attachment/:attachmentId', requireAuth, taskController.removeAttachment);
 
 // AI features
 router.post('/task/:taskId/ai-instructions', requireAuth, aiLimiter(1), taskController.generateAIInstructions);

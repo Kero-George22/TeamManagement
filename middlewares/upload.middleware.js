@@ -8,6 +8,7 @@ const ATTACHMENT_MIMES = new Set([
   'application/zip',
   'text/plain',
   'text/markdown',
+  'application/json',
 ]);
 
 function imageFilter(req, file, cb) {
@@ -32,9 +33,9 @@ const avatarUpload = multer({
 
 const attachmentUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: attachmentFilter,
-}).single('attachment');
+}).single('file');
 
 function uploadToCloudinary(buffer, options) {
   return new Promise((resolve, reject) => {

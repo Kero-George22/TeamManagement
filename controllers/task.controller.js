@@ -151,10 +151,25 @@ const uploadAttachment = asyncWrapper(async (req, res) => {
   const result = await taskService.attachFile(
     req.params.taskId,
     req.user._id,
-    req.file.filename,
+    {
+      url: req.file.path,
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size
+    },
     req.user.isAdmin
   );
   return success(res, result, 'File uploaded', 200);
+});
+
+const removeAttachment = asyncWrapper(async (req, res) => {
+  const result = await taskService.removeAttachment(
+    req.params.taskId,
+    req.user._id,
+    req.params.attachmentId,
+    req.user.isAdmin
+  );
+  return success(res, result, 'Attachment removed', 200);
 });
 
 // ─────────────────────────────────────────
@@ -198,6 +213,7 @@ module.exports = {
   getComments,
   getSubtasks,
   uploadAttachment,
+  removeAttachment,
   getBoardView,
   generateAIInstructions,
 };
