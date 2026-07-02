@@ -187,8 +187,15 @@ async function getDashboardTasks(userId, isAdmin = false) {
         orClauses.push({ project: project._id });
         continue;
       }
-      // Members only see tasks assigned to them
-      orClauses.push({ project: project._id, assignedTo: userIdObj });
+      // Members see tasks assigned to them OR unassigned tasks
+      orClauses.push({
+        project: project._id,
+        $or: [
+          { assignedTo: userIdObj },
+          { assignedTo: { $size: 0 } },
+          { assignedTo: { $exists: false } }
+        ]
+      });
     }
   }
 

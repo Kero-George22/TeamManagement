@@ -520,7 +520,7 @@ function InlineTaskComposer({ sectionId, initialPriority = 'Medium', initialStat
 /* ═══════════════════════════════════════════════════════════
    SECTION PAGE
    ═══════════════════════════════════════════════════════════ */
-export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProject = null, forcedProjectMembers = [] }) {
+export default function SectionPage({ embedded = false, forcedProjectId = null, forcedProject = null, forcedProjectMembers = [], globalMode = false }) {
   const { user } = useAuth();
   const { projects, selectedProject, loadingProjects } = useGlobalProject();
   const toast = useToast();
@@ -531,8 +531,9 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     if (forcedProjectId) {
       return projects.find(p => p._id === forcedProjectId) || { _id: forcedProjectId, title: 'Project' };
     }
+    if (globalMode) return null;
     return selectedProject;
-  }, [forcedProject, forcedProjectId, projects, selectedProject]);
+  }, [forcedProject, forcedProjectId, projects, selectedProject, globalMode]);
 
   const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
   const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
