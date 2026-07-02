@@ -1539,3 +1539,64 @@ body.dark .task-list-section-header { background: rgba(255,255,255,.05); }
   padding: 4px; border-radius: 6px; transition: var(--transition);
 }
 .attachment-delete:hover { color: var(--red); background: var(--red-bg); }
+
+/* AI planner and analytics responsive grids */
+.ai-workspace-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ai-workspace-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.ai-planner-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, .8fr) minmax(0, 1.6fr);
+  gap: 16px;
+}
+
+.ai-task-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 110px 110px;
+  gap: 10px;
+}
+
+.analytics-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.analytics-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .75fr);
+  gap: 18px;
+}
+
+@media (max-width: 860px) {
+  .ai-planner-grid,
+  .analytics-hero-grid,
+  .analytics-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-task-meta-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .ai-task-meta-grid,
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

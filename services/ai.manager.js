@@ -30,6 +30,11 @@ async function generateProjectPlan(projectData) {
   const roles       = (projectData.rolesRequired || [])
     .map((r) => `${safeString(r.roleName, 50)} (Needs: ${r.totalSlots})`)
     .join(', ');
+  const guidance    = safeString(projectData.guidance, 800);
+  const existing    = (projectData.existingTasks || [])
+    .slice(0, 40)
+    .map((task) => `${safeString(task.title, 120)} (${safeString(task.status, 40)})`)
+    .join('; ');
 
   const prompt = `
 PROJECT BRIEF:
@@ -38,6 +43,8 @@ PROJECT BRIEF:
 - Team Roles: ${roles}
 - Duration: ${projectData.duration} days
 - Category: ${projectData.category || 'Software'}
+- Existing Tasks: ${existing || 'None'}
+- Planning Guidance From User: ${guidance || 'Create the best execution plan for the current project state.'}
 
 Generate a complete, production-ready project plan based on this brief.
   `.trim();

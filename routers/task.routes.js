@@ -17,6 +17,10 @@ router.get('/dashboard/overview', requireAuth, taskController.getDashboardTasks)
 // POST /tasks/:projectId/generate — AI generates tasks
 router.get( '/:projectId',          requireAuth, taskController.getProjectTasks);
 router.get( '/:projectId/board',    requireAuth, taskController.getBoardView);
+router.get( '/:projectId/ai-workspace', requireAuth, taskController.getAIWorkspace);
+router.put( '/:projectId/ai-workspace', requireAuth, taskController.updateAIWorkspace);
+router.post('/:projectId/ai-plan',  requireAuth, aiLimiter(1), taskController.generateAIPlanPreview);
+router.post('/:projectId/ai-plan/accept', requireAuth, taskController.acceptAIPlan);
 router.post('/:projectId/generate', requireAuth, aiLimiter(1), taskController.createTasksByAI);
 router.post('/:projectId',          requireAuth, taskController.createTask);
 

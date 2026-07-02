@@ -28,6 +28,209 @@ function getMembership(project, userId) {
   );
 }
 
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toDateInputValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+
+function displayName(user) {
+  return user?.username || user?.email?.split('@')[0] || 'Unassigned';
+}
+
+function buildRoleQueues(project) {
+  const roleMembers = new Map();
+
+  for (const member of project.members || []) {
+    const id = member.userId?._id || member.userId;
+    if (!id) continue;
+    const key = normalizeRole(member.roleName);
+    if (!roleMembers.has(key)) roleMembers.set(key, []);
+    roleMembers.get(key).push({
+      id: String(id),
+      name: displayName(member.userId),
+      roleName: member.roleName,
+    });
+  }
+
+  return {
+    roleMembers,
+    cursors: new Map(),
+  };
+}
+
+function pickAssigneeForRole(roleName, queues) {
+  const key = normalizeRole(roleName);
+  const candidates = queues.roleMembers.get(key) || [];
+  if (!candidates.length) return null;
+
+  const cursor = queues.cursors.get(key) || 0;
+  const assignee = candidates[cursor % candidates.length];
+  queues.cursors.set(key, cursor + 1);
+  return assignee;
+}
+
+function buildProjectMemberSet(project) {
+  const ids = new Set();
+  if (project.owner?._id || project.owner) ids.add(String(project.owner?._id || project.owner));
+  for (const member of project.members || []) {
+    const id = member.userId?._id || member.userId;
+    if (id) ids.add(String(id));
+  }
+  return ids;
+}
+
+function flattenPlanTasks(plan) {
+  const tasks = [];
+  for (const phase of plan?.phases || []) {
+    for (const task of phase.tasks || []) {
+      tasks.push({ ...task, phaseName: task.phaseName || phase.name });
+    }
+  }
+  return tasks;
+}
+
+function normalizeGeneratedPlanForReview(plan, project) {
+  const phases = Array.isArray(plan?.phases) ? plan.phases : [];
+  const queues = buildRoleQueues(project);
+  const start = project.startDate ? new Date(project.startDate) : new Date();
+  const duration = Math.max(1, Number(project.duration) || 14);
+  const phaseCount = Math.max(1, phases.length);
+  const phaseDays = Math.max(1, Math.ceil(duration / phaseCount));
+
+  const normalizedPhases = phases.map((phase, phaseIndex) => {
+    const phaseStart = addDays(start, phaseIndex * phaseDays);
+    const phaseEnd = addDays(start, Math.min(duration, (phaseIndex + 1) * phaseDays));
+
+    return {
+      id: `phase-${phaseIndex + 1}`,
+      name: String(phase.name || `Phase ${phaseIndex + 1}`).slice(0, 140),
+      milestone: String(phase.milestone || '').slice(0, 240),
+      startDate: toDateInputValue(phaseStart),
+      deadline: toDateInputValue(phaseEnd),
+      tasks: (phase.tasks || []).map((task, taskIndex) => {
+        const assignee = pickAssigneeForRole(task.assignedRole, queues);
+        return {
+          clientId: `phase-${phaseIndex + 1}-task-${taskIndex + 1}`,
+          phaseName: String(phase.name || `Phase ${phaseIndex + 1}`).slice(0, 140),
+          accepted: true,
+          title: String(task.title || 'Untitled task').slice(0, 180),
+          description: String(task.description || '').slice(0, 3000),
+          assignedRole: String(task.assignedRole || 'Member').slice(0, 80),
+          assigneeId: assignee?.id || '',
+          assigneeName: assignee?.name || '',
+          priority: ['Low', 'Medium', 'High'].includes(task.priority) ? task.priority : 'Medium',
+          storyPoints: Number.isFinite(Number(task.storyPoints)) ? Number(task.storyPoints) : 3,
+          status: 'Todo',
+          startDate: toDateInputValue(phaseStart),
+          deadline: toDateInputValue(phaseEnd),
+        };
+      }),
+    };
+  });
+
+  return {
+    summary: String(plan?.summary || 'AI generated a project execution plan.').slice(0, 2000),
+    phases: normalizedPhases,
+  };
+}
+
+const DEFAULT_AI_MESSAGES = [
+  {
+    role: 'model',
+    content: 'Ask me about risks, blockers, scope, or team priorities for this project.',
+  },
+];
+
+function normalizeWorkspaceMessages(messages) {
+  if (!Array.isArray(messages)) return DEFAULT_AI_MESSAGES;
+  const cleaned = messages
+    .filter((message) => ['user', 'model'].includes(message?.role) && String(message?.content || '').trim())
+    .slice(-120)
+    .map((message) => {
+      const createdAt = message.createdAt ? new Date(message.createdAt) : new Date();
+      return {
+        role: message.role,
+        content: String(message.content).slice(0, 8000),
+        createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+      };
+    });
+  return cleaned.length ? cleaned : DEFAULT_AI_MESSAGES;
+}
+
+function serializeAIWorkspace(workspace = {}) {
+  return {
+    guidance: workspace.guidance || '',
+    plan: workspace.plan || null,
+    plannerStatus: workspace.plannerStatus || '',
+    mode: workspace.mode === 'ask' ? 'ask' : 'plan',
+    messages: normalizeWorkspaceMessages(workspace.messages),
+    updatedAt: workspace.updatedAt || null,
+    updatedBy: workspace.updatedBy || null,
+  };
+}
+
+function plainWorkspace(workspace = {}) {
+  return workspace?.toObject ? workspace.toObject() : (workspace || {});
+}
+
+async function getPlannerProject(projectId, userId, isAdmin = false) {
+  validateObjectId(projectId, 'project ID');
+
+  const project = await Project.findById(projectId)
+    .populate('members.userId', 'email username avatar')
+    .populate('owner', 'email username avatar');
+  if (!project) throw new AppError('Project not found', 404);
+
+  if (isAdmin) return project;
+
+  const isOwner = String(project.owner?._id || project.owner) === String(userId);
+  if (!isOwner)
+    throw new AppError('Only the project owner can use the AI planner', 403);
+
+  return project;
+}
+
+async function getAIWorkspace(projectId, userId, isAdmin = false) {
+  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['aiWorkspace']);
+  return serializeAIWorkspace(project.aiWorkspace || {});
+}
+
+async function updateAIWorkspace(projectId, userId, payload = {}, isAdmin = false) {
+  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['aiWorkspace']);
+  const isOwner = String(project.owner || '') === String(userId);
+  const current = serializeAIWorkspace(project.aiWorkspace || {});
+
+  const next = {
+    ...current,
+    mode: payload.mode === 'ask' ? 'ask' : payload.mode === 'plan' ? 'plan' : current.mode,
+    messages: payload.messages !== undefined
+      ? normalizeWorkspaceMessages(payload.messages)
+      : current.messages,
+    updatedBy: userId,
+    updatedAt: new Date(),
+  };
+
+  if (isOwner || isAdmin) {
+    if (payload.guidance !== undefined) next.guidance = String(payload.guidance || '').slice(0, 2000);
+    if (payload.plan !== undefined) next.plan = payload.plan || null;
+    if (payload.plannerStatus !== undefined) next.plannerStatus = String(payload.plannerStatus || '').slice(0, 1000);
+  } else if (payload.guidance !== undefined || payload.plan !== undefined || payload.plannerStatus !== undefined) {
+    throw new AppError('Only the project owner can edit the AI plan', 403);
+  }
+
+  project.aiWorkspace = next;
+  await project.save();
+  return serializeAIWorkspace(project.aiWorkspace || {});
+}
+
 async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFields = []) {
   const fields = ['owner', 'members', 'permissions', ...extraFields].join(' ');
   const project = await Project.findById(projectId).select(fields);
@@ -132,6 +335,112 @@ async function createTasksByAI(projectId, userId) {
   }
 
   return Task.insertMany(taskDocs);
+}
+
+async function generateAIPlanPreview(projectId, userId, isAdmin = false, guidance = '') {
+  const project = await getPlannerProject(projectId, userId, isAdmin);
+  const existingTasks = await Task.find({ project: projectId })
+    .select('title status priority assignedRole deadline storyPoints')
+    .lean();
+
+  const plan = await aiManager.generateProjectPlan({
+    title: project.title,
+    description: project.description,
+    rolesRequired: project.rolesRequired,
+    duration: project.duration,
+    status: project.status,
+    category: project.category,
+    language: project.language,
+    guidance,
+    existingTasks,
+  });
+
+  const workspacePlan = normalizeGeneratedPlanForReview(plan, project);
+  project.aiWorkspace = {
+    ...plainWorkspace(project.aiWorkspace),
+    guidance: String(guidance || '').slice(0, 2000),
+    plan: workspacePlan,
+    plannerStatus: 'Review the suggestions, edit anything you want, then accept only the work you approve.',
+    updatedBy: userId,
+    updatedAt: new Date(),
+  };
+  await project.save();
+
+  return workspacePlan;
+}
+
+async function acceptAIPlan(projectId, userId, payload = {}, isAdmin = false) {
+  const project = await getPlannerProject(projectId, userId, isAdmin);
+  const memberIds = buildProjectMemberSet(project);
+  const queues = buildRoleQueues(project);
+  const incomingTasks = Array.isArray(payload.tasks)
+    ? payload.tasks
+    : flattenPlanTasks(payload.plan);
+
+  const acceptedTasks = incomingTasks
+    .filter((task) => task && task.accepted !== false)
+    .slice(0, 100);
+
+  if (!acceptedTasks.length)
+    throw new AppError('Select at least one AI task to create', 400);
+
+  const docs = acceptedTasks.map((task) => {
+    const title = String(task.title || '').trim();
+    if (!title) throw new AppError('Every accepted task needs a title', 400);
+
+    const role = String(task.assignedRole || 'Member').trim() || 'Member';
+    const requestedAssignee = String(task.assigneeId || '').trim();
+    const autoAssignee = pickAssigneeForRole(role, queues);
+    const assigneeId = requestedAssignee && mongoose.Types.ObjectId.isValid(requestedAssignee) && memberIds.has(requestedAssignee)
+      ? requestedAssignee
+      : autoAssignee?.id;
+
+    const labels = Array.isArray(task.labels)
+      ? task.labels
+      : String(task.labels || '')
+          .split(',')
+          .map((label) => label.trim())
+          .filter(Boolean);
+
+    const phaseLabel = String(task.phaseName || '').trim();
+    if (phaseLabel) labels.push(phaseLabel);
+    labels.push('ai-plan');
+
+    return {
+      project: projectId,
+      title: title.slice(0, 220),
+      description: String(task.description || '').slice(0, 5000),
+      taskType: task.taskType || 'Task',
+      assignedRole: role.slice(0, 100),
+      assignedTo: assigneeId ? [assigneeId] : [],
+      priority: ['Low', 'Medium', 'High'].includes(task.priority) ? task.priority : 'Medium',
+      status: project.taskStatuses?.[0] || 'Todo',
+      startDate: task.startDate || null,
+      deadline: task.deadline || null,
+      storyPoints: Number.isFinite(Number(task.storyPoints)) ? Number(task.storyPoints) : 0,
+      labels: [...new Set(labels)].slice(0, 12),
+      visibility: 'team',
+    };
+  });
+
+  const created = await Task.insertMany(docs);
+  const ids = created.map((task) => task._id);
+  const populated = await Task.find({ _id: { $in: ids } })
+    .populate('assignedTo', 'email username avatar')
+    .sort({ createdAt: -1 });
+
+  try {
+    const { notifyTaskAssigned } = require('./notification.service');
+    await Promise.all(
+      populated.flatMap((task) =>
+        (task.assignedTo || [])
+          .filter((assignee) => String(assignee._id || assignee) !== String(userId))
+          .map((assignee) => notifyTaskAssigned(task._id, assignee._id || assignee, userId, projectId))
+      )
+    );
+  } catch {}
+
+  return populated;
 }
 
 // ─────────────────────────────────────────
@@ -737,6 +1046,10 @@ async function removeAttachment(taskId, userId, attachmentId, isAdmin = false) {
 
 module.exports = {
   createTasksByAI,
+  generateAIPlanPreview,
+  acceptAIPlan,
+  getAIWorkspace,
+  updateAIWorkspace,
   createTask,
   getDashboardTasks,
   getProjectTasks,

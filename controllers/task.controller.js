@@ -18,6 +18,46 @@ const createTasksByAI = asyncWrapper(async (req, res) => {
   return success(res, tasks, 'Tasks created by AI', 201);
 });
 
+const generateAIPlanPreview = asyncWrapper(async (req, res) => {
+  const plan = await taskService.generateAIPlanPreview(
+    req.params.projectId,
+    req.user._id,
+    req.user.isAdmin,
+    req.body?.guidance || ''
+  );
+  await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
+  return success(res, plan, 'AI plan preview generated');
+});
+
+const acceptAIPlan = asyncWrapper(async (req, res) => {
+  const tasks = await taskService.acceptAIPlan(
+    req.params.projectId,
+    req.user._id,
+    req.body,
+    req.user.isAdmin
+  );
+  return success(res, tasks, 'AI plan tasks created', 201);
+});
+
+const getAIWorkspace = asyncWrapper(async (req, res) => {
+  const workspace = await taskService.getAIWorkspace(
+    req.params.projectId,
+    req.user._id,
+    req.user.isAdmin
+  );
+  return success(res, workspace, 'AI workspace retrieved');
+});
+
+const updateAIWorkspace = asyncWrapper(async (req, res) => {
+  const workspace = await taskService.updateAIWorkspace(
+    req.params.projectId,
+    req.user._id,
+    req.body,
+    req.user.isAdmin
+  );
+  return success(res, workspace, 'AI workspace saved');
+});
+
 // ─────────────────────────────────────────
 // CREATE SINGLE TASK
 // ─────────────────────────────────────────
@@ -202,6 +242,10 @@ const generateAIInstructions = asyncWrapper(async (req, res) => {
 
 module.exports = {
   createTasksByAI,
+  generateAIPlanPreview,
+  acceptAIPlan,
+  getAIWorkspace,
+  updateAIWorkspace,
   createTask,
   getDashboardTasks,
   getProjectTasks,

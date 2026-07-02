@@ -64,7 +64,6 @@ export default function ProjectPage() {
   const [editingTask, setEditingTask] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
-  const [chatOpen, setChatOpen] = useState(false);
 
   const isOwner = !!project && (project.owner?._id === (user?.id || user?._id) || project.owner === (user?.id || user?._id));
   const isMember = isOwner || (project?.members || []).some(member => (member.userId?._id || member.userId) === (user?.id || user?._id));
@@ -364,6 +363,9 @@ export default function ProjectPage() {
         <button className={`workspace-tab ${tab === 'team' ? 'active' : ''}`} onClick={() => setTab('team')}>Team</button>
         {isMember && (
           <button className={`workspace-tab ${tab === 'team-hub' ? 'active' : ''}`} onClick={() => setTab('team-hub')}>Team Hub</button>
+        )}
+        {isMember && (
+          <button className={`workspace-tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>AI Planner</button>
         )}
         {(isOwner || user?.isAdmin) && (
           <button className={`workspace-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>Analytics</button>
@@ -674,6 +676,19 @@ export default function ProjectPage() {
         <TeamHubTab projectId={id} isOwner={isOwner} />
       )}
 
+      {tab === 'ai' && isMember && (
+        <AICopilotChat
+          projectId={id}
+          project={project}
+          members={members || []}
+          isOwner={isOwner || user?.isAdmin}
+          onTasksCreated={() => {
+            loadTasks();
+            setTab('tasks');
+          }}
+        />
+      )}
+
       <Modal open={taskModal} onClose={() => setTaskModal(false)} title="Add Task">
         <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="form-group">
@@ -839,18 +854,6 @@ export default function ProjectPage() {
         />
       )}
 
-      {isMember && (
-        <>
-          <button 
-            className="btn btn--blue" 
-            style={{ position: 'fixed', bottom: 24, right: 24, borderRadius: '50%', width: 56, height: 56, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 9998 }}
-            onClick={() => setChatOpen(!chatOpen)}
-          >
-            <i className={`fa-solid ${chatOpen ? 'fa-xmark' : 'fa-robot'}`} style={{ fontSize: '1.4rem' }} />
-          </button>
-          {chatOpen && <AICopilotChat projectId={id} onClose={() => setChatOpen(false)} />}
-        </>
-      )}
     </>
   );
 }

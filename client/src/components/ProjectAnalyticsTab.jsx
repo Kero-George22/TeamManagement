@@ -1,11 +1,42 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import API from '../lib/api';
 import { ProgressBar } from './ui/Primitives';
 import { useToast } from '../lib/toast';
-import { 
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  AreaChart, Area 
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
+
+function pct(value) {
+  return Math.max(0, Math.min(100, Math.round(value || 0)));
+}
+
+function hours(ms) {
+  return ((ms || 0) / 3600000).toFixed(1);
+}
+
+function userName(row) {
+  return row?.user?.username || row?.user?.email?.split('@')[0] || 'Member';
+}
+
+function tooltipStyle() {
+  return {
+    backgroundColor: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    color: 'var(--text)',
+    boxShadow: '0 10px 30px rgba(15,23,42,.14)',
+  };
+}
 
 export default function ProjectAnalyticsTab({ projectId }) {
   const toast = useToast();
@@ -15,6 +46,7 @@ export default function ProjectAnalyticsTab({ projectId }) {
 
   useEffect(() => {
     if (!projectId) return;
+    setLoading(true);
     (async () => {
       try {
         const res = await API.analytics.project(projectId);
@@ -26,6 +58,52 @@ export default function ProjectAnalyticsTab({ projectId }) {
       }
     })();
   }, [projectId]);
+
+  const model = useMemo(() => {
+    if (!data) return null;
+
+    const tasks = data.tasks || {};
+    const completionRate = pct(tasks.completionRate);
+    const pointRate = pct((tasks.completedPoints / tasks.totalPoints) * 100 || 0);
+    const openTasks = Math.max(0, (tasks.total || 0) - (tasks.completed || 0));
+    const health = completionRate >= 75 ? 'On track' : completionRate >= 40 ? 'Needs attention' : 'At risk';
+    const healthColor = completionRate >= 75 ? 'var(--green)' : completionRate >= 40 ? '#f59e0b' : '#ef4444';
+
+    const workload = (data.memberContributions || []).map((row) => {
+      const time = (data.timeByUser || []).find((entry) => String(entry.user?._id) === String(row.user?._id));
+      return {
+        name: userName(row),
+        points: row.completedPoints || 0,
+        tasks: row.completedTasks || 0,
+        hours: Number(hours(time?.totalDuration || 0)),
+      };
+    });
+
+    for (const timeRow of data.timeByUser || []) {
+      if (!workload.some((row) => row.name === userName(timeRow))) {
+        workload.push({
+          name: userName(timeRow),
+          points: 0,
+          tasks: 0,
+          hours: Number(hours(timeRow.totalDuration || 0)),
+        });
+      }
+    }
+
+    return {
+      project: data.project || {},
+      tasks,
+      completionRate,
+      pointRate,
+      openTasks,
+      health,
+      healthColor,
+      workload,
+      velocity: data.velocity || [],
+      aiTrend: data.aiTrend || [],
+      timeByTask: data.timeByTask || [],
+    };
+  }, [data]);
 
   const handleExportPDF = () => {
     const element = dashboardRef.current;
@@ -67,150 +145,212 @@ export default function ProjectAnalyticsTab({ projectId }) {
   };
 
   if (loading) return <div className="skeleton" style={{ height: 400, borderRadius: 'var(--card-radius)' }} />;
-  if (!data) return null;
-
-  const { tasks, velocity, aiTrend, memberContributions, timeByUser, timeByTask } = data;
+  if (!model) return null;
 
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button className="btn btn--outline" onClick={handleExportPDF}>
-          <i className="fa-solid fa-file-pdf" style={{ marginRight: 8 }}></i> Export PDF
+          <i className="fa-solid fa-file-pdf" style={{ marginRight: 8 }} /> Export PDF
         </button>
       </div>
 
-      <div ref={dashboardRef} className="workspace-grid" style={{ padding: '16px', backgroundColor: 'var(--bg-main)', borderRadius: '12px' }}>
-        {/* Header Stats */}
-        <section className="card" style={{ gridColumn: '1 / -1', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h3 className="section-title">Task Completion</h3>
-            <p style={{ margin: '12px 0', fontSize: '1.5rem', fontWeight: 700 }}>{tasks.completed ?? 0} / {tasks.total ?? 0}</p>
-            <ProgressBar value={tasks.completionRate ?? 0} />
-            <p style={{ marginTop: 8, fontSize: '.875rem' }}>{tasks.completionRate ?? 0}% completed</p>
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h3 className="section-title">Story Points Completed</h3>
-            <p style={{ margin: '12px 0', fontSize: '1.5rem', fontWeight: 700 }}>{tasks.completedPoints ?? 0} / {tasks.totalPoints ?? 0}</p>
-            <ProgressBar value={(tasks.completedPoints / tasks.totalPoints * 100) || 0} />
-            <p style={{ marginTop: 8, fontSize: '.875rem' }}>{Math.round((tasks.completedPoints / tasks.totalPoints * 100) || 0)}% of total points</p>
-          </div>
-        </section>
-
-        {/* Velocity Chart */}
-        <section className="card" style={{ gridColumn: 'span 1' }}>
-          <h3 className="section-title">Team Velocity (Story Points / Week)</h3>
-          <div style={{ width: '100%', height: 300, marginTop: 16 }}>
-            {velocity && velocity.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={velocity}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="week" stroke="var(--text-muted)" />
-                  <YAxis stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                  <Legend />
-                  <Bar dataKey="points" fill="var(--primary)" name="Story Points" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No velocity data yet</div>
-            )}
+      <div ref={dashboardRef} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <section className="workspace-panel" style={{ margin: 0, overflow: 'hidden' }}>
+          <div className="analytics-hero-grid" style={{ padding: 22 }}>
+            <div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', fontWeight: 700, textTransform: 'uppercase' }}>Project analytics</div>
+              <h2 style={{ margin: '6px 0 10px', fontSize: '1.55rem', lineHeight: 1.2 }}>{model.project.title || 'Project'}</h2>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', color: 'var(--text-secondary)', fontSize: '.86rem' }}>
+                <span><i className="fa-solid fa-circle" style={{ color: model.healthColor, marginRight: 6 }} />{model.health}</span>
+                <span>{model.project.status}</span>
+                <span>{model.project.members || 0} members</span>
+                <span>{model.openTasks} open tasks</span>
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 800 }}>
+                <span>Completion</span>
+                <span>{model.completionRate}%</span>
+              </div>
+              <ProgressBar value={model.completionRate} />
+              <div style={{ marginTop: 10, color: 'var(--text-muted)', fontSize: '.82rem' }}>
+                {model.tasks.completed || 0} of {model.tasks.total || 0} tasks closed
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* AI Review Trend */}
-        <section className="card" style={{ gridColumn: 'span 1' }}>
-          <h3 className="section-title">AI Review Scores Trend</h3>
-          <div style={{ width: '100%', height: 300, marginTop: 16 }}>
-            {aiTrend && aiTrend.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={aiTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" stroke="var(--text-muted)" />
-                  <YAxis domain={[0, 100]} stroke="var(--text-muted)" />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                  <Legend />
-                  <Area type="monotone" dataKey="score" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} name="Average AI Score" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No AI review data yet</div>
-            )}
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+          <div className="stat-card" style={{ border: '1px solid var(--border)', boxShadow: 'none' }}>
+            <div className="stat-card__label">Task Progress</div>
+            <div className="stat-card__value">{model.completionRate}%</div>
+            <div className="stat-card__sub">{model.tasks.completed || 0}/{model.tasks.total || 0} complete</div>
           </div>
-        </section>
-
-        {/* Member Contribution */}
-        <section className="card" style={{ gridColumn: 'span 1' }}>
-          <h3 className="section-title">Member Contribution (Story Points)</h3>
-          <div style={{ width: '100%', height: 300, marginTop: 16 }}>
-            {memberContributions && memberContributions.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={memberContributions} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis type="number" stroke="var(--text-muted)" />
-                  <YAxis dataKey="user.username" type="category" stroke="var(--text-muted)" width={100} />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)', color: 'var(--text)' }} />
-                  <Legend />
-                  <Bar dataKey="completedPoints" fill="#82ca9d" name="Completed Points" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No member contribution data</div>
-            )}
+          <div className="stat-card" style={{ border: '1px solid var(--border)', boxShadow: 'none' }}>
+            <div className="stat-card__label">Story Points</div>
+            <div className="stat-card__value">{model.pointRate}%</div>
+            <div className="stat-card__sub">{model.tasks.completedPoints || 0}/{model.tasks.totalPoints || 0} points</div>
           </div>
-        </section>
-
-        {/* Time Tracking Reports */}
-        <section className="card" style={{ gridColumn: 'span 1' }}>
-          <h3 className="section-title">Time Tracking (Hours per Member)</h3>
-          <div style={{ width: '100%', height: 300, marginTop: 16 }}>
-            {timeByUser && timeByUser.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={timeByUser} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis type="number" stroke="var(--text-muted)" />
-                  <YAxis dataKey="user.username" type="category" stroke="var(--text-muted)" width={100} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--bg-panel)', borderColor: 'var(--border)', color: 'var(--text)' }} 
-                    formatter={(val) => [(val / 3600000).toFixed(1) + ' hrs', 'Time Tracked']}
-                  />
-                  <Legend />
-                  <Bar dataKey="totalDuration" fill="#ffc658" name="Total Hours" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No time tracking data</div>
-            )}
+          <div className="stat-card" style={{ border: '1px solid var(--border)', boxShadow: 'none' }}>
+            <div className="stat-card__label">Velocity</div>
+            <div className="stat-card__value">{model.velocity.at(-1)?.points || 0}</div>
+            <div className="stat-card__sub">points last week</div>
           </div>
-        </section>
+          <div className="stat-card" style={{ border: '1px solid var(--border)', boxShadow: 'none' }}>
+            <div className="stat-card__label">AI Quality</div>
+            <div className="stat-card__value">{model.aiTrend.at(-1)?.score || 0}</div>
+            <div className="stat-card__sub">latest review score</div>
+          </div>
+        </div>
 
-        {/* Top 10 tasks by Time */}
-        <section className="card" style={{ gridColumn: '1 / -1' }}>
-          <h3 className="section-title">Most Time-Consuming Tasks</h3>
-          <div style={{ marginTop: 16, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.875rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border)', textAlign: 'left' }}>
-                  <th style={{ padding: 12 }}>Task</th>
-                  <th style={{ padding: 12 }}>Total Time Tracked (Hours)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeByTask && timeByTask.length > 0 ? (
-                  timeByTask.map((t, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: 12 }}>{t.taskTitle}</td>
-                      <td style={{ padding: 12 }}>{(t.totalDuration / 3600000).toFixed(1)} hrs</td>
-                    </tr>
-                  ))
+        <div className="workspace-grid" style={{ alignItems: 'stretch' }}>
+          <section className="workspace-panel" style={{ margin: 0 }}>
+            <div className="workspace-header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Project Burnup</h3>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Completed work by week.</div>
+              </div>
+            </div>
+            <div style={{ height: 310, padding: '0 12px 14px' }}>
+              {model.velocity.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={model.velocity}>
+                    <defs>
+                      <linearGradient id="velocityFill" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="week" stroke="var(--text-muted)" />
+                    <YAxis stroke="var(--text-muted)" />
+                    <Tooltip contentStyle={tooltipStyle()} />
+                    <Area type="monotone" dataKey="points" stroke="var(--blue)" fill="url(#velocityFill)" strokeWidth={2} name="Story points" />
+                    <Line type="monotone" dataKey="tasks" stroke="var(--green)" strokeWidth={2} name="Tasks" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state" style={{ height: '100%' }}>
+                  <i className="fa-solid fa-chart-line" />
+                  <h4>No velocity yet</h4>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <aside className="dashboard-stack">
+            <section className="workspace-panel" style={{ margin: 0 }}>
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>Goal Health</h3>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Tasks and points closed.</div>
+                </div>
+              </div>
+              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontWeight: 700, fontSize: '.86rem' }}>
+                    <span>Tasks</span><span>{model.completionRate}%</span>
+                  </div>
+                  <ProgressBar value={model.completionRate} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontWeight: 700, fontSize: '.86rem' }}>
+                    <span>Points</span><span>{model.pointRate}%</span>
+                  </div>
+                  <ProgressBar value={model.pointRate} />
+                </div>
+              </div>
+            </section>
+
+            <section className="workspace-panel" style={{ margin: 0 }}>
+              <div className="workspace-header">
+                <div>
+                  <h3 className="section-title" style={{ marginBottom: 4 }}>AI Review Trend</h3>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Average score by review day.</div>
+                </div>
+              </div>
+              <div style={{ height: 190, padding: '0 12px 14px' }}>
+                {model.aiTrend.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={model.aiTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="date" stroke="var(--text-muted)" />
+                      <YAxis domain={[0, 100]} stroke="var(--text-muted)" />
+                      <Tooltip contentStyle={tooltipStyle()} />
+                      <Line type="monotone" dataKey="score" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} name="Score" />
+                    </LineChart>
+                  </ResponsiveContainer>
                 ) : (
-                  <tr>
-                    <td colSpan={2} style={{ padding: 16, color: 'var(--text-muted)' }}>No time tracked on any tasks yet.</td>
-                  </tr>
+                  <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                    <h4>No review scores</h4>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div className="analytics-two-col">
+          <section className="workspace-panel" style={{ margin: 0 }}>
+            <div className="workspace-header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Workload</h3>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Contribution and tracked hours by member.</div>
+              </div>
+            </div>
+            <div style={{ height: 320, padding: '0 12px 14px' }}>
+              {model.workload.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={model.workload} layout="vertical" margin={{ left: 18 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis type="number" stroke="var(--text-muted)" />
+                    <YAxis dataKey="name" type="category" stroke="var(--text-muted)" width={110} />
+                    <Tooltip contentStyle={tooltipStyle()} />
+                    <Bar dataKey="points" fill="var(--blue)" name="Completed points" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="hours" fill="var(--green)" name="Tracked hours" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state" style={{ height: '100%' }}>
+                  <i className="fa-solid fa-users" />
+                  <h4>No workload data</h4>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="workspace-panel" style={{ margin: 0 }}>
+            <div className="workspace-header">
+              <div>
+                <h3 className="section-title" style={{ marginBottom: 4 }}>Time Hotspots</h3>
+                <div style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>Tasks with the most tracked time.</div>
+              </div>
+            </div>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {model.timeByTask.length ? model.timeByTask.map((task, index) => {
+                const max = Math.max(...model.timeByTask.map((row) => row.totalDuration || 0), 1);
+                const width = pct(((task.totalDuration || 0) / max) * 100);
+                return (
+                  <div key={task._id || index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '.84rem' }}>
+                      <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.taskTitle}</span>
+                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{hours(task.totalDuration)} hrs</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: 'var(--surface-hover)', overflow: 'hidden' }}>
+                      <div style={{ width: `${width}%`, height: '100%', background: 'var(--blue)' }} />
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="empty-state" style={{ padding: '30px 0' }}>
+                  <i className="fa-regular fa-clock" />
+                  <h4>No time tracked</h4>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

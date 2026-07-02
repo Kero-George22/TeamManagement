@@ -107,6 +107,22 @@ const ProjectSchema = new mongoose.Schema(
       memberCanDeleteStatus:      { type: Boolean, default: false },
       memberCanAssignOthers:      { type: Boolean, default: false },
     },
+
+    aiWorkspace: {
+      guidance:      { type: String, default: '' },
+      plan:          { type: mongoose.Schema.Types.Mixed, default: null },
+      plannerStatus: { type: String, default: '' },
+      mode:          { type: String, enum: ['plan', 'ask'], default: 'plan' },
+      messages: [
+        {
+          role:      { type: String, enum: ['user', 'model'], required: true },
+          content:   { type: String, required: true },
+          createdAt: { type: Date, default: Date.now },
+        }
+      ],
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      updatedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );
