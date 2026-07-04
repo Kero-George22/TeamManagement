@@ -26,6 +26,8 @@ router.post('/invite/:token/join',         requireAuth, projectController.joinVi
 router.get(   '/:id',         requireAuth, projectController.getProjectById);
 router.put(   '/:id',         requireAuth, projectController.updateProject);
 router.delete('/:id',         requireAuth, projectController.deleteProject);
+router.get(   '/:id/logs',    requireAuth, projectController.getProjectLogs);
+
 
 // ─────────────────────────────────────────
 // Members

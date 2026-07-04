@@ -178,6 +178,16 @@ const projects = {
   addTaskStatus: (id, data) => post(`/projects/${id}/task-statuses`, data),
   editTaskStatus: (id, oldName, data) => patch(`/projects/${id}/task-statuses/${encodeURIComponent(oldName)}`, data),
   removeTaskStatus: (id, name) => del(`/projects/${id}/task-statuses/${encodeURIComponent(name)}`),
+
+  // Logs
+  logs: (id, params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && v !== '') qs.set(k, v);
+    });
+    const q = qs.toString();
+    return get(`/projects/${id}/logs${q ? `?${q}` : ''}`);
+  },
 };
 
 /* Tasks */

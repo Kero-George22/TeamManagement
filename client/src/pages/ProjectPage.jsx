@@ -15,6 +15,7 @@ import SectionPage from './SectionPage';
 import ProjectAnalyticsTab from '../components/ProjectAnalyticsTab';
 import AICopilotChat from '../components/ui/AICopilotChat';
 import TeamHubTab from '../components/teamFeatures/TeamHubTab';
+import ProjectLogsTab from '../components/ProjectLogsTab';
 
 const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 const STATUS_VARIANTS = { Todo: 'gray', 'In-Progress': 'blue', Review: 'yellow', Done: 'green', Approved: 'purple' };
@@ -370,6 +371,9 @@ export default function ProjectPage() {
         {(isOwner || user?.isAdmin) && (
           <button className={`workspace-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>Analytics</button>
         )}
+        {(isOwner || user?.isAdmin) && (
+          <button className={`workspace-tab ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>Logs</button>
+        )}
         <div style={{ flex: 1 }} />
         <button className="btn btn--ghost btn--sm" onClick={() => navigate(`/app/office/${id}`)}>
           <i className="fa-solid fa-comments" /> Office
@@ -670,6 +674,10 @@ export default function ProjectPage() {
 
       {tab === 'analytics' && (isOwner || user?.isAdmin) && (
         <ProjectAnalyticsTab projectId={id} />
+      )}
+
+      {tab === 'logs' && (isOwner || user?.isAdmin) && (
+        <ProjectLogsTab projectId={id} />
       )}
 
       {tab === 'team-hub' && isMember && (

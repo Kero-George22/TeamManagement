@@ -117,6 +117,17 @@ const STATUS_CONFIG = {
 
 const DEFAULT_WORKFLOW_STATUSES = ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
+function getCalendarTaskStyle(task) {
+  const projectColor = getProjectColor(task.projectRef?._id);
+
+  return {
+    '--cal-task-accent': `var(--${projectColor})`,
+    background: `var(--${projectColor}-bg)`,
+    color: `var(--${projectColor})`,
+    borderColor: `var(--${projectColor}-bg)`,
+  };
+}
+
 /* ─── Date Picker Popover ────────────────────────────────── */
 // Uses position:fixed to escape parent overflow:hidden clipping.
 function DatePickerPopover({ value, onChange, onClose, anchorPos }) {
@@ -1229,6 +1240,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
   // ── Computed values ────────────────────────────────────
   const gridCols = `minmax(260px, 3fr) 130px${columns.priority ? ' 110px' : ''}${columns.collaborators ? ' 140px' : ''}${columns.projects ? ' 180px' : ''}${columns.status ? ' 120px' : ''}`;
+  const todayDateStr = new Date().toDateString();
 
   return (
     <>
@@ -1371,6 +1383,41 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         .del-btn:hover { opacity: 1 !important; color: #ef4444 !important; }
 
         /* Calendar */
+        .calendar-shell {
+          background: var(--white);
+          border-radius: 18px;
+          box-shadow: var(--shadow);
+          border: 1px solid var(--border);
+          padding: 18px;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        body.dark .calendar-shell {
+          background: var(--white);
+          border-color: var(--border);
+          box-shadow: var(--shadow);
+        }
+        .calendar-hero {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .calendar-title-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .calendar-title {
+          margin: 0;
+          font-size: 1.18rem;
+          font-weight: 750;
+          color: var(--text-primary);
+        }
         .calendar-grid {
           display: grid;
           grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -1390,30 +1437,94 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           color: var(--text-muted);
           text-transform: uppercase;
         }
-        body.dark .cal-header-cell { background: rgba(255,255,255,.03); }
+        body.dark .cal-header-cell { background: rgba(255,255,255,.03); color: var(--text-muted); }
         .cal-cell {
           background: var(--white);
           min-height: 124px;
           padding: 8px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 5px;
+          position: relative;
+          transition: background .15s, box-shadow .15s;
         }
         .cal-cell.dim { background: var(--bg); }
         body.dark .cal-cell.dim { background: rgba(255,255,255,.015); }
+        .cal-cell.today {
+          box-shadow: inset 0 0 0 1px rgba(34,197,94,.55);
+          z-index: 1;
+        }
         .cal-cell:hover { background: rgba(0,0,0,.01); }
-        body.dark .cal-cell:hover { background: rgba(255,255,255,.03); }
-        .cal-cell.drag-over { background: rgba(34,197,94,.06); border-color: var(--green) !important; }
+        body.dark .cal-cell:hover { background: rgba(255,255,255,.035); }
+        .cal-cell.drag-over { background: rgba(34,197,94,.08) !important; box-shadow: inset 0 0 0 2px var(--green); }
+        .cal-date-chip {
+          font-weight: 700;
+          color: var(--text-primary);
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-left: auto;
+          font-size: .75rem;
+        }
+        .cal-date-chip.dim { color: var(--text-muted); opacity: .72; }
+        .cal-date-chip.today { background: var(--green); color: #fff; box-shadow: none; }
+        .cal-task-list {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          overflow-y: auto;
+          min-height: 0;
+          padding-right: 1px;
+          scrollbar-width: thin;
+        }
         .cal-task {
+          position: relative;
+          min-height: 22px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
           font-size: .68rem;
-          padding: 5px 8px;
-          border-radius: 7px;
+          line-height: 1.1;
+          padding: 4px 8px 4px 7px;
+          border-radius: 6px;
+          overflow: hidden;
+          cursor: pointer;
+          background: rgba(0,0,0,.035);
+          border: 1px solid rgba(0,0,0,.055);
+          color: var(--text-primary);
+          font-weight: 650;
+          transition: background .15s, border-color .15s;
+        }
+        body.dark .cal-task {
+          background: rgba(255,255,255,.075);
+          border-color: rgba(255,255,255,.075);
+        }
+        .cal-task:hover {
+          filter: brightness(1.08);
+          border-color: var(--cal-task-accent);
+        }
+        .cal-task::before {
+          content: "";
+          width: 4px;
+          height: 14px;
+          border-radius: 999px;
+          background: var(--cal-task-accent);
+          flex: 0 0 auto;
+        }
+        .cal-task-title {
+          min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          cursor: pointer;
-          border-left: 3px solid transparent;
-          font-weight: 600;
+        }
+        .calendar-more {
+          color: var(--text-muted);
+          font-size: .68rem;
+          font-weight: 800;
+          padding: 2px 8px;
         }
 
         /* Priority dots */
@@ -2023,9 +2134,13 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         ) : (
 
           /* ══ CALENDAR VIEW ══════════════════════════════ */
-          <div style={{ background: 'var(--white)', borderRadius: 18, boxShadow: 'var(--shadow)', border: '1px solid var(--border)', padding: 18, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontWeight: 700 }}>{MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}</h3>
+          <div className="calendar-shell">
+            <div className="calendar-hero">
+              <div>
+                <div className="calendar-title-row">
+                  <h3 className="calendar-title">{MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}</h3>
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn btn--sm btn--outline" onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><i className="fa-solid fa-chevron-left"/></button>
                 <button className="btn btn--sm btn--outline" onClick={() => setCurrentDate(new Date())}>Today</button>
@@ -2034,31 +2149,37 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
             </div>
             <div className="calendar-grid" style={{ flex: 1 }}>
               {CAL_DAYS.map(day => <div key={day} className="cal-header-cell">{day}</div>)}
-              {calendarCells.map((c, i) => (
-                <div key={i} className={`cal-cell ${!c.current ? 'dim' : ''}`}
+              {calendarCells.map((c, i) => {
+                const isToday = c.dateStr === todayDateStr;
+
+                return (
+                <div key={i} className={`cal-cell ${!c.current ? 'dim' : ''} ${isToday ? 'today' : ''}`}
                   onDragOver={e => e.preventDefault()}
                   onDragEnter={e => e.currentTarget.classList.add('drag-over')}
                   onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
                   onDrop={e => { e.currentTarget.classList.remove('drag-over'); handleDropDeadline(e, c.dateStr); }}
                   onClick={() => { setTaskModalDate(c.dateStr); setTaskModal(true); }}
+                  aria-label={`${c.day} ${MONTHS[new Date(c.dateStr).getMonth()]} - ${c.tasks.length} tasks`}
                   style={{ cursor: 'pointer' }}>
-                  <div style={{ fontWeight: c.dateStr === new Date().toDateString() ? 800 : 600, textAlign: 'right', background: c.dateStr === new Date().toDateString() ? 'var(--green)' : 'transparent', color: c.dateStr === new Date().toDateString() ? '#fff' : c.current ? 'var(--text-primary)' : 'var(--text-muted)', width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto', fontSize: '.75rem' }}>{c.day}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflowY: 'auto' }}>
-                    {c.tasks.map(t => {
-                      const cCol = getProjectColor(t.projectRef?._id);
+                  <div className={`cal-date-chip ${!c.current ? 'dim' : ''} ${isToday ? 'today' : ''}`}>{c.day}</div>
+                  <div className="cal-task-list">
+                    {c.tasks.slice(0, 5).map(t => {
+                      const taskStyle = getCalendarTaskStyle(t);
                       return (
                         <div key={t._id} className="cal-task"
                           draggable
                           onDragStart={(e) => { e.stopPropagation(); setDraggedTaskId(t._id); draggedTaskIdRef.current = t._id; }}
                           onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }}
-                          style={{ background: `var(--${cCol}-bg)`, color: `var(--${cCol})`, borderLeftColor: `var(--${cCol})` }} title={t.title}>
-                          {t.title}
+                          style={taskStyle} title={`${t.title}${t.status ? ` - ${t.status}` : ''}`}>
+                          <span className="cal-task-title">{t.title}</span>
                         </div>
                       );
                     })}
+                    {c.tasks.length > 5 && <div className="calendar-more">+{c.tasks.length - 5} more</div>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

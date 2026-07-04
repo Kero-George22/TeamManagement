@@ -4,6 +4,7 @@ const { success } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
 const aiManager = require('../services/ai.manager');
 const aiUsageService = require('../services/aiUsage.service');
+const projectLogService = require('../services/projectLog.service');
 
 // ─────────────────────────────────────────
 // CREATE PROJECT
@@ -101,6 +102,31 @@ const getProjectById = asyncWrapper(async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// GET PROJECT LOGS (owner/admin only)
+// ─────────────────────────────────────────
+
+const getProjectLogs = asyncWrapper(async (req, res) => {
+  const { page = 1, limit = 30, action, actor, entityType } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, parseInt(limit, 10) || 30);
+  
+  const filters = {};
+  if (action) filters.action = action;
+  if (actor) filters.actor = actor;
+  if (entityType) filters.entityType = entityType;
+
+  const result = await projectLogService.getProjectLogs(
+    req.params.id,
+    req.user._id,
+    req.user.isAdmin,
+    filters,
+    pageNum,
+    limitNum
+  );
+  return success(res, result, 'Project logs retrieved successfully');
+});
+
+// ─────────────────────────────────────────
 // GET PROJECT BY INVITE TOKEN (private)
 // ─────────────────────────────────────────
 
@@ -124,6 +150,13 @@ const requestToJoin = asyncWrapper(async (req, res) => {
     req.user._id,
     roleName.trim()
   );
+  projectLogService.recordProjectLog({
+    project: req.params.projectId,
+    actor: req.user._id,
+    action: 'join request submitted',
+    entityType: 'joinRequest',
+    message: `Submitted a request to join as ${roleName.trim()}`
+  });
   return success(res, result, result.message);
 });
 
@@ -138,6 +171,14 @@ const joinViaInvite = asyncWrapper(async (req, res) => {
   if (!roleName?.trim()) throw new AppError('Role name is required', 400);
 
   const project = await projectService.joinViaInvite(token, req.user._id, roleName.trim());
+  projectLogService.recordProjectLog({
+    project: project._id,
+    actor: req.user._id,
+    action: 'member joined via invite',
+    entityType: 'member',
+    entityId: req.user._id,
+    message: `Joined the project as ${roleName.trim()} via invite link`
+  });
   return success(res, project, 'Successfully joined project');
 });
 
@@ -158,6 +199,14 @@ const handleJoinRequest = asyncWrapper(async (req, res) => {
     action,
     req.user._id
   );
+  projectLogService.recordProjectLog({
+    project: projectId,
+    actor: req.user._id,
+    action: `join request ${action}ed`,
+    entityType: 'joinRequest',
+    entityId: requestId,
+    message: `Join request was ${action}ed`
+  });
   return success(res, result, `Request ${action}ed successfully`);
 });
 
@@ -193,6 +242,14 @@ const updateProject = asyncWrapper(async (req, res) => {
     throw new AppError('taskStatuses must be an array', 400);
 
   const project = await projectService.updateProject(req.params.id, updates, req.user._id);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'project updated',
+    entityType: 'project',
+    entityId: req.params.id,
+    message: `Project settings or details were updated`
+  });
   return success(res, project, 'Project updated successfully');
 });
 
@@ -220,6 +277,14 @@ const getProjectMembers = asyncWrapper(async (req, res) => {
 
 const removeMember = asyncWrapper(async (req, res) => {
   const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id, req.user.isAdmin);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'member removed/left',
+    entityType: 'member',
+    entityId: req.params.userId,
+    message: req.user._id.toString() === req.params.userId ? `Member left the project` : `Member was removed from the project`
+  });
   return success(res, result, 'Member removed from project');
 });
 
@@ -280,6 +345,13 @@ const getPermissions = asyncWrapper(async (req, res) => {
 
 const updatePermissions = asyncWrapper(async (req, res) => {
   const permissions = await projectService.updatePermissions(req.params.id, req.body, req.user._id);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'permissions updated',
+    entityType: 'permissions',
+    message: `Project permissions were updated`
+  });
   return success(res, permissions, 'Permissions updated');
 });
 
@@ -290,17 +362,41 @@ const updatePermissions = asyncWrapper(async (req, res) => {
 const addTaskStatus = asyncWrapper(async (req, res) => {
   const { name } = req.body;
   const statuses = await projectService.addTaskStatus(req.params.id, req.user._id, name);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'custom task status added',
+    entityType: 'status',
+    entityTitle: name,
+    message: `Custom task status "${name}" was added`
+  });
   return success(res, statuses, 'Status added successfully', 201);
 });
 
 const editTaskStatus = asyncWrapper(async (req, res) => {
   const { newName } = req.body;
   const statuses = await projectService.editTaskStatus(req.params.id, req.user._id, req.params.statusName, newName);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'custom task status renamed',
+    entityType: 'status',
+    entityTitle: newName,
+    message: `Custom task status "${req.params.statusName}" was renamed to "${newName}"`
+  });
   return success(res, statuses, 'Status updated successfully');
 });
 
 const removeTaskStatus = asyncWrapper(async (req, res) => {
   const statuses = await projectService.removeTaskStatus(req.params.id, req.user._id, req.params.statusName);
+  projectLogService.recordProjectLog({
+    project: req.params.id,
+    actor: req.user._id,
+    action: 'custom task status deleted',
+    entityType: 'status',
+    entityTitle: req.params.statusName,
+    message: `Custom task status "${req.params.statusName}" was deleted`
+  });
   return success(res, statuses, 'Status removed successfully');
 });
 
@@ -330,4 +426,5 @@ module.exports = {
   addTaskStatus,
   editTaskStatus,
   removeTaskStatus,
+  getProjectLogs,
 };
