@@ -1650,24 +1650,33 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
 
             <div style={{ overflowY: 'auto', padding: '8px 24px 16px' }}>
               {processedGroups.map(g => (
-                <div key={g.id} style={{ marginBottom: 24 }}>
+                <div 
+                  key={g.id} 
+                  style={{ marginBottom: 24 }}
+                  onDragOver={e => e.preventDefault()}
+                  onDragEnter={e => e.currentTarget.classList.add('drag-over')}
+                  onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('drag-over');
+                    if (isCustomizableGroup(group)) {
+                      if (draggedSectionId) moveSection(draggedSectionId, g.id);
+                      else {
+                        const dtId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+                        if (dtId) moveTaskToSection(dtId, g.id);
+                      }
+                      setDraggedSectionId(null);
+                      setDraggedTaskId(null);
+                      return;
+                    }
+                    const dtId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+                    if (dtId) { handleDropStatus(e, g.id, dtId); } else { handleDropStatus(e, g.id); }
+                  }}
+                >
                   {/* Group header */}
                   <div
                     className="section-row"
                     onClick={() => setCollapsed(prev => ({ ...prev, [g.id]: !prev[g.id] }))}
-                    onDragOver={e => { if (isCustomizableGroup(group) && (draggedSectionId || draggedTaskId)) e.preventDefault(); }}
-                    onDragEnter={e => { if (isCustomizableGroup(group) && (draggedSectionId || draggedTaskId)) e.currentTarget.classList.add('drag-over'); }}
-                    onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
-                    onDrop={e => {
-                      e.preventDefault();
-                      e.currentTarget.classList.remove('drag-over');
-                      if (isCustomizableGroup(group)) {
-                        if (draggedSectionId) moveSection(draggedSectionId, g.id);
-                        else if (draggedTaskId) moveTaskToSection(draggedTaskId, g.id);
-                      }
-                      setDraggedSectionId(null);
-                      setDraggedTaskId(null);
-                    }}
                     style={{ borderBottomColor: g.accentColor || 'var(--border)' }}
                   >
                     <i className={`fa-solid fa-chevron-${collapsed[g.id] ? 'right' : 'down'}`} style={{ color: g.accentColor || 'var(--text-muted)', fontSize: '.7rem', width: 12 }} />
