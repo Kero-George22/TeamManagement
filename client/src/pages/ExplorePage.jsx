@@ -6,7 +6,7 @@ import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import Avatar from '../components/ui/Avatar';
 import { useToast } from '../lib/toast';
-import { daysLeft, projectProgress } from '../lib/utils';
+import { daysLeft, projectProgress, getCategoryColor } from '../lib/utils';
 
 const STATUS_COLORS = { Recruiting: 'green', 'In-Progress': 'blue', Completed: 'gray' };
 
@@ -100,6 +100,14 @@ const CATEGORY_GROUPS = [
       { id: 'Healthcare', label: 'Healthcare', icon: 'fa-heart-pulse' },
     ],
   },
+];
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'most_slots', label: 'Most Open Slots' },
+  { value: 'fewest_slots', label: 'Fewest Open Slots' },
+  { value: 'most_liked', label: 'Most Liked' },
 ];
 
 export default function ExplorePage() {
@@ -275,14 +283,23 @@ export default function ExplorePage() {
           const isExpanded = expandedGroup === group.id;
           const hasActiveChild = group.children.some(c => filters.category === c.id);
           const isActive = filters.category === 'all' ? false : (hasActiveChild || expandedGroup === group.id);
+          const groupColor = getCategoryColor(group.children[0].id);
 
           return (
             <div key={group.id} style={{ position: 'relative' }}>
               <button
                 type="button"
-                className={isActive ? 'btn btn--primary btn--sm' : 'btn btn--ghost btn--sm'}
+                className="btn btn--sm"
                 onClick={() => setExpandedGroup(isExpanded ? null : group.id)}
-                style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
+                style={{ 
+                  whiteSpace: 'nowrap', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 6,
+                  backgroundColor: isActive ? groupColor : `${groupColor}15`,
+                  color: isActive ? '#fff' : groupColor,
+                  border: `1px solid ${isActive ? groupColor : `${groupColor}30`}`,
+                }}
               >
                 <i className={`fa-solid ${group.icon}`} />
                 {group.label}
@@ -293,22 +310,32 @@ export default function ExplorePage() {
               {isExpanded && (
                 <div style={{
                   position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  background: 'var(--white)', border: '1px solid var(--border)',
                   borderRadius: 8, padding: 6, minWidth: 180, marginTop: 4,
                   boxShadow: '0 8px 24px rgba(0,0,0,.3)',
                 }}>
-                  {group.children.map((child) => (
-                    <button
-                      key={child.id}
-                      type="button"
-                      className={filters.category === child.id ? 'btn btn--primary btn--sm' : 'btn btn--ghost btn--sm'}
-                      onClick={() => { updateFilter('category', child.id); setExpandedGroup(null); }}
-                      style={{ width: '100%', justifyContent: 'flex-start', fontSize: '.8rem' }}
-                    >
-                      <i className={`fa-solid ${child.icon}`} style={{ width: 16 }} />
-                      {child.label}
-                    </button>
-                  ))}
+                  {group.children.map((child) => {
+                    const childColor = getCategoryColor(child.id);
+                    const isChildActive = filters.category === child.id;
+                    return (
+                      <button
+                        key={child.id}
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => { updateFilter('category', child.id); setExpandedGroup(null); }}
+                        style={{ 
+                          width: '100%', 
+                          justifyContent: 'flex-start', 
+                          fontSize: '.8rem',
+                          backgroundColor: isChildActive ? childColor : 'transparent',
+                          color: isChildActive ? '#fff' : 'var(--text-main)',
+                        }}
+                      >
+                        <i className={`fa-solid ${child.icon}`} style={{ width: 16, color: isChildActive ? 'inherit' : childColor }} />
+                        {child.label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -434,9 +461,24 @@ export default function ExplorePage() {
               const isBookmarked = bookmarkedProjects.has(p._id);
               const likesCount = likesCounts[p._id] ?? p.likesCount ?? 0;
               const bookmarksCount = bookmarksCounts[p._id] ?? 0;
+              const catColor = getCategoryColor(p.category);
 
               return (
-                <article key={p._id} className="card" style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                <article key={p._id} className="card" style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  position: 'relative',
+                  borderTop: `4px solid ${catColor}`,
+                  transition: 'transform 0.2s, box-shadow 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = `0 12px 24px -10px ${catColor}60`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                }}>
                   {/* Like/Bookmark buttons */}
                   <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 4 }}>
                     <button
@@ -472,7 +514,12 @@ export default function ExplorePage() {
                   <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
                     <Badge variant={STATUS_COLORS[p.status] || 'gray'}>{p.status}</Badge>
                     {p.category && p.category !== 'Other' && (
-                      <span className="chip" style={{ fontSize: '.7rem' }}>
+                      <span className="chip" style={{ 
+                        fontSize: '.7rem',
+                        backgroundColor: `${catColor}15`,
+                        color: catColor,
+                        border: `1px solid ${catColor}30`
+                      }}>
                         {p.category}
                       </span>
                     )}
@@ -501,7 +548,7 @@ export default function ExplorePage() {
                         <span>{progress}%</span>
                       </div>
                       <div style={{ height: 4, background: 'var(--bg-secondary)', borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${progress}%`, background: 'var(--primary)', borderRadius: 2, transition: 'width 0.3s' }} />
+                        <div style={{ height: '100%', width: `${progress}%`, background: catColor, borderRadius: 2, transition: 'width 0.3s' }} />
                       </div>
                     </div>
                   )}

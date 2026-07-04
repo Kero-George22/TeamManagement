@@ -8,7 +8,7 @@ import Topbar from '../components/layout/Topbar';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import { ProgressBar } from '../components/ui/Primitives';
-import { fmtDate, daysLeft, projectProgress } from '../lib/utils';
+import { fmtDate, daysLeft, projectProgress, getCategoryColor } from '../lib/utils';
 
 import { projectTemplates } from '../data/projectTemplates';
 
@@ -163,8 +163,21 @@ export default function ProjectsPage() {
                 const isOwner = p.owner?._id === user?._id || p.owner === user?._id;
                 const totalOpen = (p.rolesRequired || []).reduce((acc, r) => acc + Math.max(0, r.totalSlots - (r.filledSlots || 0)), 0);
                 const isFullTeam = totalOpen === 0;
+                const catColor = getCategoryColor(p.category);
                 return (
-                  <div key={p._id} className="card" onClick={() => navigate(`/app/project/${p._id}`, { state: { from: location.pathname + location.search } })} style={{ cursor: 'pointer' }}>
+                  <div key={p._id} className="card" onClick={() => navigate(`/app/project/${p._id}`, { state: { from: location.pathname + location.search } })} style={{ 
+                    cursor: 'pointer',
+                    borderTop: `4px solid ${catColor}`,
+                    transition: 'transform 0.2s, box-shadow 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = `0 12px 24px -10px ${catColor}60`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                  }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -208,7 +221,9 @@ export default function ProjectsPage() {
                       </div>
                     </div>
                     <div style={{ marginTop: 10 }}>
-                      <ProgressBar value={pct} />
+                      <div style={{ height: 4, background: 'var(--bg-secondary)', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: catColor, borderRadius: 2, transition: 'width 0.3s' }} />
+                      </div>
                       <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>{pct}% elapsed • {daysLeft(p.startDate, p.duration)}</div>
                     </div>
                   </div>
