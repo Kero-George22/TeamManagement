@@ -446,30 +446,7 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <section className="dashboard-widget">
-            <div className="dashboard-widget__header">
-              <div>
-                <h3 className="section-title" style={{ marginBottom: 4 }}>Profile</h3>
-                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Quick identity snapshot.</div>
-              </div>
-            </div>
 
-            {profile ? (
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <Avatar user={profile} size="lg" />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: '1rem' }}>{profile.username || profile.email?.split('@')[0] || 'User'}</div>
-                  <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 4 }}>{profile.email}</div>
-                  <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="chip"><i className="fa-solid fa-folder-open" /> {dashboardStats.ownedProjects} owned</span>
-                    <span className="chip"><i className="fa-solid fa-handshake-angle" /> {dashboardStats.joinedProjects} joined</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="skeleton" style={{ height: 92, borderRadius: 18 }} />
-            )}
-          </section>
         </div>
       </div>
       {selectedTask && (
