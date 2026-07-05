@@ -690,7 +690,7 @@ async function toggleBookmark(projectId, userId) {
 // GET PROJECT MEMBERS
 // ─────────────────────────────────────────
 
-async function getProjectMembers(projectId, requesterId, isAdmin = false) {
+async function getProjectMembers(projectId, requesterId) {
   validateObjectId(projectId, 'project ID');
 
   const User = require('../models/user.model');
@@ -703,7 +703,7 @@ async function getProjectMembers(projectId, requesterId, isAdmin = false) {
   const uid = String(requesterId || '');
   const isOwner = String(project.owner) === uid;
   const isMember = project.members.some((m) => String(m.userId?._id || m.userId) === uid);
-  if (!isAdmin && !isOwner && !isMember) {
+  if (!isOwner && !isMember) {
     throw new AppError('Only project members can view the member list', 403);
   }
 
@@ -739,7 +739,7 @@ async function getProjectMembers(projectId, requesterId, isAdmin = false) {
 // REMOVE MEMBER
 // ─────────────────────────────────────────
 
-async function removeMember(projectId, memberUserId, requesterId, isRequesterAdmin = false) {
+async function removeMember(projectId, memberUserId, requesterId) {
   validateObjectId(projectId, 'project ID');
   validateObjectId(memberUserId, 'member user ID');
 
@@ -750,8 +750,8 @@ async function removeMember(projectId, memberUserId, requesterId, isRequesterAdm
   const isOwner = project.owner.toString() === requesterId.toString();
   const isSelf  = memberUserId.toString() === requesterId.toString();
 
-  if (!isOwner && !isSelf && !isRequesterAdmin) {
-    throw new AppError('Only the project owner, an admin, or the member themselves can remove members', 403);
+  if (!isOwner && !isSelf) {
+    throw new AppError('Only the project owner or the member themselves can remove members', 403);
   }
 
   // Others cannot forcibly remove the project owner, but the owner can leave themselves

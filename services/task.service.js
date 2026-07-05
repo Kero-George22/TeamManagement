@@ -181,15 +181,13 @@ function plainWorkspace(workspace = {}) {
   return workspace?.toObject ? workspace.toObject() : (workspace || {});
 }
 
-async function getPlannerProject(projectId, userId, isAdmin = false) {
+async function getPlannerProject(projectId, userId) {
   validateObjectId(projectId, 'project ID');
 
   const project = await Project.findById(projectId)
     .populate('members.userId', 'email username avatar')
     .populate('owner', 'email username avatar');
   if (!project) throw new AppError('Project not found', 404);
-
-  if (isAdmin) return project;
 
   const isOwner = String(project.owner?._id || project.owner) === String(userId);
   if (!isOwner)
@@ -198,13 +196,13 @@ async function getPlannerProject(projectId, userId, isAdmin = false) {
   return project;
 }
 
-async function getAIWorkspace(projectId, userId, isAdmin = false) {
-  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['aiWorkspace']);
+async function getAIWorkspace(projectId, userId) {
+  const project = await ensureProjectAccess(projectId, userId, ['aiWorkspace']);
   return serializeAIWorkspace(project.aiWorkspace || {});
 }
 
-async function updateAIWorkspace(projectId, userId, payload = {}, isAdmin = false) {
-  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['aiWorkspace']);
+async function updateAIWorkspace(projectId, userId, payload = {}) {
+  const project = await ensureProjectAccess(projectId, userId, ['aiWorkspace']);
   const isOwner = String(project.owner || '') === String(userId);
   const current = serializeAIWorkspace(project.aiWorkspace || {});
 
@@ -218,7 +216,7 @@ async function updateAIWorkspace(projectId, userId, payload = {}, isAdmin = fals
     updatedAt: new Date(),
   };
 
-  if (isOwner || isAdmin) {
+  if (isOwner) {
     if (payload.guidance !== undefined) next.guidance = String(payload.guidance || '').slice(0, 2000);
     if (payload.plan !== undefined) next.plan = payload.plan || null;
     if (payload.plannerStatus !== undefined) next.plannerStatus = String(payload.plannerStatus || '').slice(0, 1000);
@@ -231,11 +229,10 @@ async function updateAIWorkspace(projectId, userId, payload = {}, isAdmin = fals
   return serializeAIWorkspace(project.aiWorkspace || {});
 }
 
-async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFields = []) {
+async function ensureProjectAccess(projectId, userId, extraFields = []) {
   const fields = ['owner', 'members', 'permissions', ...extraFields].join(' ');
   const project = await Project.findById(projectId).select(fields);
   if (!project) throw new AppError('Project not found', 404);
-  if (isAdmin) return project;
 
   const isOwner = String(project.owner || '') === String(userId);
   if (isOwner) return project;
@@ -249,13 +246,13 @@ async function ensureProjectAccess(projectId, userId, isAdmin = false, extraFiel
   return project;
 }
 
-async function ensureTaskAccess(taskId, userId, isAdmin = false, extraProjectFields = []) {
+async function ensureTaskAccess(taskId, userId, extraProjectFields = []) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId);
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin, extraProjectFields);
+  const project = await ensureProjectAccess(task.project, userId, extraProjectFields);
   return { task, project };
 }
 
@@ -337,8 +334,8 @@ async function createTasksByAI(projectId, userId) {
   return Task.insertMany(taskDocs);
 }
 
-async function generateAIPlanPreview(projectId, userId, isAdmin = false, guidance = '') {
-  const project = await getPlannerProject(projectId, userId, isAdmin);
+async function generateAIPlanPreview(projectId, userId, guidance = '') {
+  const project = await getPlannerProject(projectId, userId);
   const existingTasks = await Task.find({ project: projectId })
     .select('title status priority assignedRole deadline storyPoints')
     .lean();
@@ -369,8 +366,8 @@ async function generateAIPlanPreview(projectId, userId, isAdmin = false, guidanc
   return workspacePlan;
 }
 
-async function acceptAIPlan(projectId, userId, payload = {}, isAdmin = false) {
-  const project = await getPlannerProject(projectId, userId, isAdmin);
+async function acceptAIPlan(projectId, userId, payload = {}) {
+  const project = await getPlannerProject(projectId, userId);
   const memberIds = buildProjectMemberSet(project);
   const queues = buildRoleQueues(project);
   const incomingTasks = Array.isArray(payload.tasks)
@@ -447,10 +444,10 @@ async function acceptAIPlan(projectId, userId, payload = {}, isAdmin = false) {
 // GET ALL TASKS FOR A PROJECT
 // ─────────────────────────────────────────
 
-async function getProjectTasks(projectId, userId, isAdmin = false) {
+async function getProjectTasks(projectId, userId) {
   validateObjectId(projectId, 'project ID');
 
-  const project = await ensureProjectAccess(projectId, userId, isAdmin);
+  const project = await ensureProjectAccess(projectId, userId);
 
   const query = { project: projectId };
 
@@ -463,15 +460,13 @@ async function getProjectTasks(projectId, userId, isAdmin = false) {
 // DASHBOARD TASKS OVERVIEW (single request, aggregate-based)
 // ─────────────────────────────────────────
 
-async function getDashboardTasks(userId, isAdmin = false) {
-  if (!isAdmin) validateObjectId(userId, 'user ID');
+async function getDashboardTasks(userId) {
+  validateObjectId(userId, 'user ID');
 
   const userIdObj = new mongoose.Types.ObjectId(String(userId));
 
   // 1) Get accessible projects (fast lean query)
-  const projectQuery = isAdmin
-    ? {}
-    : { $or: [{ owner: userIdObj }, { 'members.userId': userIdObj }] };
+  const projectQuery = { $or: [{ owner: userIdObj }, { 'members.userId': userIdObj }] };
 
   const projects = await Project.find(projectQuery)
     .select('_id title owner members isPrivate')
@@ -486,11 +481,8 @@ async function getDashboardTasks(userId, isAdmin = false) {
   // 2) Build visibility filters — members only see their own tasks, owners see all
   const orClauses = [];
 
-  if (isAdmin) {
-    orClauses.push({ project: { $in: projects.map((p) => p._id) } });
-  } else {
-    for (const project of projects) {
-      const isOwner = String(project.owner) === String(userId);
+  for (const project of projects) {
+    const isOwner = String(project.owner) === String(userId);
       if (isOwner) {
         // Owner sees all tasks in their project
         orClauses.push({ project: project._id });
@@ -506,7 +498,6 @@ async function getDashboardTasks(userId, isAdmin = false) {
         ]
       });
     }
-  }
 
   // 3) Single query to get tasks (limited to 100 most recent for performance)
   const taskQuery = orClauses.length === 1 ? orClauses[0] : { $or: orClauses };
@@ -528,13 +519,13 @@ async function getDashboardTasks(userId, isAdmin = false) {
 // GET SINGLE TASK
 // ─────────────────────────────────────────
 
-async function getTaskById(taskId, userId, isAdmin = false) {
+async function getTaskById(taskId, userId) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId).populate('assignedTo', 'email username avatar');
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin);
+  const project = await ensureProjectAccess(task.project, userId);
 
   return task;
 }
@@ -578,13 +569,13 @@ async function _syncLinkedGoals(taskId, newStatus) {
   }
 }
 
-async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
+async function updateTaskStatus(taskId, newStatus, userId) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId);
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin);
+  const project = await ensureProjectAccess(task.project, userId);
 
   const isOwner    = String(project.owner || '') === String(userId);
   const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
@@ -592,8 +583,8 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
     (m) => String(m.userId) === String(userId)
   );
 
-  // Admin أو Owner يقدر يعمل أي transition
-  if (isAdmin || isOwner) {
+  // Owner يقدر يعمل أي transition
+  if (isOwner) {
     await checkDependencies(task, newStatus);
     const oldStatus = task.status;
     task.status = newStatus;
@@ -661,10 +652,10 @@ async function _rewardUser(task) {
   );
 }
 
-async function createTask(projectId, userId, taskData, isAdmin = false) {
+async function createTask(projectId, userId, taskData) {
   validateObjectId(projectId, 'project ID');
   
-  const project = await ensureProjectAccess(projectId, userId, isAdmin, ['taskStatuses']);
+  const project = await ensureProjectAccess(projectId, userId, ['taskStatuses']);
   const allowedStatuses = project?.taskStatuses?.length
     ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
@@ -703,10 +694,10 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
     resolvedAssignedTo = [];
   }
 
-  // Only owner/admin can assign tasks to others (or members with permission)
+  // Only owner can assign tasks to others (or members with permission)
   const isOwner = String(project.owner || '') === String(userId);
   const perms = project.permissions || {};
-  if (!isAdmin && !isOwner && !perms.memberCanAssignOthers && resolvedAssignedTo.length > 0 && !resolvedAssignedTo.every(id => String(id) === String(userId))) {
+  if (!isOwner && !perms.memberCanAssignOthers && resolvedAssignedTo.length > 0 && !resolvedAssignedTo.every(id => String(id) === String(userId))) {
     resolvedAssignedTo = [userId]; // Default to self if member tries to assign to others without permission
   }
 
@@ -753,27 +744,25 @@ async function createTask(projectId, userId, taskData, isAdmin = false) {
 // UPDATE TASK (fields only, not status)
 // ─────────────────────────────────────────
 
-async function updateTask(taskId, userId, updates, isAdmin = false) {
+async function updateTask(taskId, userId, updates) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId);
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin, ['taskStatuses']);
+  const project = await ensureProjectAccess(task.project, userId, ['taskStatuses']);
   const allowedStatuses = project?.taskStatuses?.length
     ? project.taskStatuses
     : ['Todo', 'In-Progress', 'Review', 'Done', 'Approved'];
 
   // Non-admins can only edit if assigned to them, or if it is unassigned (or if permitted)
-  if (!isAdmin) {
-    const isOwner = String(project.owner || '') === String(userId);
-    const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
-    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
-    const perms = project.permissions || {};
-    
-    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask)
-      throw new AppError('You can only edit tasks assigned to you, unassigned tasks, or owned projects', 403);
-  }
+  const isOwner = String(project.owner || '') === String(userId);
+  const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
+  const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+  const perms = project.permissions || {};
+  
+  if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask)
+    throw new AppError('You can only edit tasks assigned to you, unassigned tasks, or owned projects', 403);
 
   // Map frontend fields to backend fields
   if (updates.name) task.title = updates.name;
@@ -838,22 +827,20 @@ async function updateTask(taskId, userId, updates, isAdmin = false) {
 // DELETE TASK
 // ─────────────────────────────────────────
 
-async function deleteTask(taskId, userId, isAdmin = false) {
+async function deleteTask(taskId, userId) {
   validateObjectId(taskId, 'task ID');
 
   const task = await Task.findById(taskId);
   if (!task) throw new AppError('Task not found', 404);
 
-  const project = await ensureProjectAccess(task.project, userId, isAdmin);
+  const project = await ensureProjectAccess(task.project, userId);
 
-  // Only project owner or admin can delete (or members with permission)
-  if (!isAdmin) {
-    const isOwner = String(project.owner || '') === String(userId);
-    if (!isOwner) {
-      const perms = project.permissions || {};
-      if (!perms.memberCanDeleteTask)
-        throw new AppError('Only project owner can delete tasks', 403);
-    }
+  // Only project owner can delete (or members with permission)
+  const isOwner = String(project.owner || '') === String(userId);
+  if (!isOwner) {
+    const perms = project.permissions || {};
+    if (!perms.memberCanDeleteTask)
+      throw new AppError('Only project owner can delete tasks', 403);
   }
 
   await Task.findByIdAndDelete(taskId);
@@ -864,10 +851,10 @@ async function deleteTask(taskId, userId, isAdmin = false) {
 // GET PROJECT BOARD — tasks grouped by status
 // ─────────────────────────────────────────
 
-async function getProjectBoard(projectId, userId, isAdmin = false) {
+async function getProjectBoard(projectId, userId) {
   validateObjectId(projectId, 'project ID');
 
-  const project = await ensureProjectAccess(projectId, userId, isAdmin);
+  const project = await ensureProjectAccess(projectId, userId);
 
   const match = { project: new mongoose.Types.ObjectId(String(projectId)) };
 
@@ -933,10 +920,10 @@ async function getProjectBoard(projectId, userId, isAdmin = false) {
   return groups;
 }
 
-async function addComment(taskId, userId, text, isAdmin = false) {
+async function addComment(taskId, userId, text) {
   if (!text?.trim()) throw new AppError('Comment text is required', 400);
 
-  const { task } = await ensureTaskAccess(taskId, userId, isAdmin);
+  const { task } = await ensureTaskAccess(taskId, userId);
   task.comments.push({ user: userId, text: text.trim().slice(0, 2000) });
   await task.save();
   await task.populate('comments.user', 'email username avatar');
@@ -949,8 +936,8 @@ async function addComment(taskId, userId, text, isAdmin = false) {
   return task.comments;
 }
 
-async function getComments(taskId, userId, isAdmin = false) {
-  await ensureTaskAccess(taskId, userId, isAdmin);
+async function getComments(taskId, userId) {
+  await ensureTaskAccess(taskId, userId);
 
   const task = await Task.findById(taskId)
     .select('comments')
@@ -958,28 +945,26 @@ async function getComments(taskId, userId, isAdmin = false) {
   return task?.comments || [];
 }
 
-async function getSubtasksForUser(taskId, userId, isAdmin = false) {
-  const { task } = await ensureTaskAccess(taskId, userId, isAdmin);
+async function getSubtasksForUser(taskId, userId) {
+  const { task } = await ensureTaskAccess(taskId, userId);
 
   return Task.find({ parentTask: task._id, project: task.project })
     .populate('assignedTo', 'email username avatar')
     .sort({ createdAt: 1 });
 }
 
-async function attachFile(taskId, userId, fileData, isAdmin = false) {
+async function attachFile(taskId, userId, fileData) {
   if (!fileData || !fileData.url) throw new AppError('No file uploaded', 400);
 
-  const { task, project } = await ensureTaskAccess(taskId, userId, isAdmin);
+  const { task, project } = await ensureTaskAccess(taskId, userId);
 
-  if (!isAdmin) {
-    const isOwner = String(project.owner || '') === String(userId);
-    const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
-    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
-    const perms = project.permissions || {};
-    
-    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
-      throw new AppError('You can only upload attachments to tasks assigned to you, unassigned tasks, or owned projects', 403);
-    }
+  const isOwner = String(project.owner || '') === String(userId);
+  const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
+  const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+  const perms = project.permissions || {};
+  
+  if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
+    throw new AppError('You can only upload attachments to tasks assigned to you, unassigned tasks, or owned projects', 403);
   }
 
   if (!task.attachments) task.attachments = [];
@@ -997,18 +982,16 @@ async function attachFile(taskId, userId, fileData, isAdmin = false) {
   return { attachments: task.attachments };
 }
 
-async function removeAttachment(taskId, userId, attachmentId, isAdmin = false) {
-  const { task, project } = await ensureTaskAccess(taskId, userId, isAdmin);
+async function removeAttachment(taskId, userId, attachmentId) {
+  const { task, project } = await ensureTaskAccess(taskId, userId);
 
-  if (!isAdmin) {
-    const isOwner = String(project.owner || '') === String(userId);
-    const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
-    const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
-    const perms = project.permissions || {};
-    
-    if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
-      throw new AppError('You can only remove attachments from tasks assigned to you, unassigned tasks, or owned projects', 403);
-    }
+  const isOwner = String(project.owner || '') === String(userId);
+  const isAssigned = Array.isArray(task.assignedTo) && task.assignedTo.some(u => String(u._id || u) === String(userId));
+  const isUnassigned = !task.assignedTo || task.assignedTo.length === 0;
+  const perms = project.permissions || {};
+  
+  if (!isOwner && !isAssigned && !isUnassigned && !perms.memberCanEditAnyTask) {
+    throw new AppError('You can only remove attachments from tasks assigned to you, unassigned tasks, or owned projects', 403);
   }
 
   if (task.attachments) {

@@ -338,17 +338,17 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
            
            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14, maxHeight: 200, overflowY: 'auto' }}>
              {comments.length === 0 ? (
-               <div style={{ color: 'var(--text-muted)', fontSize: '.85rem' }}>No comments yet.</div>
+               <div style={{ color: 'var(--text-secondary)', fontSize: '.85rem' }}>No comments yet.</div>
              ) : (
                comments.map(c => (
                  <div key={c._id} style={{ display: 'flex', gap: 10 }}>
                    <Avatar user={c.user} size="sm" />
-                   <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 12, flex: 1 }}>
+                   <div style={{ background: 'linear-gradient(180deg, #111827, #0a0a0a)', padding: '10px 12px', borderRadius: 14, flex: 1, border: '1px solid rgba(255,255,255,.08)', boxShadow: '0 8px 18px rgba(0,0,0,.18)' }}>
                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                       <span style={{ fontSize: '.8rem', fontWeight: 600 }}>{c.user?.username || c.user?.email || 'User'}</span>
-                       <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{fmtDate(c.postedAt)}</span>
+                       <span style={{ fontSize: '.8rem', fontWeight: 700, color: '#f8fafc' }}>{c.user?.username || c.user?.email || 'User'}</span>
+                       <span style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.55)' }}>{fmtDate(c.postedAt)}</span>
                      </div>
-                     <p style={{ fontSize: '.85rem', margin: 0, color: 'var(--text-primary)' }}>{c.text}</p>
+                     <p style={{ fontSize: '.85rem', margin: 0, color: 'rgba(255,255,255,.88)' }}>{c.text}</p>
                    </div>
                  </div>
                ))
@@ -359,7 +359,7 @@ export default function TaskSidePanel({ task, onClose, isOwner, isMember, userId
              <Avatar user={{ username: 'Me' }} size="sm" />
              <textarea 
                className="form-input" 
-               style={{ flex: 1, minHeight: 40, fontSize: '.85rem', padding: '8px 12px' }} 
+               style={{ flex: 1, minHeight: 40, fontSize: '.85rem', padding: '8px 12px', background: '#111827', color: '#f8fafc', border: '1px solid rgba(255,255,255,.08)' }} 
                placeholder="Write a comment... (Press Enter to post)"
                value={commentText}
                onChange={e => setCommentText(e.target.value)}

@@ -56,10 +56,10 @@ export default function OfficePage() {
   return (
     <>
       <Topbar title={title} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, flex: 1, minHeight: 0, padding: 16, background: 'linear-gradient(180deg, var(--bg), rgba(255,255,255,.55))' }}>
 
         {/* Chat */}
-        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: '1rem' }}>{title}</div>
@@ -79,13 +79,13 @@ export default function OfficePage() {
                     {!isMe && !isAI && <Avatar user={m.sender} size="sm" />}
                     {isAI && <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><i className="fa-solid fa-robot" style={{ color: 'var(--green)', fontSize: '.8rem' }} /></div>}
                     <div>
-                      {!isMe && <div style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 3 }}>{isAI ? 'AI Manager' : m.sender?.username || 'User'}</div>}
+                      {!isMe && <div style={{ fontSize: '.72rem', fontWeight: 700, color: '#475569', marginBottom: 3 }}>{isAI ? 'AI Manager' : m.sender?.username || 'User'}</div>}
                       <div style={{ maxWidth: isAI ? '90%' : '70%', padding: '10px 14px', borderRadius: 18, fontSize: '.875rem', lineHeight: 1.45,
-                        ...(isAI ? { background: 'var(--green-bg)', color: '#166534' } :
-                            isMe ? { background: 'var(--sidebar-bg)', color: '#fff', borderBottomRightRadius: 4 } :
-                                   { background: '#f3f4f6', borderBottomLeftRadius: 4 })
+                        ...(isAI ? { background: 'linear-gradient(180deg, #ecfdf5, #dcfce7)', color: '#14532d', border: '1px solid rgba(34,197,94,.12)' } :
+                            isMe ? { background: 'linear-gradient(135deg, var(--sidebar-bg), #111827)', color: '#fff', borderBottomRightRadius: 4, boxShadow: '0 8px 18px rgba(15,23,42,.14)' } :
+                                   { background: 'linear-gradient(180deg, #ffffff, #f8fafc)', color: '#0f172a', border: '1px solid rgba(15,23,42,.08)', borderBottomLeftRadius: 4, boxShadow: '0 8px 18px rgba(15,23,42,.04)' })
                       }}>{m.content}</div>
-                      <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 4, ...(isMe ? { textAlign: 'right' } : {}) }}>{t}</div>
+                      <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 4, ...(isMe ? { textAlign: 'right' } : {}) }}>{t}</div>
                     </div>
                   </div>
                 );
@@ -97,7 +97,7 @@ export default function OfficePage() {
           <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
             <input type="text" placeholder="Send a message to the team…" value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') sendMsg(); }}
-              style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: '#f9fafb' }} />
+              style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: '#fff', color: '#0f172a' }} />
             <button className="btn btn--primary btn--icon" onClick={sendMsg} aria-label="Send"><i className="fa-solid fa-paper-plane" /></button>
           </div>
         </div>

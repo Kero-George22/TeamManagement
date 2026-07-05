@@ -118,7 +118,6 @@ const getProjectLogs = asyncWrapper(async (req, res) => {
   const result = await projectLogService.getProjectLogs(
     req.params.id,
     req.user._id,
-    req.user.isAdmin,
     filters,
     pageNum,
     limitNum
@@ -267,7 +266,7 @@ const deleteProject = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getProjectMembers = asyncWrapper(async (req, res) => {
-  const members = await projectService.getProjectMembers(req.params.id, req.user._id, req.user.isAdmin);
+  const members = await projectService.getProjectMembers(req.params.id, req.user._id);
   return success(res, members, 'Project members retrieved');
 });
 
@@ -276,7 +275,7 @@ const getProjectMembers = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const removeMember = asyncWrapper(async (req, res) => {
-  const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id, req.user.isAdmin);
+  const result = await projectService.removeMember(req.params.id, req.params.userId, req.user._id);
   projectLogService.recordProjectLog({
     project: req.params.id,
     actor: req.user._id,

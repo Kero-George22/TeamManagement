@@ -547,8 +547,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   }, [forcedProject, forcedProjectId, projects, selectedProject, globalMode]);
 
   const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
-  const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
-  const canDeleteTask = isAdmin || isOwner || activeProject?.permissions?.memberCanDeleteTask;
+  const canDeleteTask = isOwner || activeProject?.permissions?.memberCanDeleteTask;
 
   const [tasks, setTasks] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -720,11 +719,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
       : false;
     const isUnassigned = !t.assignedTo || t.assignedTo.length === 0;
     
-    // Check local admin role (since user context might lag behind DB)
-    const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
-
-    // Admin أو Owner يقدر يحط أي task في أي حالة
-    if (!isAdmin && !isOwner) {
+    // Owner يقدر يحط أي task في أي حالة
+    if (!isOwner) {
       // Member عادي
       const perms = activeProject?.permissions || {};
       
@@ -848,9 +844,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   function addCustomSection(afterSectionId = null) {
     if (embedded && group === 'status') {
       const perms = activeProject?.permissions || {};
-      const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
       const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
-      if (!isAdmin && !isOwner && !perms.memberCanCreateStatus) {
+      if (!isOwner && !perms.memberCanCreateStatus) {
         toast.error('You do not have permission to create statuses');
         return;
       }
@@ -880,9 +875,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   function updateSectionLabel(sectionId, newLabel) {
     if (embedded && group === 'status') {
       const perms = activeProject?.permissions || {};
-      const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
       const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
-      if (!isAdmin && !isOwner && !perms.memberCanEditStatus) {
+      if (!isOwner && !perms.memberCanEditStatus) {
         toast.error('You do not have permission to edit statuses');
         return;
       }
@@ -907,9 +901,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
   function removeCustomSection(sectionId) {
     if (embedded && group === 'status') {
       const perms = activeProject?.permissions || {};
-      const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
       const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
-      if (!isAdmin && !isOwner && !perms.memberCanDeleteStatus) {
+      if (!isOwner && !perms.memberCanDeleteStatus) {
         toast.error('You do not have permission to delete statuses');
         return;
       }
@@ -974,9 +967,8 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
     if (!sourceId || !targetId || sourceId === targetId) return;
     if (embedded && group === 'status') {
       const perms = activeProject?.permissions || {};
-      const isAdmin = user?.isAdmin === true || user?.isAdmin === 'true';
       const isOwner = activeProject && (String(activeProject.owner?._id || activeProject.owner) === String(user?._id || user?.id));
-      if (!isAdmin && !isOwner && !perms.memberCanEditStatus) {
+      if (!isOwner && !perms.memberCanEditStatus) {
         toast.error('You do not have permission to edit statuses');
         return;
       }
@@ -1311,7 +1303,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
           cursor: grab; transition: all .18s;
           box-shadow: 0 1px 2px rgba(0,0,0,.04);
         }
-        body.dark .jira-card { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); }
+        body.dark .jira-card { background: rgba(255,255,255,.045); border-color: rgba(255,255,255,.08); }
         .jira-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.1); }
         body.dark .jira-card:hover { box-shadow: 0 6px 16px rgba(0,0,0,.4); }
         .jira-card:active { cursor: grabbing; opacity: .85; }
@@ -1320,7 +1312,7 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
         .jira-chip {
           display: inline-flex; align-items: center; gap: 4px;
           border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px;
-          color: var(--text-secondary); background: #f9fafb; font-size: .7rem;
+          color: var(--text-secondary); background: rgba(255,255,255,.72); font-size: .7rem;
         }
         body.dark .jira-chip { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.08); }
 
@@ -2017,7 +2009,13 @@ export default function SectionPage({ embedded = false, forcedProjectId = null, 
                       onDragStart={e => { setDraggedTaskId(t._id); draggedTaskIdRef.current = t._id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t._id); }}
                       onDragEnd={() => { setDraggedTaskId(null); draggedTaskIdRef.current = null; }}
                       onClick={() => setSelectedTask(t)}
-                      style={{ position: 'relative', borderLeftColor: cardColor }}
+                      style={{
+                        position: 'relative',
+                        borderLeftColor: cardColor,
+                        background: `linear-gradient(180deg, ${cardColor}18, ${cardColor}0f), var(--white)`,
+                        borderColor: 'rgba(15,23,42,.08)',
+                        boxShadow: '0 4px 10px rgba(0,0,0,.06)',
+                      }}
                     >
                       {canDeleteTask && (
                         <button

@@ -235,9 +235,7 @@ export default function AdminDashboardPage() {
                         <td style={{ padding: '12px 16px', fontSize: '.85rem', color: 'var(--text-secondary)' }}>{fmtDate(p.createdAt)}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                            <button className="btn btn--sm btn--outline" onClick={() => window.open(`/app/project/${p._id}`, '_blank')} style={{ padding: '4px 8px' }}>
-                              <i className="fa-solid fa-eye" />
-                            </button>
+
                             <button className="btn btn--sm btn--red" onClick={() => handleDeleteProject(p._id)} style={{ padding: '4px 8px' }}>
                               <i className="fa-solid fa-trash" />
                             </button>

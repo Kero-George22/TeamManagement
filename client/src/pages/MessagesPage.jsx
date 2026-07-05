@@ -143,10 +143,10 @@ export default function MessagesPage() {
   return (
     <>
       <Topbar title="Messages" />
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, flex: 1, minHeight: 0, padding: 16, background: 'linear-gradient(180deg, var(--bg), rgba(255,255,255,.55))' }}>
 
         {/* Left: conversations */}
-        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', padding: 16, boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', padding: 16, boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', border: '1px solid var(--border)' }}>
           <h3 className="section-title" style={{ margin: 0 }}>Messages</h3>
           <div style={{ position: 'relative' }}>
             <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '.8rem' }} />
@@ -177,7 +177,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Right: chat */}
-        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ background: 'var(--white)', borderRadius: 'var(--card-radius)', boxShadow: 'var(--shadow)', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)' }}>
           {!activeId ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: 12 }}>
               <i className="fa-regular fa-comment-dots" style={{ fontSize: '3rem', opacity: .25 }} />
@@ -209,10 +209,10 @@ export default function MessagesPage() {
                           lineHeight: 1.5,
                           wordBreak: 'break-word',
                           ...(isMe
-                            ? { background: 'var(--green)', color: '#fff', borderBottomRightRadius: 4 }
-                            : { background: 'var(--white)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderBottomLeftRadius: 4 })
+                              ? { background: 'linear-gradient(135deg, var(--green), #16a34a)', color: '#fff', borderBottomRightRadius: 4, boxShadow: '0 8px 18px rgba(34,197,94,.18)' }
+                              : { background: 'linear-gradient(180deg, #ffffff, #f8fafc)', color: '#0f172a', border: '1px solid rgba(15,23,42,.08)', borderBottomLeftRadius: 4, boxShadow: '0 8px 18px rgba(15,23,42,.04)' })
                         }}>{m.content}</div>
-                        <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 3 }}>{t}</div>
+                          <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 3 }}>{t}</div>
                       </div>
                     );
                   })
@@ -222,7 +222,7 @@ export default function MessagesPage() {
               <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input type="text" placeholder="Type a message…" value={input} onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') sendMsg(); }}
-                  style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: 'var(--white)', color: 'var(--text-primary)' }} />
+                  style={{ flex: 1, padding: '11px 16px', borderRadius: 99, border: '1.5px solid var(--border)', fontSize: '.875rem', background: 'var(--white)', color: '#0f172a' }} />
                 <button className="btn btn--green btn--icon" onClick={sendMsg} aria-label="Send"><i className="fa-solid fa-paper-plane" /></button>
               </div>
             </>

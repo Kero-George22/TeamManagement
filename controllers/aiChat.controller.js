@@ -25,7 +25,7 @@ const chat = asyncWrapper(async (req, res) => {
   const userId = String(req.user._id);
   const isOwner = String(project.owner?._id || project.owner) === userId;
   const isMember = (project.members || []).some(m => String(m.userId?._id || m.userId) === userId);
-  if (!isOwner && !isMember && !req.user.isAdmin) throw new AppError('Access denied', 403);
+  if (!isOwner && !isMember) throw new AppError('Access denied', 403);
 
   // Build context
   const tasks = await Task.find({ project: projectId })

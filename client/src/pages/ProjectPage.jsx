@@ -368,10 +368,10 @@ export default function ProjectPage() {
         {isMember && (
           <button className={`workspace-tab ${tab === 'ai' ? 'active' : ''}`} onClick={() => setTab('ai')}>AI Planner</button>
         )}
-        {(isOwner || user?.isAdmin) && (
+        {isOwner && (
           <button className={`workspace-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>Analytics</button>
         )}
-        {(isOwner || user?.isAdmin) && (
+        {isOwner && (
           <button className={`workspace-tab ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>Logs</button>
         )}
         <div style={{ flex: 1 }} />
@@ -507,7 +507,7 @@ export default function ProjectPage() {
                       ? <Badge variant="yellow">Admin</Badge>
                       : <Badge variant="gray">Member</Badge>
                   }
-                  {isOwner && !member.isOwner && !member.user?.isAdmin && (
+                  {isOwner && !member.isOwner && (
                     <button
                       className="tool-btn"
                       onClick={() => handleRemoveMember(member.user._id, member.user?.username || 'this member')}
@@ -672,11 +672,11 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {tab === 'analytics' && (isOwner || user?.isAdmin) && (
+      {tab === 'analytics' && isOwner && (
         <ProjectAnalyticsTab projectId={id} />
       )}
 
-      {tab === 'logs' && (isOwner || user?.isAdmin) && (
+      {tab === 'logs' && isOwner && (
         <ProjectLogsTab projectId={id} />
       )}
 
@@ -689,7 +689,7 @@ export default function ProjectPage() {
           projectId={id}
           project={project}
           members={members || []}
-          isOwner={isOwner || user?.isAdmin}
+          isOwner={isOwner}
           onTasksCreated={() => {
             loadTasks();
             setTab('tasks');

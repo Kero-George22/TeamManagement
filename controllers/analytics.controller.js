@@ -119,7 +119,7 @@ const getProjectAnalytics = asyncWrapper(async (req, res) => {
   if (!project) throw new AppError('Project not found', 404);
 
   const isOwner = project.owner.toString() === req.user._id.toString();
-  if (!isOwner && !req.user.isAdmin)
+  if (!isOwner)
     throw new AppError('Unauthorized', 403);
 
   const pid = new mongoose.Types.ObjectId(projectId);

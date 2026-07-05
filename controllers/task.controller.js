@@ -22,7 +22,6 @@ const generateAIPlanPreview = asyncWrapper(async (req, res) => {
   const plan = await taskService.generateAIPlanPreview(
     req.params.projectId,
     req.user._id,
-    req.user.isAdmin,
     req.body?.guidance || ''
   );
   await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
@@ -33,8 +32,7 @@ const acceptAIPlan = asyncWrapper(async (req, res) => {
   const tasks = await taskService.acceptAIPlan(
     req.params.projectId,
     req.user._id,
-    req.body,
-    req.user.isAdmin
+    req.body
   );
   return success(res, tasks, 'AI plan tasks created', 201);
 });
@@ -42,8 +40,7 @@ const acceptAIPlan = asyncWrapper(async (req, res) => {
 const getAIWorkspace = asyncWrapper(async (req, res) => {
   const workspace = await taskService.getAIWorkspace(
     req.params.projectId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, workspace, 'AI workspace retrieved');
 });
@@ -52,8 +49,7 @@ const updateAIWorkspace = asyncWrapper(async (req, res) => {
   const workspace = await taskService.updateAIWorkspace(
     req.params.projectId,
     req.user._id,
-    req.body,
-    req.user.isAdmin
+    req.body
   );
   return success(res, workspace, 'AI workspace saved');
 });
@@ -66,8 +62,7 @@ const createTask = asyncWrapper(async (req, res) => {
   const task = await taskService.createTask(
     req.params.projectId,
     req.user._id,
-    req.body,
-    req.user.isAdmin
+    req.body
   );
   return success(res, task, 'Task created', 201);
 });
@@ -79,16 +74,14 @@ const createTask = asyncWrapper(async (req, res) => {
 const getProjectTasks = asyncWrapper(async (req, res) => {
   const tasks = await taskService.getProjectTasks(
     req.params.projectId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, tasks, 'Tasks retrieved');
 });
 
 const getDashboardTasks = asyncWrapper(async (req, res) => {
   const tasks = await taskService.getDashboardTasks(
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, { tasks }, 'Dashboard tasks retrieved');
 });
@@ -100,8 +93,7 @@ const getDashboardTasks = asyncWrapper(async (req, res) => {
 const getTaskById = asyncWrapper(async (req, res) => {
   const task = await taskService.getTaskById(
     req.params.taskId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, task, 'Task retrieved');
 });
@@ -121,8 +113,7 @@ const updateTaskStatus = asyncWrapper(async (req, res) => {
   const task = await taskService.updateTaskStatus(
     req.params.taskId,
     status.trim(),
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, task, `Task status updated to "${status}"`);
 });
@@ -135,8 +126,7 @@ const updateTask = asyncWrapper(async (req, res) => {
   const task = await taskService.updateTask(
     req.params.taskId,
     req.user._id,
-    req.body,
-    req.user.isAdmin
+    req.body
   );
   return success(res, task, 'Task updated');
 });
@@ -148,8 +138,7 @@ const updateTask = asyncWrapper(async (req, res) => {
 const deleteTask = asyncWrapper(async (req, res) => {
   await taskService.deleteTask(
     req.params.taskId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, null, 'Task deleted');
 });
@@ -160,7 +149,7 @@ const deleteTask = asyncWrapper(async (req, res) => {
 
 const addComment = asyncWrapper(async (req, res) => {
   const { text } = req.body;
-  const comments = await taskService.addComment(req.params.taskId, req.user._id, text, req.user.isAdmin);
+  const comments = await taskService.addComment(req.params.taskId, req.user._id, text);
   return success(res, comments, 'Comment added', 201);
 });
 
@@ -169,7 +158,7 @@ const addComment = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getComments = asyncWrapper(async (req, res) => {
-  const comments = await taskService.getComments(req.params.taskId, req.user._id, req.user.isAdmin);
+  const comments = await taskService.getComments(req.params.taskId, req.user._id);
   return success(res, comments, 'Comments retrieved');
 });
 
@@ -178,7 +167,7 @@ const getComments = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const getSubtasks = asyncWrapper(async (req, res) => {
-  const subtasks = await taskService.getSubtasksForUser(req.params.taskId, req.user._id, req.user.isAdmin);
+  const subtasks = await taskService.getSubtasksForUser(req.params.taskId, req.user._id);
   return success(res, subtasks, 'Subtasks retrieved');
 });
 
@@ -196,8 +185,7 @@ const uploadAttachment = asyncWrapper(async (req, res) => {
       name: req.file.originalname,
       type: req.file.mimetype,
       size: req.file.size
-    },
-    req.user.isAdmin
+    }
   );
   return success(res, result, 'File uploaded', 200);
 });
@@ -206,8 +194,7 @@ const removeAttachment = asyncWrapper(async (req, res) => {
   const result = await taskService.removeAttachment(
     req.params.taskId,
     req.user._id,
-    req.params.attachmentId,
-    req.user.isAdmin
+    req.params.attachmentId
   );
   return success(res, result, 'Attachment removed', 200);
 });
@@ -219,8 +206,7 @@ const removeAttachment = asyncWrapper(async (req, res) => {
 const getBoardView = asyncWrapper(async (req, res) => {
   const board = await taskService.getProjectBoard(
     req.params.projectId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, board, 'Board view retrieved');
 });
@@ -230,7 +216,7 @@ const getBoardView = asyncWrapper(async (req, res) => {
 // ─────────────────────────────────────────
 
 const generateAIInstructions = asyncWrapper(async (req, res) => {
-  const task = await taskService.getTaskById(req.params.taskId, req.user._id, req.user.isAdmin);
+  const task = await taskService.getTaskById(req.params.taskId, req.user._id);
   const instructions = await aiManager.generateTaskInstructions(task);
   await aiUsageService.consumeCredits(req.user._id, req.aiCost || 1);
   return success(res, { instructions }, 'AI instructions generated');

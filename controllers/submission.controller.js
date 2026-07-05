@@ -16,8 +16,7 @@ const getUserSubmissions = asyncWrapper(async (req, res) => {
 const getSubmissionDetails = asyncWrapper(async (req, res) => {
   const submission = await submissionService.getSubmissionDetails(
     req.params.submissionId,
-    req.user._id,
-    req.user.isAdmin
+    req.user._id
   );
   return success(res, submission, 'Submission retrieved');
 });
