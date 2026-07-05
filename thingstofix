@@ -7,3 +7,6 @@ remove unwanted files
 
 add limit for ai , projects 
 remove admin from control projects
+
+"سؤال مهم يستاهل تفكر فيه: ملفات الـ logs دي بتتكتب على الـ disk المحلي بتاع السيرفر. لو بتعمل deploy على منصة زي Render أو Railway أو أي حاجة بـ ephemeral filesystem، الملفات دي هتتمسح كل مرة تعمل فيها redeploy أو حتى كل ما الـ container يعيد تشغيل نفسه. يعني لو مشروعك هيتنشر على سيرفر بيحتفظ بالـ disk (VPS تقليدي) تمام، لكن لو Render/Vercel/Heroku-style هتحتاج تفكر في حل تاني (زي إرسال الـ logs لخدمة خارجية بدل ملفات محلية).
+"

@@ -2,7 +2,7 @@
 // Note: For production, replace with Redis-backed limiter or use `express-rate-limit`.
 const attempts = new Map();
 
-const WINDOW_MS =  15 //* 60 * 1000; // 15 minutes
+const WINDOW_MS =  15 * 60 * 1000; // 15 minutes
 const MAX_ATTEMPTS =  200;
 
 function cleanup() {
