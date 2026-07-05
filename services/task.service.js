@@ -646,38 +646,12 @@ async function updateTaskStatus(taskId, newStatus, userId, isAdmin = false) {
 }
 
 // ─────────────────────────────────────────
-// Helper — update user completion stats on task approval   remove it
-// ─────────────────────────────────────────
-
-/*async function _rewardUser(task) {
-  if (!Array.isArray(task.assignedTo) || task.assignedTo.length === 0) return;
-
-  const isOnTime = task.deadline && new Date() <= new Date(task.deadline);
-
-  await User.updateMany(
-    { _id: { $in: task.assignedTo } },
-    {
-      $inc: { completedTasks: 1 },
-      ...(isOnTime && {
-        $set: {
-          reliabilityScore: {
-            $min: [100, { $add: [{ $ifNull: ['$reliabilityScore', 0] }, 2] }],
-          },
-        },
-      }),
-    }
-  );
-}
-*/
-
-
-// ─────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────
 
 // ───  ──────────────────────────────────────
 // CREATE SINGLE TASK
-// ─────────────────────────────────────────
+// ──────────────────────────────────────
 
 async function _rewardUser(task) {
   if (!Array.isArray(task.assignedTo) || task.assignedTo.length === 0) return;

@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const { Server } = require('socket.io');
 const app = require('./app');
 const { setupSocket } = require('./services/socket.service');
-const { initCronJobs } = require('./services/cron.service');
 
 const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'CLIENT_URL', 'GMAIL_USER', 'GMAIL_PASS', 'GOOGLE_CLIENT_ID'];
 for (const envVar of requiredEnvVars) {
@@ -33,12 +32,6 @@ mongoose
     connectTimeoutMS: 30000,
   })
   .then(() => {
-    try {
-      initCronJobs();
-    } catch (err) {
-      console.warn('Init skipped:', err.message);
-    }
-
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => console.log(`Server listening on ${PORT}`));
   })

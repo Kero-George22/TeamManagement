@@ -696,7 +696,7 @@ async function getProjectMembers(projectId, requesterId, isAdmin = false) {
   const User = require('../models/user.model');
   const project = await Project.findById(projectId).populate(
     'members.userId',
-    'email username avatar reliabilityScore isAdmin'
+    'email username avatar isAdmin'
   );
   if (!project) throw new AppError('Project not found', 404);
 
@@ -720,7 +720,7 @@ async function getProjectMembers(projectId, requesterId, isAdmin = false) {
     (m) => String(m.userId?._id || m.userId) === String(project.owner)
   );
   if (!ownerAlreadyInList) {
-    const ownerUser = await User.findById(project.owner).select('email username avatar reliabilityScore isAdmin');
+    const ownerUser = await User.findById(project.owner).select('email username avatar isAdmin');
     if (ownerUser) {
       memberList.unshift({
         user:     ownerUser,

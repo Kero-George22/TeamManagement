@@ -36,7 +36,6 @@ async function seed() {
                 password: 'password123',
                 username: `DevUser_${i}`,
                 isVerified: true,
-                reliabilityScore: 80 + Math.floor(Math.random() * 20),
             });
             users.push(user);
         }
